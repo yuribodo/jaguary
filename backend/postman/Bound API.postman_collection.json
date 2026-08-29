@@ -716,6 +716,61 @@
       ]
     },
     {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Pay rejects missing authorization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-pay",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/authorizations/authorization_missing/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["authorizations", "authorization_missing", "pay"]
+            },
+            "description": "Payment accepts only a persisted RESERVED authorization ID; amount, currency, merchant, checkout, principal and credential are never caller-authored."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Payment fails closed without a persisted reservation\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                  "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.equal(pm.collectionVariables.get(\"correlationId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "HTTP conventions",
       "item": [
         {
