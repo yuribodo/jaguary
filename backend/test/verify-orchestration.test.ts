@@ -39,12 +39,17 @@ const request: VerifyRequest = {
 
 class InMemoryReservationStore implements AuthorizationReservationPort {
   readonly reservations: AuthorizationDecision[] = [];
+  readonly recordedDecisions: PolicyEvaluation[] = [];
 
   async inspect() {
     return {
       usage: { aggregate_spend: { amount: 0, currency: "USD" as const }, uses: 0 },
       nonce_status: "UNUSED" as const,
     };
+  }
+
+  async recordDecision(command: { evaluation: PolicyEvaluation }) {
+    this.recordedDecisions.push(command.evaluation);
   }
 
   async reserve(command: { evaluation: PolicyEvaluation }) {

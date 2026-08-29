@@ -46,7 +46,7 @@ export const mandateRoutes: FastifyPluginAsync<MandateRoutesOptions> = async (ap
   app.post<{ Params: { id: string } }>("/v1/mandates/:id/activate", async (request) => {
     const mandateId = parseInput(identifierSchema, request.params.id);
     parseInput(z.object({}).strict(), request.body ?? {});
-    return options.service.activate(mandateId, idempotencyKey(request.headers));
+    return options.service.activate(mandateId, idempotencyKey(request.headers), request.id);
   });
 
   app.post<{ Params: { id: string } }>("/v1/mandates/:id/revoke", async (request) => {

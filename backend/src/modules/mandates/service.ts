@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
-
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   canonicalizeJson,
@@ -17,7 +15,12 @@ import {
   type SignerPort,
 } from "../../contracts/v1/index.js";
 import type { DatabaseConnection, TransactionClient } from "../../db/database.js";
-import { agents, auditEvents, mandates, paymentCredentials } from "../../db/schema.js";
+import { agents, mandates, paymentCredentials } from "../../db/schema.js";
+import {
+  AuditLedgerService,
+  PostgresAuditEventRepository,
+  type AuditLedgerPort,
+} from "../ledger/index.js";
 
 type MandateRow = typeof mandates.$inferSelect;
 
@@ -140,6 +143,9 @@ export class MandateService {
     private readonly database: DatabaseConnection,
     private readonly signer: SignerPort,
     private readonly clock: ClockPort,
+    private readonly ledger: AuditLedgerPort = new AuditLedgerService(
+      new PostgresAuditEventRepository(database.db),
+    ),
   ) {}
 
   async createDraft(
@@ -248,6 +254,19 @@ export class MandateService {
         createdAt: now,
         updatedAt: now,
       });
+      await this.ledger.append(transaction, {
+        correlationId,
+        eventType: "mandate.created",
+        subjectId: terms.mandate_id,
+        payload: {
+          mandate_id: terms.mandate_id,
+          principal_id: terms.principal_id,
+          agent_id: terms.agent_id,
+          status: "DRAFT",
+          created_at: now.toISOString(),
+        },
+        recordedAt: now,
+      });
       const stored = await findStoredMandate(transaction, terms.mandate_id);
       if (stored === undefined) throw new Error("Created mandate row could not be read");
       return { mandate: publicMandate(stored, now), replayed: false };
@@ -277,6 +296,7 @@ export class MandateService {
   async activate(
     mandateId: string,
     idempotencyKey: string,
+    correlationId: string,
   ): Promise<Mandate> {
     return this.database.transaction(async (transaction) => {
       const replay = (await transaction
@@ -321,6 +341,19 @@ export class MandateService {
         .where(and(eq(mandates.mandateId, mandateId), eq(mandates.status, "DRAFT")))
         .returning({ mandateId: mandates.mandateId }))[0];
       if (updated === undefined) throw new Error("Locked draft mandate changed before activation");
+      await this.ledger.append(transaction, {
+        correlationId,
+        eventType: "mandate.activated",
+        subjectId: mandateId,
+        payload: {
+          mandate_id: mandateId,
+          from_status: "DRAFT",
+          to_status: "ACTIVE",
+          terms_hash: termsHash,
+          occurred_at: now.toISOString(),
+        },
+        recordedAt: now,
+      });
       const activated = await findStoredMandate(transaction, mandateId);
       if (activated === undefined) throw new Error("Activated mandate row could not be read");
       return publicMandate(activated, now);
@@ -373,36 +406,16 @@ export class MandateService {
         .returning({ mandateId: mandates.mandateId }))[0];
       if (updated === undefined) throw new Error("Locked active mandate changed before revocation");
 
-      const previous = (await transaction
-        .select({ eventHash: auditEvents.eventHash })
-        .from(auditEvents)
-        .where(eq(auditEvents.subjectId, mandateId))
-        .orderBy(desc(auditEvents.recordedAt), desc(auditEvents.eventId))
-        .limit(1))[0];
-      const eventId = `event_${randomUUID()}`;
-      const payloadHash = sha256CanonicalJson({
-        mandate_id: mandateId,
-        from_status: "ACTIVE",
-        to_status: "REVOKED",
-        revoked_at: revokedAt,
-      });
-      const evidence = {
-        event_id: eventId,
-        correlation_id: correlationId,
-        event_type: "mandate.revoked",
-        subject_id: mandateId,
-        payload_hash: payloadHash,
-        previous_hash: previous?.eventHash ?? null,
-        recorded_at: revokedAt,
-      };
-      await transaction.insert(auditEvents).values({
-        eventId,
+      await this.ledger.append(transaction, {
         correlationId,
-        eventType: evidence.event_type,
+        eventType: "mandate.revoked",
         subjectId: mandateId,
-        payloadHash,
-        previousHash: evidence.previous_hash,
-        eventHash: sha256CanonicalJson(evidence),
+        payload: {
+          mandate_id: mandateId,
+          from_status: "ACTIVE",
+          to_status: "REVOKED",
+          occurred_at: revokedAt,
+        },
         recordedAt: now,
       });
 
