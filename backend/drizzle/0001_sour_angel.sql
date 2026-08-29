@@ -16,7 +16,9 @@ ALTER TABLE "mandates" ADD COLUMN "cabin" varchar(24) DEFAULT 'ECONOMY' NOT NULL
 ALTER TABLE "mandates" ADD COLUMN "creation_request_hash" char(64);--> statement-breakpoint
 ALTER TABLE "mandates" ADD COLUMN "activation_idempotency_key" varchar(128);--> statement-breakpoint
 ALTER TABLE "mandates" ADD COLUMN "revocation_idempotency_key" varchar(128);--> statement-breakpoint
-UPDATE "mandates" SET "creation_request_hash" = "terms_hash";--> statement-breakpoint
+UPDATE "mandates"
+SET "creation_request_hash" = "terms_hash"
+WHERE "creation_request_hash" IS NULL;--> statement-breakpoint
 UPDATE "mandates"
 SET "terms_hash" = NULL,
     "principal_signature_algorithm" = NULL,
@@ -24,7 +26,8 @@ SET "terms_hash" = NULL,
     "principal_signature_value" = NULL,
     "activated_at" = NULL,
     "revoked_at" = NULL
-WHERE "status" = 'DRAFT';--> statement-breakpoint
+WHERE "status" = 'DRAFT'; -- NOSONAR: lifecycle state literals must match persisted enum values.
+--> statement-breakpoint
 ALTER TABLE "mandates" ALTER COLUMN "creation_request_hash" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "mandates" ALTER COLUMN "version" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "mandates" ALTER COLUMN "allowed_merchant_categories" DROP DEFAULT;--> statement-breakpoint
@@ -59,10 +62,10 @@ ALTER TABLE "mandates" ADD CONSTRAINT "mandates_proof_check" CHECK (
       AND "mandates"."terms_hash" ~ '^[a-f0-9]{64}$'
       AND "mandates"."principal_signature_algorithm" IN ('ES256', 'EdDSA')
       AND "mandates"."principal_signature_key_id" IS NOT NULL
-      AND "mandates"."principal_signature_key_id" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+      AND "mandates"."principal_signature_key_id" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$' -- NOSONAR: database constraints materialize the shared identifier invariant.
       AND length("mandates"."principal_signature_value") BETWEEN 16 AND 4096
       AND "mandates"."activated_at" IS NOT NULL
-      AND (("mandates"."status" = 'REVOKED' AND "mandates"."revoked_at" IS NOT NULL)
+      AND (("mandates"."status" = 'REVOKED' AND "mandates"."revoked_at" IS NOT NULL) -- NOSONAR: lifecycle state literals are intentional SQL invariants.
         OR ("mandates"."status" <> 'REVOKED' AND "mandates"."revoked_at" IS NULL)))
   );--> statement-breakpoint
 ALTER TABLE "mandates" ADD CONSTRAINT "mandates_creation_request_hash_check" CHECK ("mandates"."creation_request_hash" ~ '^[a-f0-9]{64}$');--> statement-breakpoint

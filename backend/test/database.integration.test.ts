@@ -16,8 +16,13 @@ import {
   reservedAuthorizationFixture,
   sha256CanonicalJson,
   travelBotFixture,
+  type CreateMandateDraftInput,
 } from "../src/contracts/v1/index.js";
-import { createDatabase, type DatabaseConnection } from "../src/db/database.js";
+import {
+  createDatabase,
+  type DatabaseConnection,
+  type TransactionClient,
+} from "../src/db/database.js";
 import { migrateDatabase } from "../src/db/migrate.js";
 import {
   agents,
@@ -38,56 +43,86 @@ const integrationTest = testDatabaseUrl === undefined ? test.skip : test;
 let administrationPool: Pool | undefined;
 let database: DatabaseConnection | undefined;
 
+async function insertMandateReferences(transaction: TransactionClient): Promise<void> {
+  await transaction.insert(agents).values({
+    agentId: travelBotFixture.agent_id,
+    principalId: travelBotFixture.principal_id,
+    displayName: travelBotFixture.display_name,
+    status: travelBotFixture.status,
+    verificationKeyId: travelBotFixture.verification_key.key_id,
+    verificationAlgorithm: travelBotFixture.verification_key.algorithm,
+    verificationPublicKey: travelBotFixture.verification_key.public_key,
+    correlationId: "corr_seed_agent_001",
+    idempotencyKey: "idem_seed_agent_001",
+    createdAt: new Date(travelBotFixture.created_at),
+  });
+  await transaction.insert(paymentCredentials).values({
+    credentialId: mandateFixture.terms.credential_id,
+    principalId: mandateFixture.terms.principal_id,
+    display: mandateFixture.payment_credential.display,
+  });
+}
+
+function activeMandateRow(termsHash = mandateFixture.terms_hash): typeof mandates.$inferInsert {
+  return {
+    mandateId: mandateFixture.terms.mandate_id,
+    version: mandateFixture.terms.version,
+    principalId: mandateFixture.terms.principal_id,
+    agentId: mandateFixture.terms.agent_id,
+    allowedMerchantIds: mandateFixture.terms.allowed_merchant_ids,
+    allowedMerchantCategories: mandateFixture.terms.allowed_merchant_categories,
+    routeOrigin: mandateFixture.terms.route.origin,
+    routeDestination: mandateFixture.terms.route.destination,
+    cabin: mandateFixture.terms.cabin,
+    maxPerPurchaseAmount: mandateFixture.terms.max_per_purchase.amount,
+    maxPerPurchaseCurrency: mandateFixture.terms.max_per_purchase.currency,
+    maxAggregateAmount: mandateFixture.terms.max_aggregate.amount,
+    maxAggregateCurrency: mandateFixture.terms.max_aggregate.currency,
+    maxUses: mandateFixture.terms.max_uses,
+    validFrom: new Date(mandateFixture.terms.valid_from),
+    expiresAt: new Date(mandateFixture.terms.expires_at),
+    credentialId: mandateFixture.terms.credential_id,
+    status: mandateFixture.status,
+    termsHash,
+    principalSignatureAlgorithm: mandateFixture.principal_signature.algorithm,
+    principalSignatureKeyId: mandateFixture.principal_signature.key_id,
+    principalSignatureValue: mandateFixture.principal_signature.value,
+    creationRequestHash: mandateFixture.terms_hash,
+    correlationId: "corr_seed_mandate_001",
+    idempotencyKey: "idem_seed_mandate_001",
+    createdAt: new Date(mandateFixture.created_at),
+    activatedAt: new Date(mandateFixture.activated_at),
+  };
+}
+
+function mandateDraftRequest(
+  mandateId: string,
+  overrides: Partial<Omit<CreateMandateDraftInput, "mandate_id">> = {},
+): CreateMandateDraftInput {
+  return {
+    mandate_id: mandateId,
+    principal_id: mandateFixture.terms.principal_id,
+    agent_id: mandateFixture.terms.agent_id,
+    allowed_merchant_ids: mandateFixture.terms.allowed_merchant_ids,
+    allowed_merchant_categories: mandateFixture.terms.allowed_merchant_categories,
+    route: mandateFixture.terms.route,
+    cabin: mandateFixture.terms.cabin,
+    max_per_purchase: mandateFixture.terms.max_per_purchase,
+    max_aggregate: mandateFixture.terms.max_aggregate,
+    max_uses: mandateFixture.terms.max_uses,
+    valid_from: mandateFixture.terms.valid_from,
+    expires_at: mandateFixture.terms.expires_at,
+    credential_id: mandateFixture.terms.credential_id,
+    ...overrides,
+  };
+}
+
 async function seedAuthorizationGraph(termsHash = mandateFixture.terms_hash): Promise<void> {
   assert.ok(database);
 
   await database.transaction(async (tx) => {
-    await tx.insert(agents).values({
-      agentId: travelBotFixture.agent_id,
-      principalId: travelBotFixture.principal_id,
-      displayName: travelBotFixture.display_name,
-      status: travelBotFixture.status,
-      verificationKeyId: travelBotFixture.verification_key.key_id,
-      verificationAlgorithm: travelBotFixture.verification_key.algorithm,
-      verificationPublicKey: travelBotFixture.verification_key.public_key,
-      correlationId: "corr_seed_agent_001",
-      idempotencyKey: "idem_seed_agent_001",
-      createdAt: new Date(travelBotFixture.created_at),
-    });
-    await tx.insert(paymentCredentials).values({
-      credentialId: mandateFixture.terms.credential_id,
-      principalId: mandateFixture.terms.principal_id,
-      display: "Visa •••• 4242",
-    });
-    await tx.insert(mandates).values({
-      mandateId: mandateFixture.terms.mandate_id,
-      version: mandateFixture.terms.version,
-      principalId: mandateFixture.terms.principal_id,
-      agentId: mandateFixture.terms.agent_id,
-      allowedMerchantIds: mandateFixture.terms.allowed_merchant_ids,
-      allowedMerchantCategories: mandateFixture.terms.allowed_merchant_categories,
-      routeOrigin: mandateFixture.terms.route.origin,
-      routeDestination: mandateFixture.terms.route.destination,
-      cabin: mandateFixture.terms.cabin,
-      maxPerPurchaseAmount: mandateFixture.terms.max_per_purchase.amount,
-      maxPerPurchaseCurrency: mandateFixture.terms.max_per_purchase.currency,
-      maxAggregateAmount: mandateFixture.terms.max_aggregate.amount,
-      maxAggregateCurrency: mandateFixture.terms.max_aggregate.currency,
-      maxUses: mandateFixture.terms.max_uses,
-      validFrom: new Date(mandateFixture.terms.valid_from),
-      expiresAt: new Date(mandateFixture.terms.expires_at),
-      credentialId: mandateFixture.terms.credential_id,
-      status: mandateFixture.status,
-      termsHash,
-      principalSignatureAlgorithm: mandateFixture.principal_signature.algorithm,
-      principalSignatureKeyId: mandateFixture.principal_signature.key_id,
-      principalSignatureValue: mandateFixture.principal_signature.value,
-      creationRequestHash: mandateFixture.terms_hash,
-      correlationId: "corr_seed_mandate_001",
-      idempotencyKey: "idem_seed_mandate_001",
-      createdAt: new Date(mandateFixture.created_at),
-      activatedAt: new Date(mandateFixture.activated_at),
-    });
+    await insertMandateReferences(tx);
+    await tx.insert(mandates).values(activeMandateRow(termsHash));
     await tx.insert(checkouts).values({
       checkoutId: checkoutTermsFixture.checkout_id,
       merchantId: checkoutTermsFixture.merchant_id,
@@ -135,25 +170,7 @@ async function seedAuthorizationGraph(termsHash = mandateFixture.terms_hash): Pr
 
 async function seedMandateReferences(): Promise<void> {
   assert.ok(database);
-  await database.transaction(async (tx) => {
-    await tx.insert(agents).values({
-      agentId: travelBotFixture.agent_id,
-      principalId: travelBotFixture.principal_id,
-      displayName: travelBotFixture.display_name,
-      status: travelBotFixture.status,
-      verificationKeyId: travelBotFixture.verification_key.key_id,
-      verificationAlgorithm: travelBotFixture.verification_key.algorithm,
-      verificationPublicKey: travelBotFixture.verification_key.public_key,
-      correlationId: "corr_seed_agent_mandate_001",
-      idempotencyKey: "idem_seed_agent_mandate_001",
-      createdAt: new Date(travelBotFixture.created_at),
-    });
-    await tx.insert(paymentCredentials).values({
-      credentialId: mandateFixture.terms.credential_id,
-      principalId: mandateFixture.terms.principal_id,
-      display: mandateFixture.payment_credential.display,
-    });
-  });
+  await database.transaction(insertMandateReferences);
 }
 
 function hasPostgresCode(error: unknown, code: string): boolean {
@@ -323,33 +340,9 @@ integrationTest("foreign keys reject a mandate for an unknown agent", async () =
 
   await assert.rejects(
     database.db.insert(mandates).values({
-      mandateId: mandateFixture.terms.mandate_id,
-      version: mandateFixture.terms.version,
-      principalId: mandateFixture.terms.principal_id,
-      agentId: mandateFixture.terms.agent_id,
-      allowedMerchantIds: mandateFixture.terms.allowed_merchant_ids,
-      allowedMerchantCategories: mandateFixture.terms.allowed_merchant_categories,
-      routeOrigin: mandateFixture.terms.route.origin,
-      routeDestination: mandateFixture.terms.route.destination,
-      cabin: mandateFixture.terms.cabin,
-      maxPerPurchaseAmount: mandateFixture.terms.max_per_purchase.amount,
-      maxPerPurchaseCurrency: mandateFixture.terms.max_per_purchase.currency,
-      maxAggregateAmount: mandateFixture.terms.max_aggregate.amount,
-      maxAggregateCurrency: mandateFixture.terms.max_aggregate.currency,
-      maxUses: mandateFixture.terms.max_uses,
-      validFrom: new Date(mandateFixture.terms.valid_from),
-      expiresAt: new Date(mandateFixture.terms.expires_at),
-      credentialId: mandateFixture.terms.credential_id,
-      status: mandateFixture.status,
-      termsHash: mandateFixture.terms_hash,
-      principalSignatureAlgorithm: mandateFixture.principal_signature.algorithm,
-      principalSignatureKeyId: mandateFixture.principal_signature.key_id,
-      principalSignatureValue: mandateFixture.principal_signature.value,
-      creationRequestHash: mandateFixture.terms_hash,
+      ...activeMandateRow(),
       correlationId: "corr_orphan_mandate_001",
       idempotencyKey: "idem_orphan_mandate_001",
-      createdAt: new Date(mandateFixture.created_at),
-      activatedAt: new Date(mandateFixture.activated_at),
     }),
     (error: unknown) => hasPostgresCode(error, "23503"),
   );
@@ -459,21 +452,7 @@ integrationTest("a mandate draft is created idempotently and read without signin
   });
   t.after(async () => app.close());
 
-  const request = {
-    mandate_id: "mandate_draft_api_001",
-    principal_id: mandateFixture.terms.principal_id,
-    agent_id: mandateFixture.terms.agent_id,
-    allowed_merchant_ids: mandateFixture.terms.allowed_merchant_ids,
-    allowed_merchant_categories: mandateFixture.terms.allowed_merchant_categories,
-    route: mandateFixture.terms.route,
-    cabin: mandateFixture.terms.cabin,
-    max_per_purchase: mandateFixture.terms.max_per_purchase,
-    max_aggregate: mandateFixture.terms.max_aggregate,
-    max_uses: mandateFixture.terms.max_uses,
-    valid_from: mandateFixture.terms.valid_from,
-    expires_at: mandateFixture.terms.expires_at,
-    credential_id: mandateFixture.terms.credential_id,
-  };
+  const request = mandateDraftRequest("mandate_draft_api_001");
   const headers = {
     "idempotency-key": "idem_create_mandate_draft_001",
     "x-correlation-id": "corr_create_mandate_draft_001",
@@ -513,21 +492,7 @@ integrationTest("activating a draft signs its canonical immutable terms exactly 
   });
   t.after(async () => app.close());
 
-  const draftRequest = {
-    mandate_id: "mandate_activation_api_001",
-    principal_id: mandateFixture.terms.principal_id,
-    agent_id: mandateFixture.terms.agent_id,
-    allowed_merchant_ids: mandateFixture.terms.allowed_merchant_ids,
-    allowed_merchant_categories: mandateFixture.terms.allowed_merchant_categories,
-    route: mandateFixture.terms.route,
-    cabin: mandateFixture.terms.cabin,
-    max_per_purchase: mandateFixture.terms.max_per_purchase,
-    max_aggregate: mandateFixture.terms.max_aggregate,
-    max_uses: mandateFixture.terms.max_uses,
-    valid_from: mandateFixture.terms.valid_from,
-    expires_at: mandateFixture.terms.expires_at,
-    credential_id: mandateFixture.terms.credential_id,
-  };
+  const draftRequest = mandateDraftRequest("mandate_activation_api_001");
   const created = await app.inject({
     method: "POST",
     url: "/v1/mandates",
@@ -767,22 +732,15 @@ integrationTest("a changed mandate creates a linked version without mutating act
     method: "POST",
     url: "/v1/mandates",
     headers: { "idempotency-key": "idem_create_mandate_version_002" },
-    payload: {
-      mandate_id: "mandate_marta_travel_002",
+    payload: mandateDraftRequest("mandate_marta_travel_002", {
       supersedes_mandate_id: mandateFixture.terms.mandate_id,
-      principal_id: mandateFixture.terms.principal_id,
-      agent_id: mandateFixture.terms.agent_id,
       allowed_merchant_ids: [],
       allowed_merchant_categories: ["airline"],
-      route: mandateFixture.terms.route,
       cabin: "BUSINESS",
       max_per_purchase: { amount: 20000, currency: "USD" },
       max_aggregate: { amount: 40000, currency: "USD" },
       max_uses: 2,
-      valid_from: mandateFixture.terms.valid_from,
-      expires_at: mandateFixture.terms.expires_at,
-      credential_id: mandateFixture.terms.credential_id,
-    },
+    }),
   });
   assert.equal(newVersion.statusCode, 201);
   const draft = mandateSchema.parse(newVersion.json());
@@ -879,21 +837,7 @@ integrationTest("mandate APIs reject unknown, sensitive and invalid scope fields
   await seedMandateReferences();
   const app = await buildApp({ databaseUrl: testDatabaseUrl, logger: false });
   t.after(async () => app.close());
-  const valid = {
-    mandate_id: "mandate_validation_001",
-    principal_id: mandateFixture.terms.principal_id,
-    agent_id: mandateFixture.terms.agent_id,
-    allowed_merchant_ids: mandateFixture.terms.allowed_merchant_ids,
-    allowed_merchant_categories: mandateFixture.terms.allowed_merchant_categories,
-    route: mandateFixture.terms.route,
-    cabin: mandateFixture.terms.cabin,
-    max_per_purchase: mandateFixture.terms.max_per_purchase,
-    max_aggregate: mandateFixture.terms.max_aggregate,
-    max_uses: mandateFixture.terms.max_uses,
-    valid_from: mandateFixture.terms.valid_from,
-    expires_at: mandateFixture.terms.expires_at,
-    credential_id: mandateFixture.terms.credential_id,
-  };
+  const valid = mandateDraftRequest("mandate_validation_001");
   const secret = "sensitive-value-must-not-be-echoed";
   const unknown = await app.inject({
     method: "POST",
@@ -935,21 +879,7 @@ integrationTest("mandate mutation retries fail closed on conflicts and expired o
     clock: { now: () => new Date(mandateFixture.terms.expires_at) },
   });
   t.after(async () => app.close());
-  const request = {
-    mandate_id: "mandate_expired_draft_001",
-    principal_id: mandateFixture.terms.principal_id,
-    agent_id: mandateFixture.terms.agent_id,
-    allowed_merchant_ids: mandateFixture.terms.allowed_merchant_ids,
-    allowed_merchant_categories: mandateFixture.terms.allowed_merchant_categories,
-    route: mandateFixture.terms.route,
-    cabin: mandateFixture.terms.cabin,
-    max_per_purchase: mandateFixture.terms.max_per_purchase,
-    max_aggregate: mandateFixture.terms.max_aggregate,
-    max_uses: mandateFixture.terms.max_uses,
-    valid_from: mandateFixture.terms.valid_from,
-    expires_at: mandateFixture.terms.expires_at,
-    credential_id: mandateFixture.terms.credential_id,
-  };
+  const request = mandateDraftRequest("mandate_expired_draft_001");
   const createHeaders = { "idempotency-key": "idem_expired_draft_create" };
   const created = await app.inject({ method: "POST", url: "/v1/mandates", headers: createHeaders, payload: request });
   assert.equal(created.statusCode, 201);

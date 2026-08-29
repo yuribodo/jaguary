@@ -266,11 +266,9 @@ export class MandateService {
   async loadActiveMandate(mandateId: string): Promise<ActiveMandate> {
     const mandate = await this.getMandate(mandateId);
     if (mandate.status === "ACTIVE" && mandate.authority_valid) return mandate;
-    const code = mandate.status === "REVOKED"
-      ? "mandate_revoked"
-      : mandate.status === "EXPIRED"
-        ? "mandate_expired"
-        : "mandate_not_active";
+    let code: "mandate_revoked" | "mandate_expired" | "mandate_not_active" = "mandate_not_active";
+    if (mandate.status === "REVOKED") code = "mandate_revoked";
+    else if (mandate.status === "EXPIRED") code = "mandate_expired";
     throw new PublicApiError(409, code, "Mandate is not current active authority", {
       current_status: mandate.status,
     });
