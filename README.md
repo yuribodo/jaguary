@@ -2,8 +2,39 @@
 
 Bound is an authorization and enforcement layer for agentic commerce. It verifies whether an agent, acting for a human, may execute an exact economic action before any payment credential is resolved or any payment is sent to a provider.
 
+## Development setup
+
+The repository is a pnpm workspace with two independently runnable applications:
+
+```text
+frontend/  Next.js App Router + Tailwind CSS
+backend/   Fastify + TypeScript
+```
+
+Requirements: Node.js `>=20.9` and pnpm `>=10`.
+
+```bash
+pnpm install
+pnpm dev
+```
+
+The frontend runs at [http://localhost:3000](http://localhost:3000) and the backend at [http://localhost:3001](http://localhost:3001). The frontend checks `GET /health` and displays the API state.
+
+Useful commands:
+
+```bash
+pnpm dev:frontend
+pnpm dev:backend
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm check
+```
+
 ## Documentation
 
+- [Visual discovery and Jaguary/Bound moodboards](docs/design/visual-directions.md)
 - [Product journey and service blueprint](docs/diagrams/bound-product-experience.html)
 - [Protocol and payment model](docs/diagrams/bound-protocol-model.html)
 - [Technical architecture](docs/diagrams/bound-technical-architecture.html)
