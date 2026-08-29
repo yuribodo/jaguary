@@ -661,6 +661,61 @@
       ]
     },
     {
+      "name": "Bound Verify",
+      "item": [
+        {
+          "name": "Bound Verify rejects invalid proof",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-bound-verify",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_body\": {\n    \"authorization\": {\n      \"principal_id\": \"principal_marta\",\n      \"agent_id\": \"agent_travelbot\",\n      \"mandate_id\": \"mandate_marta_travel_001\",\n      \"allowed_merchant_ids\": [\"merchant_vuelaya\"],\n      \"checkout_hash\": \"{{checkoutHash}}\",\n      \"max_amount\": { \"amount\": 15000, \"currency\": \"USD\" },\n      \"expires_at\": \"2026-08-30T12:00:00.000Z\",\n      \"max_uses\": 1,\n      \"proof_type\": \"AP2\",\n      \"proof_reference\": \"proof_ap2_marta_001\",\n      \"proof_hash\": \"6be44382fe92592b3024679a5254978884770c747b5f9e85a2f40e90b681bca2\"\n    },\n    \"checkout\": {{checkoutJson}}\n  },\n  \"proof\": {}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["verify"]
+            },
+            "description": "Exercises strict POST /verify proof validation without storing an agent private key in Postman."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Bound Verify fails closed on an invalid proof\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
+                  "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.equal(pm.collectionVariables.get(\"correlationId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "HTTP conventions",
       "item": [
         {

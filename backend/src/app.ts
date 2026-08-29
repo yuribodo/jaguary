@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyServerOptions } from "fastify";
 
 import {
+  canonicalizeJson,
   type AgentIdentityRegistryPort,
   type AgentRequestVerifierPort,
   type ClockPort,
@@ -13,7 +14,14 @@ import { DrizzleAgentIdentityRegistry } from "./modules/identity/registry.js";
 import { agentIdentityRoutes } from "./modules/identity/routes.js";
 import { AgentRequestVerifier } from "./modules/identity/verifier.js";
 import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
-import { VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
+import {
+  PostgresAuthorizationReservationStore,
+  VerifyOrchestrator,
+  verifyRoutes,
+  type VerifyHandler,
+  type VerifyRequestBody,
+} from "./modules/verify/index.js";
+import { verifyCheckoutIntegrity, VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
 import { healthRoutes } from "./routes/health.js";
@@ -28,6 +36,8 @@ export interface BuildAppOptions {
   agentVerifier?: AgentRequestVerifierPort;
   logger?: FastifyServerOptions["logger"];
   signer?: SignerPort;
+  verifyOrchestrator?: VerifyHandler;
+  humanApprovalRequired?: (input: VerifyRequestBody) => boolean;
 }
 
 const redactedLogPaths = [
@@ -101,18 +111,55 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const signer = options.signer ?? new EphemeralEs256Signer();
   const agentRegistry = options.agentRegistry
     ?? (database === undefined ? undefined : new DrizzleAgentIdentityRegistry(database.db, clock));
-  if (agentRegistry !== undefined) {
+  const agentVerifier = agentRegistry === undefined
+    ? undefined
+    : (options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock));
+  if (agentRegistry !== undefined && agentVerifier !== undefined) {
     await app.register(agentIdentityRoutes, {
       registry: agentRegistry,
-      verifier: options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock),
+      verifier: agentVerifier,
     });
   }
   const merchant = new VuelaYaMerchant(signer, clock);
   await app.register(vuelaYaRoutes, { merchant });
+  let mandateService: MandateService | undefined;
   if (database !== undefined) {
+    mandateService = new MandateService(database, signer, clock);
     await app.register(mandateRoutes, {
-      service: new MandateService(database, signer, clock),
+      service: mandateService,
     });
+  }
+  let verifyOrchestrator = options.verifyOrchestrator;
+  if (
+    verifyOrchestrator === undefined
+    && database !== undefined
+    && agentRegistry !== undefined
+    && agentVerifier !== undefined
+    && mandateService !== undefined
+  ) {
+    verifyOrchestrator = new VerifyOrchestrator({
+      agentRegistry,
+      agentVerifier,
+      mandateLoader: mandateService,
+      mandateSignatureVerifier: signer,
+      checkoutVerifier: {
+        async verify(checkout) {
+          try {
+            const authoritative = merchant.getCheckout(checkout.terms.checkout_id);
+            return canonicalizeJson(authoritative) === canonicalizeJson(checkout)
+              && await verifyCheckoutIntegrity(checkout, signer);
+          } catch {
+            return false;
+          }
+        },
+      },
+      reservationStore: new PostgresAuthorizationReservationStore(database),
+      clock,
+      humanApprovalRequired: options.humanApprovalRequired ?? (() => false),
+    });
+  }
+  if (verifyOrchestrator !== undefined) {
+    await app.register(verifyRoutes, { orchestrator: verifyOrchestrator });
   }
 
   return app;

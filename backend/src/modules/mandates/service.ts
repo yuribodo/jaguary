@@ -416,3 +416,13 @@ export class MandateService {
     return outcome.mandate;
   }
 }
+
+export async function loadMandateForVerification(
+  transaction: TransactionClient,
+  mandateId: string,
+  now: Date,
+): Promise<Mandate | undefined> {
+  const stored = await findStoredMandate(transaction, mandateId, true);
+  if (stored === undefined) return undefined;
+  return publicMandate(await persistExpiry(transaction, stored, now), now);
+}

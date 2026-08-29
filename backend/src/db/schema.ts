@@ -297,6 +297,9 @@ export const authorizations = pgTable("authorizations", {
   proofType: varchar("proof_type", { length: 32 }).notNull(),
   proofReference: varchar("proof_reference", { length: 128 }).notNull(),
   proofHash: char("proof_hash", { length: 64 }).notNull(),
+  requestHash: char("request_hash", { length: 64 }).notNull(),
+  policyVersion: varchar("policy_version", { length: 64 }).notNull(),
+  evidenceHash: char("evidence_hash", { length: 64 }).notNull(),
   correlationId: varchar("correlation_id", { length: 128 }).notNull(),
   idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
   reservedAt: timestamp("reserved_at", { withTimezone: true, mode: "date" }).notNull(),
@@ -304,6 +307,8 @@ export const authorizations = pgTable("authorizations", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   unique("authorizations_idempotency_key_unique").on(table.idempotencyKey),
+  unique("authorizations_request_hash_unique").on(table.requestHash),
+  unique("authorizations_checkout_id_unique").on(table.checkoutId),
   foreignKey({
     name: "authorizations_mandate_identity_fk",
     columns: [table.mandateId, table.agentId, table.principalId],
@@ -323,6 +328,9 @@ export const authorizations = pgTable("authorizations", {
   check("authorizations_proof_type_check", sql`${table.proofType} IN (${sqlList(proofTypeSchema.options)})`),
   check("authorizations_proof_reference_check", identifierCheck(table.proofReference)),
   check("authorizations_proof_hash_check", hashCheck(table.proofHash)),
+  check("authorizations_request_hash_check", hashCheck(table.requestHash)),
+  check("authorizations_policy_version_check", sql`length(${table.policyVersion}) BETWEEN 1 AND 64`),
+  check("authorizations_evidence_hash_check", hashCheck(table.evidenceHash)),
   check("authorizations_checkout_hash_check", hashCheck(table.checkoutHash)),
   check("authorizations_correlation_id_check", identifierCheck(table.correlationId)),
   check("authorizations_idempotency_key_check", sql`length(${table.idempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.idempotencyKey)}`),

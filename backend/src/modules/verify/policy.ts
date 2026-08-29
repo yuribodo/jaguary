@@ -363,7 +363,7 @@ function createReasonCollector(): { reasons: ReasonCode[]; addReason: AddReason 
 }
 
 /** Pure pre-reservation policy evaluation. Persistence and evidence hashing belong to BE-07. */
-export function evaluate(input: VerifyPolicyInput): VerifyPolicyResult {
+export function evaluate(input: unknown): VerifyPolicyResult {
   const parsed = parsePolicyInput(input);
   const { addReason, reasons } = createReasonCollector();
 
