@@ -106,6 +106,47 @@ The claim transaction writes `payment.attempt_started` together with `PAYMENT_PE
 
 No real Yuno request, webhook or public reconciliation endpoint is present. Internal reconciliation reuses the existing payment attempt and provider idempotency key; it does not create another attempt or invoke the executor again.
 
+## TravelBot chat (BE-13)
+
+TravelBot is a backend-only OpenAI Agents SDK runtime behind `AgentRuntimePort`. PostgreSQL owns the sanitized messages, normalized intent, deterministic state, model-run correlation, tool executions, approvals and replayable SSE events. OpenAI response/session IDs are metadata only. The browser never receives `OPENAI_API_KEY` and never calls OpenAI.
+
+The flight inventory is the existing deterministic VuelaYa catalog returned by `GET /merchant/flights`: the MVP has one GRU → COR economy flight on 2026-09-15 for USD 137. TravelBot does not browse external travel sites. Its only available function tools are the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from the persisted state and every economic operation is revalidated by application services.
+
+Configure these backend-only environment names to enable OpenAI chat; `.env.example` intentionally contains no values:
+
+```text
+OPENAI_API_KEY
+OPENAI_MODEL
+OPENAI_REQUEST_TIMEOUT_MS
+TRAVELBOT_AGENT_PRIVATE_JWK
+TRAVELBOT_AGENT_KEY_ID
+TRAVELBOT_AGENT_BUILD_FINGERPRINT
+TRAVELBOT_DEMO_CREDENTIAL_ID
+TRAVELBOT_APPROVAL_ENCRYPTION_KEY
+```
+
+The private JWK must match the public TravelBot identity registered by the local BE-12 seed/reset flow. The approval key is a base64-encoded 32-byte key used only to encrypt resumable Agents SDK state at rest. If OpenAI variables are absent, conversation reads/creation remain durable but message processing returns a sanitized retryable `503`; the backend never fabricates an LLM response.
+
+Optional Langfuse export uses the current `@langfuse/tracing`/`@langfuse/otel` adapter and is disabled by default. Set `LANGFUSE_ENABLED=true`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` to enable it. Only normalized IDs, states, tool names, status/reason codes, latency and usage are exported. Raw chat text, prompts, proofs, credentials and financial/provider payloads are never placed on `LlmTelemetryPort`.
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| `POST` | `/v1/conversations` | creates an idempotent conversation for `{ principal_id, agent_id }` |
+| `GET` | `/v1/conversations/:id` | reads sanitized intent, state, approvals and ordered messages |
+| `POST` | `/v1/conversations/:id/messages` | appends one message and commits the deterministic assistant turn |
+
+Mutable calls require both `Idempotency-Key` and `X-Correlation-Id`. Send `Accept: text/event-stream` to the message route for persisted SSE events. Event types are `assistant.delta`, `state.snapshot`, `tool.status`, `confirmation.required`, `turn.completed` and `error`; `id` is the monotonically increasing conversation event sequence. Reconnect with `Last-Event-ID: <sequence>` to recover committed events without repeating a tool or payment.
+
+Authority/purchase approval is bound to merchant, checkout hash, amount, currency and mandate. The SDK interruption is encrypted and persisted before confirmation is requested. A changed field cancels it; explicit denial rejects it; a matching explicit confirmation resumes it once. Application confirmation—not SDK `needsApproval`—is consent. The final purchase always runs signed Verify/reservation and `PaymentService`; TravelBot has no `PaymentExecutor` dependency.
+
+For the BE-12 one-command local reset hook, run:
+
+```bash
+pnpm --filter @bound/backend db:demo:reset
+```
+
+This non-production command clears chat and transactional purchase data while retaining the registered demo identity, credential reference and append-only audit ledger. Re-running migrations after the reset is safe.
+
 ## Postman collection
 
 Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and exercises the public VuelaYa, Verify, payment, receipt, audit, correlation and error surfaces without embedding a private signing key or reusable credential. The fully approved signed flow is covered by the PostgreSQL integration suite because it requires a runtime agent proof and committed authorization.
