@@ -16,6 +16,7 @@ import {
   normalizedAuthorizationFixture,
   normalizedCheckoutFixture,
   normalizedCheckoutSchema,
+  orderReceiptSchema,
   paymentResultSchema,
   purchaseIntentFixture,
   reservedAuthorizationFixture,
@@ -23,6 +24,7 @@ import {
   sha256CanonicalJson,
   travelBotFixture,
   type PaymentExecutor,
+  type PaymentResultStatus,
   type CreateMandateDraftInput,
   type AuthorizationStatus,
 } from "../src/contracts/v1/index.js";
@@ -40,9 +42,9 @@ import {
   checkouts,
   mandates,
   nonces,
+  orders,
   paymentCredentials,
   payments,
-  orders,
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
 import { MandateService } from "../src/modules/mandates/index.js";
@@ -341,7 +343,7 @@ type VerifyRequestInput = Parameters<VerifyScenario["sendVerify"]>[0];
 
 async function createPaymentScenario(
   t: { after(callback: () => Promise<void>): void },
-  outcome: "APPROVED" | "DECLINED" | "TIMEOUT" | "UNKNOWN" = "APPROVED",
+  outcome: PaymentResultStatus = "APPROVED",
 ) {
   assert.ok(testDatabaseUrl);
   assert.ok(database);
@@ -992,6 +994,7 @@ integrationTest("revocation is immediately visible, idempotent and emits one aud
   assert.equal(events.length, 1);
   assert.equal(events[0]?.eventType, "mandate.revoked");
   assert.equal(events[0]?.correlationId, "corr_revoke_mandate_001");
+  assert.equal(events[0]?.sanitizedPayload?.payment_executor_called, false);
   assert.match(events[0]?.payloadHash ?? "", /^[a-f0-9]{64}$/);
   assert.match(events[0]?.eventHash ?? "", /^[a-f0-9]{64}$/);
 });
@@ -1421,6 +1424,18 @@ integrationTest("a replayed agent nonce returns replay_detected without another 
     { proof: firstProof, idempotencyKey: "idem_verify_replay_first_001" },
     { proof: firstProof, idempotencyKey: "idem_verify_replay_second_001" },
   );
+  scenario.setNow("2026-08-29T12:04:02.000Z");
+  const repeated = await scenario.sendVerify({
+    proof: firstProof,
+    idempotencyKey: "idem_verify_replay_second_001",
+  });
+  assert.equal(authorizationDecisionSchema.parse(repeated.json()).decision, "DENY");
+  const replayEvents = await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.replay_detected"));
+  assert.equal(replayEvents.length, 1);
+  assert.equal(replayEvents[0]?.sanitizedPayload?.payment_executor_called, false);
 });
 
 integrationTest("the same checkout request with a fresh nonce cannot create another authorization", async (t) => {
@@ -1463,6 +1478,18 @@ integrationTest("a revocation committed before reservation prevents authorizatio
     .where(eq(auditEvents.eventType, "authorization.denied")))[0];
   assert.equal(denial?.sanitizedPayload?.payment_executor_called, false);
   assert.deepEqual(denial?.sanitizedPayload?.reasons, ["mandate_revoked"]);
+  const timeline = (await scenario.app.inject({
+    method: "GET",
+    url: "/audit/corr_verify_scenario_001",
+  })).json<{ events: Array<{ event_type: string; payload: Record<string, unknown> }> }>();
+  assert.deepEqual(timeline.events.map(({ event_type }) => event_type), [
+    "mandate.created",
+    "mandate.activated",
+    "mandate.revoked",
+    "authorization.denied",
+  ]);
+  assert.equal(timeline.events[2]?.payload.payment_executor_called, false);
+  assert.equal(timeline.events[3]?.payload.payment_executor_called, false);
 });
 
 integrationTest("DENY does not persist a nonce, checkout or payable authorization", async (t) => {
@@ -1489,6 +1516,22 @@ integrationTest("DENY does not persist a nonce, checkout or payable authorizatio
     .from(auditEvents)
     .where(eq(auditEvents.eventType, "authorization.denied")))[0];
   assert.equal(denial?.sanitizedPayload?.payment_executor_called, false);
+  scenario.setNow("2026-08-29T12:04:02.000Z");
+  const repeated = await scenario.sendVerify({ body });
+  assert.deepEqual(repeated.json(), response.json());
+  assert.equal((await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.denied"))).length, 1);
+  const timeline = (await scenario.app.inject({
+    method: "GET",
+    url: "/audit/corr_verify_scenario_001",
+  })).json<{ events: Array<{ event_type: string }> }>();
+  assert.deepEqual(timeline.events.map(({ event_type }) => event_type), [
+    "mandate.created",
+    "mandate.activated",
+    "authorization.denied",
+  ]);
 });
 
 integrationTest("ESCALATE does not persist a nonce, checkout or payable authorization", async (t) => {
@@ -1508,6 +1551,13 @@ integrationTest("ESCALATE does not persist a nonce, checkout or payable authoriz
     .from(auditEvents)
     .where(eq(auditEvents.eventType, "authorization.escalated")))[0];
   assert.equal(escalation?.sanitizedPayload?.payment_executor_called, false);
+  scenario.setNow("2026-08-29T12:04:02.000Z");
+  const repeated = await scenario.sendVerify();
+  assert.deepEqual(repeated.json(), response.json());
+  assert.equal((await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.escalated"))).length, 1);
 });
 
 integrationTest("an audit write failure rolls back checkout, nonce and authorization together", async (t) => {
@@ -1722,7 +1772,7 @@ integrationTest("audit_events rejects update and delete mutations", async () => 
   );
 });
 
-integrationTest("GET /audit returns an ordered allowlisted timeline without sensitive material", async (t) => {
+integrationTest("GET /audit fails safely when a stored payload is invalid and exposes no sensitive material", async (t) => {
   assert.ok(testDatabaseUrl);
   assert.ok(database);
   const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
@@ -1779,19 +1829,9 @@ integrationTest("GET /audit returns an ordered allowlisted timeline without sens
   t.after(async () => app.close());
   const response = await app.inject({ method: "GET", url: `/audit/${correlationId}` });
 
-  assert.equal(response.statusCode, 200);
-  const timeline = response.json<{
-    events: Array<{ event_id: string; recorded_at: string; payload: Record<string, unknown> | null }>;
-  }>();
-  assert.deepEqual(timeline.events.map(({ recorded_at }) => recorded_at), [
-    "2026-08-29T12:13:00.000Z",
-    "2026-08-29T12:14:00.000Z",
-    "2026-08-29T12:15:00.000Z",
-  ]);
-  assert.equal(
-    timeline.events.find(({ event_id }) => event_id === "event_untrusted_payload_001")?.payload,
-    null,
-  );
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.json().error.code, "internal_error");
+  assert.equal("stack" in response.json(), false);
   for (const forbidden of [
     "raw-proof-value",
     "raw-signature-value",
@@ -1800,6 +1840,69 @@ integrationTest("GET /audit returns an ordered allowlisted timeline without sens
     "provider-token-value",
   ]) {
     assert.equal(response.body.includes(forbidden), false);
+  }
+});
+
+for (const tamperedField of ["payload", "previous_hash", "event_hash"] as const) {
+  integrationTest(`GET /audit detects tampered ${tamperedField}`, async (t) => {
+    assert.ok(administrationPool);
+    assert.ok(database);
+    const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+    const correlationId = `corr_tampered_${tamperedField.replace("_", "")}_001`;
+    const subjectId = `mandate_tampered_${tamperedField.replace("_", "")}_001`;
+    const append = (recordedAt: string) => database!.transaction((transaction) => ledger.append(transaction, {
+      correlationId,
+      eventType: "mandate.created",
+      subjectId,
+      payload: {
+        mandate_id: subjectId,
+        principal_id: "principal_tamper_001",
+        agent_id: "agent_tamper_001",
+        status: "DRAFT",
+        created_at: recordedAt,
+      },
+      recordedAt: new Date(recordedAt),
+    }));
+    const first = await append("2026-08-29T12:13:00.000Z");
+    const second = await append("2026-08-29T12:14:00.000Z");
+    await administrationPool.query("ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only_trigger");
+    try {
+      if (tamperedField === "payload") {
+        await database.db
+          .update(auditEvents)
+          .set({ sanitizedPayload: { ...first.sanitizedPayload, agent_id: "agent_tampered" } })
+          .where(eq(auditEvents.eventId, first.eventId));
+      } else if (tamperedField === "previous_hash") {
+        await database.db
+          .update(auditEvents)
+          .set({ previousHash: "f".repeat(64) })
+          .where(eq(auditEvents.eventId, second.eventId));
+      } else {
+        await database.db
+          .update(auditEvents)
+          .set({ eventHash: "e".repeat(64) })
+          .where(eq(auditEvents.eventId, first.eventId));
+      }
+    } finally {
+      await administrationPool.query("ALTER TABLE audit_events ENABLE TRIGGER audit_events_append_only_trigger");
+    }
+    const app = await buildApp({ databaseUrl: testDatabaseUrl, logger: false });
+    t.after(async () => app.close());
+    const response = await app.inject({ method: "GET", url: `/audit/${correlationId}` });
+    assert.equal(response.statusCode, 500);
+    assert.equal(response.json().error.code, "internal_error");
+    assert.equal("stack" in response.json(), false);
+  });
+}
+
+integrationTest("invalid audit and receipt identifiers return sanitized public errors", async (t) => {
+  const app = await buildApp({ databaseUrl: testDatabaseUrl, logger: false });
+  t.after(async () => app.close());
+  for (const url of ["/audit/not%20valid", "/receipts/not%20valid", "/audit/corr_missing_001", "/receipts/receipt_missing_001"]) {
+    const response = await app.inject({ method: "GET", url });
+    assert.equal(response.statusCode, 404, url);
+    assert.equal(response.json().error.code, "not_found");
+    assert.equal("stack" in response.json(), false);
   }
 });
 
@@ -1838,7 +1941,7 @@ integrationTest("a RESERVED authorization starts one persisted payment attempt",
     .where(eq(auditEvents.subjectId, reservedAuthorizationFixture.authorization_id));
   assert.deepEqual(
     paymentEvents.map(({ eventType }) => eventType).sort(),
-    ["payment.claimed", "payment.result_recorded"],
+    ["order.confirmed", "payment.approved", "payment.attempt_started"],
   );
 });
 
@@ -1871,7 +1974,10 @@ for (const outcome of ["TIMEOUT", "UNKNOWN"] as const) {
     assert.equal((await database.db.select().from(payments)).length, 1);
     assert.equal((await database.db.select().from(orders)).length, 0);
     assert.equal(
-      (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
+      (await database.db.select().from(auditEvents).where(eq(
+        auditEvents.eventType,
+        `payment.${outcome.toLowerCase()}`,
+      ))).length,
       1,
     );
   });
@@ -1891,6 +1997,75 @@ integrationTest("two sequential pay calls reuse one persisted result without exe
   assert.equal((await database.db.select().from(payments)).length, 1);
 });
 
+for (const [outcome, authorizationStatus, eventType] of [
+  ["DECLINED", "FAILED", "payment.declined"],
+  ["TIMEOUT", "PAYMENT_PENDING", "payment.timeout"],
+  ["UNKNOWN", "PAYMENT_PENDING", "payment.unknown"],
+] as const) {
+  integrationTest(`${outcome} records executor evidence and the safe authorization state`, async (t) => {
+    assert.ok(database);
+    const scenario = await createPaymentScenario(t, outcome);
+    const response = await scenario.sendPay(
+      `idem_pay_${outcome.toLowerCase()}_001`,
+      reservedAuthorizationFixture.authorization_id,
+      `corr_pay_${outcome.toLowerCase()}_001`,
+    );
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(paymentResultSchema.parse(response.json()).status, outcome);
+    assert.equal((await database.db.select().from(authorizations))[0]?.status, authorizationStatus);
+    const events = await database.db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.subjectId, reservedAuthorizationFixture.authorization_id));
+    assert.deepEqual(events.map(({ eventType: type }) => type), [
+      "payment.attempt_started",
+      eventType,
+    ]);
+    assert.equal(events[0]?.sanitizedPayload?.payment_executor_called, false);
+    assert.equal(events[1]?.sanitizedPayload?.payment_executor_called, true);
+    assert.equal(events[1]?.sanitizedPayload?.status, outcome);
+    const repeated = await scenario.sendPay(`idem_pay_${outcome.toLowerCase()}_retry`);
+    assert.equal(repeated.statusCode, 200);
+    assert.equal(scenario.executor.callCount, 1);
+    assert.equal((await database.db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.subjectId, reservedAuthorizationFixture.authorization_id))).length, 2);
+  });
+}
+
+integrationTest("payment result audit failure rolls back the result and terminal state", async (t) => {
+  assert.ok(administrationPool);
+  assert.ok(database);
+  const scenario = await createPaymentScenario(t);
+  await administrationPool.query(`
+    CREATE FUNCTION reject_payment_result_audit() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.event_type = 'payment.approved' THEN
+        RAISE EXCEPTION 'forced payment audit failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER reject_payment_result_audit_trigger
+      BEFORE INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION reject_payment_result_audit();
+  `);
+  t.after(async () => {
+    await administrationPool?.query("DROP TRIGGER IF EXISTS reject_payment_result_audit_trigger ON audit_events");
+    await administrationPool?.query("DROP FUNCTION IF EXISTS reject_payment_result_audit()");
+  });
+
+  const response = await scenario.sendPay("idem_pay_audit_rollback_001");
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.json().error.code, "internal_error");
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "PAYMENT_PENDING");
+  assert.equal((await database.db.select().from(payments))[0]?.status, null);
+  const events = await database.db.select().from(auditEvents);
+  assert.deepEqual(events.map(({ eventType: type }) => type), ["payment.attempt_started"]);
+});
+
 integrationTest("concurrent pay calls execute at most once", async (t) => {
   assert.ok(database);
   const scenario = await createPaymentScenario(t);
@@ -1906,11 +2081,11 @@ integrationTest("concurrent pay calls execute at most once", async (t) => {
   assert.equal((await database.db.select().from(payments)).length, 1);
   assert.equal((await database.db.select().from(orders)).length, 1);
   assert.equal(
-    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.approved"))).length,
     1,
   );
   assert.equal(
-    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.claimed"))).length,
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.attempt_started"))).length,
     1,
   );
 });
@@ -1952,10 +2127,9 @@ integrationTest("reconciliation reuses the persisted provider UUID and applies o
   assert.deepEqual(duplicate, approved);
   assert.equal((await database.db.select().from(authorizations))[0]?.status, "CONSUMED");
   assert.equal((await database.db.select().from(orders)).length, 1);
-  assert.equal(
-    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
-    2,
-  );
+  const resultEvents = (await database.db.select().from(auditEvents))
+    .filter(({ eventType }) => eventType === "payment.timeout" || eventType === "payment.approved");
+  assert.equal(resultEvents.length, 2);
   await assert.rejects(
     store.persistResult(attempt.payment_attempt_id, {
       authorization_id: reservedAuthorizationFixture.authorization_id,
@@ -2031,7 +2205,7 @@ integrationTest("an order audit failure rolls back result, terminal transition a
   assert.equal((await database.db.select().from(orders)).length, 0);
   assert.deepEqual(
     (await database.db.select().from(auditEvents)).map(({ eventType }) => eventType),
-    ["payment.claimed"],
+    ["payment.attempt_started"],
   );
 });
 
@@ -2042,7 +2216,7 @@ integrationTest("a claim audit failure rolls back PAYMENT_PENDING and the attemp
   await administrationPool.query(`
     CREATE FUNCTION reject_payment_claim_audit() RETURNS trigger AS $$
     BEGIN
-      IF NEW.event_type = 'payment.claimed' THEN
+      IF NEW.event_type = 'payment.attempt_started' THEN
         RAISE EXCEPTION 'forced payment claim audit failure';
       END IF;
       RETURN NEW;
@@ -2226,6 +2400,7 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
     headers: {
       "idempotency-key": "idem_pay_completion_order_001",
       "ucp-capabilities": "dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate",
+      "x-correlation-id": "corr_order_completion_001",
     },
     payload: { checkout: scenario.checkout, authorization },
   };
@@ -2236,7 +2411,10 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
   const paymentResponse = await scenario.app.inject({
     method: "POST",
     url: `/authorizations/${row.authorizationId}/pay`,
-    headers: { "idempotency-key": "idem_pay_completion_execute_001" },
+    headers: {
+      "idempotency-key": "idem_pay_completion_execute_001",
+      "x-correlation-id": "corr_pay_completion_execute_001",
+    },
     payload: {},
   });
   const payment = paymentResultSchema.parse(paymentResponse.json());
@@ -2252,4 +2430,68 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
   assert.equal(executor.callCount, 1);
   assert.equal((await database.db.select().from(payments)).length, 1);
   assert.equal((await database.db.select().from(orders)).length, 1);
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "CONSUMED");
+
+  const receipt = orderReceiptSchema.parse(completed.json());
+  const receiptRead = await scenario.app.inject({
+    method: "GET",
+    url: `/receipts/${receipt.receipt_id}`,
+  });
+  assert.equal(receiptRead.statusCode, 200);
+  assert.deepEqual(receiptRead.json(), receipt);
+  assert.equal(receiptRead.body.includes(mandateFixture.payment_credential.display), false);
+  for (const forbidden of [
+    "\"pan\"",
+    "\"cvv\"",
+    "vaulted_token",
+    "private_key",
+    "authorization_header",
+    "raw_proof",
+    "provider_reference",
+  ]) {
+    assert.equal(receiptRead.body.toLowerCase().includes(forbidden), false);
+  }
+  const restarted = await buildApp({ databaseUrl: testDatabaseUrl, logger: false });
+  t.after(async () => restarted.close());
+  const persistedReceipt = await restarted.inject({
+    method: "GET",
+    url: `/receipts/${receipt.receipt_id}`,
+  });
+  assert.equal(persistedReceipt.statusCode, 200);
+  assert.deepEqual(persistedReceipt.json(), receipt);
+
+  for (const correlationId of [
+    "corr_verify_scenario_001",
+    "corr_pay_completion_execute_001",
+  ]) {
+    const timelineResponse = await scenario.app.inject({
+      method: "GET",
+      url: `/audit/${correlationId}`,
+    });
+    assert.equal(timelineResponse.statusCode, 200, correlationId);
+    const timeline = timelineResponse.json<{
+      events: Array<{
+        event_type: string;
+        subject_id: string;
+        payload: Record<string, unknown>;
+      }>;
+    }>();
+    assert.deepEqual(timeline.events.map(({ event_type }) => event_type), [
+      "authorization.reserved",
+      "payment.attempt_started",
+      "payment.approved",
+      "order.confirmed",
+    ]);
+    assert.equal(timeline.events.every(({ subject_id }) => subject_id === decision.authorization_id), true);
+    assert.equal(timeline.events[0]?.payload.payment_executor_called, false);
+    assert.equal(timeline.events[1]?.payload.payment_executor_called, false);
+    assert.equal(timeline.events[2]?.payload.payment_executor_called, true);
+    assert.equal(timeline.events[3]?.payload.payment_executor_called, true);
+    assert.equal(timeline.events[3]?.payload.payment_id, payment.payment_id);
+    assert.equal(timeline.events[3]?.payload.order_id, receipt.order_id);
+    assert.equal(timeline.events[3]?.payload.receipt_id, receipt.receipt_id);
+    for (const forbidden of ["cvv", "vaulted_token", "private_key", "authorization\":", "raw-proof"]) {
+      assert.equal(timelineResponse.body.toLowerCase().includes(forbidden), false);
+    }
+  }
 });

@@ -152,6 +152,7 @@ export class VerifyOrchestrator {
       now,
     };
     const inspection = await this.options.reservationStore.inspect(inspectionCommand);
+    if (inspection.idempotent_decision !== undefined) return inspection.idempotent_decision;
     const humanApprovalRequired = this.options.humanApprovalRequired(request.request_body);
     const evaluation = evaluate({
       agent,
@@ -174,7 +175,6 @@ export class VerifyOrchestrator {
       });
       return decisionFrom(evaluation);
     }
-    if (inspection.idempotent_decision !== undefined) return inspection.idempotent_decision;
     if (agentRequest === undefined || agent === undefined) {
       throw new Error("ALLOW evaluation is missing verified agent state");
     }

@@ -414,6 +414,7 @@ export class MandateService {
           mandate_id: mandateId,
           from_status: "ACTIVE",
           to_status: "REVOKED",
+          payment_executor_called: false,
           occurred_at: revokedAt,
         },
         recordedAt: now,

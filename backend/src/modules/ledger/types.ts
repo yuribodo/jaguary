@@ -7,6 +7,7 @@ export type AuditAppendInput = {
     subjectId: string;
     payload: LedgerPayloadByType[EventType];
     recordedAt: Date;
+    deduplicationKey?: string;
   };
 }[LedgerEventType];
 
@@ -29,4 +30,5 @@ export interface PreparedAuditEvent {
   sanitizedPayload: LedgerPayload;
   payloadHash: string;
   recordedAt: Date;
+  deduplicationKey?: string;
 }

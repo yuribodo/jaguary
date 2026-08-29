@@ -1,0 +1,2 @@
+ALTER TABLE "audit_events" ADD COLUMN "deduplication_key" varchar(256);--> statement-breakpoint
+ALTER TABLE "audit_events" ADD CONSTRAINT "audit_events_deduplication_key_unique" UNIQUE("deduplication_key");

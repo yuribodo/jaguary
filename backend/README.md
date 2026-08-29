@@ -102,11 +102,13 @@ The helper reserves one `node-postgres` client for the entire callback, commits 
 
 Local runs use the deterministic sanitized `FakePaymentExecutor` with an approved outcome by default. Tests can inject any `PaymentExecutor` or configure the fake for `APPROVED`, `DECLINED`, `TIMEOUT` or `UNKNOWN`. The executor receives the authorization ID as its stable provider idempotency key. Retries return a previously persisted result or report a still-pending attempt without executing a second payment.
 
-This BE-08 boundary deliberately leaves authorizations in `PAYMENT_PENDING`. Terminal `CONSUMED`/`FAILED` transitions and reconciliation of `TIMEOUT`/`UNKNOWN` belong to BE-10; no Yuno request, webhook or reconciliation path is present here.
+The claim transaction writes `payment.attempt_started` together with `PAYMENT_PENDING` and the payment attempt. The result transaction writes the normalized result and its audit evidence together: `DECLINED` moves the authorization to `FAILED`; `TIMEOUT` and `UNKNOWN` remain `PAYMENT_PENDING`; `APPROVED` atomically creates the confirmed order/receipt and moves the authorization to `CONSUMED`. Every executor result event explicitly records `payment_executor_called: true`; pre-execution, denied, escalated, revoked, replay and cancelled events explicitly record `false`.
+
+No real Yuno request, webhook or public reconciliation endpoint is present. Internal reconciliation reuses the existing payment attempt and provider idempotency key; it does not create another attempt or invoke the executor again.
 
 ## Postman collection
 
-Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and executes the complete VuelaYa profile → offer → signed checkout → authorized completion → order flow, plus public error, correlation ID and mutable-request idempotency checks.
+Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and exercises the public VuelaYa, Verify, payment, receipt, audit, correlation and error surfaces without embedding a private signing key or reusable credential. The fully approved signed flow is covered by the PostgreSQL integration suite because it requires a runtime agent proof and committed authorization.
 
 Run the same collection from the command line with:
 
@@ -240,8 +242,10 @@ This is not a claim of full UCP conformance. The public body at `/.well-known/uc
 | `GET` | `/ucp/v1/checkout/:id` | reads a non-expired signed checkout |
 | `POST` | `/ucp/v1/checkout/:id/complete` | strict `AuthorizedCheckout` → idempotent `OrderReceipt` |
 | `GET` | `/ucp/v1/orders/:id` | reads the sanitized merchant receipt |
+| `GET` | `/receipts/:receiptId` | reads the same persisted sanitized receipt by canonical receipt ID |
+| `GET` | `/audit/:correlationId` | reads the validated, complete correlated audit timeline |
 
-Mutable routes require `Idempotency-Key`. Checkout creation and completion also require `UCP-Capabilities: dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate`; omitting AP2 is treated as a downgrade and fails closed. Every response carries `X-Correlation-Id`, and completion copies that correlation ID into `AuditEvidence`.
+Mutable routes require `Idempotency-Key`. Checkout creation and completion also require `UCP-Capabilities: dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate`; omitting AP2 is treated as a downgrade and fails closed. Every response carries `X-Correlation-Id`. Completion is an idempotent read of the already confirmed order and does not fabricate a new audit event.
 
 ### Sanitized local flow
 
@@ -280,11 +284,11 @@ The authoritative terms hash is `d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79
 ### Integrity, state and limitations
 
 - Checkout terms are validated with the strict v1 schema before canonicalization. Object-property order does not affect the RFC 8785/JCS hash; changing price, currency, route, cabin, item, merchant or expiry does.
-- The signer is available only through `SignerPort`. A P-256 keypair is generated in memory at process startup; no private key is exported, logged, stored or versioned. Restarting the process discards both the key and all in-memory merchant state.
+- The signer is available only through `SignerPort`. A P-256 keypair is generated in memory at process startup; no private key is exported, logged, stored or versioned. Checkout fixtures remain runtime-local, while completed orders and receipts are persisted when PostgreSQL is configured.
 - The default application clock is the fixed demo instant `2026-08-29T12:04:01.000Z`, keeping the P0 fixture reproducible. Tests inject later clocks to prove offer, checkout and authorization expiry behavior. A production adapter must use an injected system clock and durable storage.
-- Completion requires a schema-valid `RESERVED` authorization bound to authorization ID, checkout ID/hash, merchant, amount and currency. A bare `ALLOW` declaration is rejected. One receipt is stored per checkout and authorization, so retries return the same object.
-- `payment_id` in the merchant receipt is a sanitized logical reference derived from the reserved authorization; VuelaYa never resolves a credential, invokes `PaymentExecutor`, calls Yuno or executes payment. Payment execution and durable authorization state remain downstream workstreams.
-- No PostgreSQL, external website, browser automation, mandate lifecycle, Bound Verify rules, Yuno integration or LLM is part of this module.
+- Payment approval creates the order, `order.confirmed` event, receipt and `CONSUMED` transition in the same transaction. Completion requires a schema-valid authorization/checkout binding and returns that persisted confirmed order; a bare `ALLOW` declaration or caller-invented payment is rejected. One receipt is stored per checkout, authorization and payment, so retries return the same object.
+- `payment_id` in the merchant receipt is the sanitized logical ID returned by the configured executor. VuelaYa never resolves a credential, invokes `PaymentExecutor`, calls Yuno or executes payment.
+- External websites, browser automation, real Yuno calls and LLM behavior remain outside this module.
 
 ## Pure Bound Verify policy (BE-06)
 
@@ -315,3 +319,35 @@ An `ALLOW` candidate enters one short PostgreSQL transaction. Replay/idempotency
 Capacity includes every unexpired `RESERVED` authorization plus all `PAYMENT_PENDING` and `CONSUMED` authorizations. A `RESERVED` authorization expires at the earliest of checkout, normalized authorization and mandate expiry. On the next locked verification for that mandate, an expired `RESERVED` row transitions atomically to `CANCELLED`, emits `authorization.cancelled` with reason `reservation_expired`, and releases capacity. Explicitly `CANCELLED` and terminal `FAILED` rows do not count. `PAYMENT_PENDING` is never auto-cancelled or released because its external payment result may be unknown.
 
 An exact retry with the same `Idempotency-Key`, signed proof and request body returns the committed decision and original `authorization_id`. Reusing a key with different content returns `idempotency_conflict`. Reusing a nonce or an already reserved checkout/request under another key returns `DENY replay_detected` and creates nothing. `policy_version` is `bound.verify.v1`; `evidence_hash` is the SHA-256 of the RFC 8785/JCS canonical `PolicyEvaluation`, so identical evidence inputs produce the same hash.
+
+## Tamper-evident audit and receipts (BE-11)
+
+Audit payloads are parsed through an event-specific strict allowlist before storage. They contain logical IDs, hashes, masked or hashed references, state, reason codes and authorized monetary values only. Raw request proofs, authentication headers, PAN, CVV, private keys, reusable provider tokens and raw Yuno payloads are neither accepted by the ledger nor returned by receipt/timeline endpoints.
+
+Each subject chain uses:
+
+```text
+payload_hash = SHA-256(JCS(sanitized_payload))
+event_hash   = SHA-256(JCS(event_id, correlation_id, event_type,
+                          subject_id, payload_hash, previous_hash, recorded_at))
+```
+
+Authorization, payment and order events use `authorization_id` as their common subject. PostgreSQL advisory locks serialize concurrent appends. Before an append or public read, the service reconstructs the links and recomputes `payload_hash`, `previous_hash` and `event_hash`; an inconsistent chain fails closed with a sanitized `internal_error` rather than returning partial or untrusted evidence. The chain detects database changes, but it is not a blockchain or an external immutability guarantee. An operator able to replace database protections could rewrite both rows and hashes; production should anchor/export chain tips to immutable storage.
+
+Public reads are:
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| `GET` | `/audit/:correlationId` | resolves Verify or Pay correlation IDs to the same complete ordered flow and validates every returned subject chain |
+| `GET` | `/receipts/:receiptId` | reads the persisted `OrderReceipt` by `receipt_id` and validates its full authorization chain |
+| `GET` | `/ucp/v1/orders/:orderId` | reads the same receipt by merchant `order_id` |
+
+Different Verify and Pay HTTP correlation IDs are retained as sanitized `request_correlation_id` evidence, while all events in the payment flow use the Verify authorization correlation as the canonical chain correlation. Lookup through either persisted ID resolves to the full chain; the API does not label a literal correlation-ID subset as a complete timeline.
+
+Audit and business writes share transaction boundaries:
+
+- mandate/revocation and Verify reservation/decision events roll back with their state changes;
+- `payment.attempt_started` rolls back with the `PAYMENT_PENDING` transition and attempt insert;
+- payment result evidence and `order.confirmed` roll back with the result, order/receipt insertion and terminal-state update.
+
+Terminal evidence uses an internal unique deduplication key, so retries do not append another decision, payment result or order event. The receipt stores the real audit event hashes and remains readable after process restart.

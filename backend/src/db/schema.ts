@@ -386,9 +386,11 @@ export const auditEvents = pgTable("audit_events", {
   payloadHash: char("payload_hash", { length: 64 }).notNull(),
   previousHash: char("previous_hash", { length: 64 }),
   eventHash: char("event_hash", { length: 64 }).notNull(),
+  deduplicationKey: varchar("deduplication_key", { length: 256 }),
   recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" }).notNull(),
 }, (table) => [
   unique("audit_events_event_hash_unique").on(table.eventHash),
+  unique("audit_events_deduplication_key_unique").on(table.deduplicationKey),
   check("audit_events_event_id_check", identifierCheck(table.eventId)),
   check("audit_events_correlation_id_check", identifierCheck(table.correlationId)),
   check("audit_events_subject_id_check", identifierCheck(table.subjectId)),
