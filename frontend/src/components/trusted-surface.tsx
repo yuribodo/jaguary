@@ -13,11 +13,14 @@ import {
   BanIcon,
   BotIcon,
   CheckIcon,
+  CreditCardIcon,
   ChevronDownIcon,
   CircleAlertIcon,
   CircleDollarSignIcon,
   CircleIcon,
   FileCheck2Icon,
+  HandshakeIcon,
+  HistoryIcon,
   MessageSquareIcon,
   PlaneIcon,
   PlusIcon,
@@ -25,6 +28,7 @@ import {
   ShieldCheckIcon,
   WifiOffIcon,
 } from "lucide-react";
+import Link from "next/link";
 
 import {
   Confirmation,
@@ -714,6 +718,33 @@ function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
+        <SidebarGroup className="px-2.5 pt-3 pb-0">
+          <SidebarGroupLabel className="px-2 font-mono text-[10px] tracking-[0.12em] uppercase">
+            Sua conta
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton render={<Link href="/metodos-de-pagamento" />} tooltip="Métodos de pagamento">
+                  <CreditCardIcon />
+                  <span>Métodos de pagamento</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton render={<Link href="/compras" />} tooltip="Compras">
+                  <HistoryIcon />
+                  <span>Compras</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton render={<Link href="/lojas-conectadas" />} tooltip="Lojas conectadas">
+                  <HandshakeIcon />
+                  <span>Lojas conectadas</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
         <SidebarGroup className="px-2.5 py-3">
           <SidebarGroupLabel className="px-2 font-mono text-[10px] tracking-[0.12em] uppercase">
             Conversas recentes
