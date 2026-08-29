@@ -10,6 +10,7 @@
 - **Readiness operacional:** bloqueada até validar acesso, configuração da conta e elegibilidade do fluxo de cartão tokenizado com a Yuno.
 - **Decisão temporária:** enquanto não houver conta Yuno, todo o desenvolvimento e demonstração usam exclusivamente o `FakePaymentExecutor`; o caminho live-sandbox permanece desabilitado.
 - **Contrato v1:** `PaymentExecutor` e `PaymentResult` suportam o caminho estreito da BE-09 — cartão previamente enrolled, pagamento síncrono, single-step e sem desafio 3DS — sem alteração. Eles não representam sozinhos todo o ciclo assíncrono necessário em produção.
+- **Fundação implementada sem rede:** ver [BE-09 — Fundação do adapter Yuno sandbox](../be-09-yuno-adapter.md). A issue continua operacionalmente bloqueada e o wiring permanece pendente da BE-10.
 
 As conclusões sobre a Yuno abaixo usam somente documentação oficial atual da Yuno. Os links foram conferidos na data acima.
 
