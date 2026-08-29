@@ -5,6 +5,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -18,6 +19,7 @@ import {
 import {
   agentIdentityStatusSchema,
   authorizationStatusSchema,
+  cabinClassSchema,
   ISO_4217_CURRENCIES,
   mandateStatusSchema,
   orderStatusSchema,
@@ -105,9 +107,15 @@ export const paymentCredentials = pgTable("payment_credentials", {
 
 export const mandates = pgTable("mandates", {
   mandateId: varchar("mandate_id", { length: 128 }).primaryKey(),
+  version: integer("version").notNull(),
+  supersedesMandateId: varchar("supersedes_mandate_id", { length: 128 }),
   principalId: varchar("principal_id", { length: 128 }).notNull(),
   agentId: varchar("agent_id", { length: 128 }).notNull(),
   allowedMerchantIds: text("allowed_merchant_ids").array().notNull(),
+  allowedMerchantCategories: text("allowed_merchant_categories").array().notNull(),
+  routeOrigin: char("route_origin", { length: 3 }).notNull(),
+  routeDestination: char("route_destination", { length: 3 }).notNull(),
+  cabin: varchar("cabin", { length: 24 }).notNull(),
   maxPerPurchaseAmount: bigint("max_per_purchase_amount", { mode: "number" }).notNull(),
   maxPerPurchaseCurrency: char("max_per_purchase_currency", { length: 3 }).notNull(),
   maxAggregateAmount: bigint("max_aggregate_amount", { mode: "number" }).notNull(),
@@ -117,12 +125,15 @@ export const mandates = pgTable("mandates", {
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
   credentialId: varchar("credential_id", { length: 128 }).notNull(),
   status: varchar("status", { length: 16 }).notNull(),
-  termsHash: char("terms_hash", { length: 64 }).notNull(),
-  principalSignatureAlgorithm: varchar("principal_signature_algorithm", { length: 16 }).notNull(),
-  principalSignatureKeyId: varchar("principal_signature_key_id", { length: 128 }).notNull(),
-  principalSignatureValue: text("principal_signature_value").notNull(),
+  termsHash: char("terms_hash", { length: 64 }),
+  principalSignatureAlgorithm: varchar("principal_signature_algorithm", { length: 16 }),
+  principalSignatureKeyId: varchar("principal_signature_key_id", { length: 128 }),
+  principalSignatureValue: text("principal_signature_value"),
+  creationRequestHash: char("creation_request_hash", { length: 64 }).notNull(),
   correlationId: varchar("correlation_id", { length: 128 }).notNull(),
   idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  activationIdempotencyKey: varchar("activation_idempotency_key", { length: 128 }),
+  revocationIdempotencyKey: varchar("revocation_idempotency_key", { length: 128 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
   revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
@@ -131,6 +142,13 @@ export const mandates = pgTable("mandates", {
   unique("mandates_id_agent_principal_unique").on(table.mandateId, table.agentId, table.principalId),
   unique("mandates_id_agent_unique").on(table.mandateId, table.agentId),
   unique("mandates_idempotency_key_unique").on(table.idempotencyKey),
+  unique("mandates_activation_idempotency_key_unique").on(table.activationIdempotencyKey),
+  unique("mandates_revocation_idempotency_key_unique").on(table.revocationIdempotencyKey),
+  foreignKey({
+    name: "mandates_supersedes_fk",
+    columns: [table.supersedesMandateId],
+    foreignColumns: [table.mandateId],
+  }),
   foreignKey({
     name: "mandates_agent_principal_fk",
     columns: [table.agentId, table.principalId],
@@ -142,22 +160,51 @@ export const mandates = pgTable("mandates", {
     foreignColumns: [paymentCredentials.credentialId, paymentCredentials.principalId],
   }),
   check("mandates_id_check", identifierCheck(table.mandateId)),
-  check("mandates_allowed_merchants_check", sql`cardinality(${table.allowedMerchantIds}) > 0`),
+  check("mandates_version_check", sql`
+    (${table.version} = 1 AND ${table.supersedesMandateId} IS NULL)
+    OR (${table.version} > 1 AND ${table.supersedesMandateId} IS NOT NULL)
+  `),
+  check("mandates_scope_check", sql`cardinality(${table.allowedMerchantIds}) + cardinality(${table.allowedMerchantCategories}) > 0`),
+  check("mandates_route_check", sql`
+    ${table.routeOrigin} ~ '^[A-Z]{3}$'
+    AND ${table.routeDestination} ~ '^[A-Z]{3}$'
+    AND ${table.routeOrigin} <> ${table.routeDestination}
+  `),
+  check("mandates_cabin_check", sql`${table.cabin} IN (${sqlList(cabinClassSchema.options)})`),
   check("mandates_max_per_purchase_amount_check", moneyCheck(table.maxPerPurchaseAmount)),
   check("mandates_max_aggregate_amount_check", moneyCheck(table.maxAggregateAmount)),
   check("mandates_currency_check", sql`${currencyCheck(table.maxPerPurchaseCurrency)} AND ${currencyCheck(table.maxAggregateCurrency)} AND ${table.maxPerPurchaseCurrency} = ${table.maxAggregateCurrency}`),
   check("mandates_max_uses_check", sql`${table.maxUses} > 0 AND ${table.maxUses} <= ${sql.raw(String(safeIntegerMaximum))}`),
   check("mandates_validity_check", sql`${table.validFrom} < ${table.expiresAt}`),
   check("mandates_status_check", sql`${table.status} IN (${sqlList(mandateStatusSchema.options)})`),
-  check("mandates_terms_hash_check", hashCheck(table.termsHash)),
-  check("mandates_signature_algorithm_check", sql`${table.principalSignatureAlgorithm} IN (${sqlList(signatureAlgorithmSchema.options)})`),
-  check("mandates_signature_key_id_check", identifierCheck(table.principalSignatureKeyId)),
-  check("mandates_signature_value_check", sql`length(${table.principalSignatureValue}) BETWEEN 16 AND 4096`),
+  check("mandates_proof_check", sql`
+    (${table.status} = 'DRAFT'
+      AND ${table.termsHash} IS NULL
+      AND ${table.principalSignatureAlgorithm} IS NULL
+      AND ${table.principalSignatureKeyId} IS NULL
+      AND ${table.principalSignatureValue} IS NULL
+      AND ${table.activatedAt} IS NULL
+      AND ${table.revokedAt} IS NULL)
+    OR (${table.status} <> 'DRAFT'
+      AND ${table.termsHash} IS NOT NULL
+      AND ${hashCheck(table.termsHash)}
+      AND ${table.principalSignatureAlgorithm} IN (${sqlList(signatureAlgorithmSchema.options)})
+      AND ${table.principalSignatureKeyId} IS NOT NULL
+      AND ${identifierCheck(table.principalSignatureKeyId)}
+      AND length(${table.principalSignatureValue}) BETWEEN 16 AND 4096
+      AND ${table.activatedAt} IS NOT NULL
+      AND ((${table.status} = 'REVOKED' AND ${table.revokedAt} IS NOT NULL)
+        OR (${table.status} <> 'REVOKED' AND ${table.revokedAt} IS NULL)))
+  `),
+  check("mandates_creation_request_hash_check", hashCheck(table.creationRequestHash)),
   check("mandates_correlation_id_check", identifierCheck(table.correlationId)),
   check("mandates_idempotency_key_check", sql`length(${table.idempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.idempotencyKey)}`),
+  check("mandates_activation_idempotency_key_check", sql`${table.activationIdempotencyKey} IS NULL OR (length(${table.activationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.activationIdempotencyKey)})`),
+  check("mandates_revocation_idempotency_key_check", sql`${table.revocationIdempotencyKey} IS NULL OR (length(${table.revocationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.revocationIdempotencyKey)})`),
   index("mandates_agent_status_idx").on(table.agentId, table.status),
   index("mandates_principal_status_idx").on(table.principalId, table.status),
   index("mandates_expires_at_idx").on(table.expiresAt),
+  index("mandates_supersedes_idx").on(table.supersedesMandateId),
 ]);
 
 export const checkouts = pgTable("checkouts", {

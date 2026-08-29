@@ -1,6 +1,6 @@
 {
-  "id": "280889d5-c1d7-46ff-9147-53b696bc2c94",
-  "prevId": "8c54f331-b308-4172-afca-71f1ac0167d7",
+  "id": "6ea905be-6dc8-4a43-92b1-6b2bae602bc3",
+  "prevId": "280889d5-c1d7-46ff-9147-53b696bc2c94",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -29,6 +29,12 @@
         "status": {
           "name": "status",
           "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "build_fingerprint": {
+          "name": "build_fingerprint",
+          "type": "char(64)",
           "primaryKey": false,
           "notNull": true
         },
@@ -148,13 +154,17 @@
           "name": "agents_status_check",
           "value": "\"agents\".\"status\" IN ('ACTIVE', 'SUSPENDED', 'REVOKED')"
         },
+        "agents_build_fingerprint_check": {
+          "name": "agents_build_fingerprint_check",
+          "value": "\"agents\".\"build_fingerprint\" ~ '^[a-f0-9]{64}$'"
+        },
         "agents_verification_key_id_check": {
           "name": "agents_verification_key_id_check",
           "value": "\"agents\".\"verification_key_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
         },
         "agents_verification_algorithm_check": {
           "name": "agents_verification_algorithm_check",
-          "value": "\"agents\".\"verification_algorithm\" IN ('ES256', 'EdDSA')"
+          "value": "\"agents\".\"status\" <> 'ACTIVE' OR \"agents\".\"verification_algorithm\" = 'ES256'"
         },
         "agents_verification_public_key_check": {
           "name": "agents_verification_public_key_check",

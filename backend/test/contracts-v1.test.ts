@@ -147,6 +147,53 @@ test("all mandate statuses and transitions are frozen", () => {
   }
 });
 
+test("mandate contracts represent unsigned drafts and AP2-shaped flight scope", () => {
+  const draft = {
+    terms: {
+      mandate_id: "mandate_marta_travel_draft_001",
+      version: 1,
+      principal_id: "principal_marta",
+      agent_id: "agent_travelbot",
+      allowed_merchant_ids: ["merchant_vuelaya"],
+      allowed_merchant_categories: ["airline"],
+      route: { origin: "GRU", destination: "COR" },
+      cabin: "ECONOMY",
+      max_per_purchase: { amount: 15000, currency: "USD" },
+      max_aggregate: { amount: 30000, currency: "USD" },
+      max_uses: 2,
+      valid_from: "2026-08-29T12:00:00.000Z",
+      expires_at: "2026-08-30T12:00:00.000Z",
+      credential_id: "cred_demo_marta_visa",
+    },
+    payment_credential: {
+      credential_id: "cred_demo_marta_visa",
+      display: "Visa •••• 4242",
+    },
+    status: "DRAFT",
+    authority_valid: false,
+    created_at: "2026-08-29T11:59:00.000Z",
+  };
+
+  assert.deepEqual(mandateSchema.parse(draft), draft);
+  assert.throws(() => mandateSchema.parse({
+    ...draft,
+    terms_hash: "a".repeat(64),
+  }));
+  assert.throws(() => mandateTermsSchema.parse({
+    ...draft.terms,
+    allowed_merchant_ids: [],
+    allowed_merchant_categories: [],
+  }));
+  assert.throws(() => mandateTermsSchema.parse({
+    ...draft.terms,
+    max_aggregate: { amount: 10000, currency: "USD" },
+  }));
+  assert.throws(() => mandateTermsSchema.parse({
+    ...draft.terms,
+    injected_scope: "attacker",
+  }));
+});
+
 test("all authorization statuses and safe payment transitions are frozen", () => {
   const statuses = ["RESERVED", "PAYMENT_PENDING", "CONSUMED", "FAILED", "CANCELLED"] as const;
   assert.deepEqual(authorizationStatusSchema.options, statuses);

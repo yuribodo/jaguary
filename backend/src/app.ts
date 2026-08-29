@@ -12,6 +12,7 @@ import { configureHttpConventions, generateCorrelationId } from "./http/conventi
 import { DrizzleAgentIdentityRegistry } from "./modules/identity/registry.js";
 import { agentIdentityRoutes } from "./modules/identity/routes.js";
 import { AgentRequestVerifier } from "./modules/identity/verifier.js";
+import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
 import { VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
@@ -97,6 +98,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   await app.register(rootRoutes);
   await app.register(healthRoutes);
+  const signer = options.signer ?? new EphemeralEs256Signer();
   const agentRegistry = options.agentRegistry
     ?? (database === undefined ? undefined : new DrizzleAgentIdentityRegistry(database.db, clock));
   if (agentRegistry !== undefined) {
@@ -105,11 +107,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
       verifier: options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock),
     });
   }
-  const merchant = new VuelaYaMerchant(
-    options.signer ?? new EphemeralEs256Signer(),
-    clock,
-  );
+  const merchant = new VuelaYaMerchant(signer, clock);
   await app.register(vuelaYaRoutes, { merchant });
+  if (database !== undefined) {
+    await app.register(mandateRoutes, {
+      service: new MandateService(database, signer, clock),
+    });
+  }
 
   return app;
 }

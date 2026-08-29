@@ -192,6 +192,25 @@ These are transport boundaries for the follow-up workstreams, not endpoints impl
 
 For example, a payment module receives the approved reference `{ "credential_id": "cred_demo_marta_visa", "display": "Visa •••• 4242" }` inside `AuthorizedPayment`; it never accepts a card number or provider-vault token through this contract.
 
+## Mandate lifecycle (BE-04)
+
+The mandate module persists the exact flight-purchase authority approved by the principal. Its public lifecycle is deliberately small:
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| `POST` | `/v1/mandates` | creates an unsigned `DRAFT`; a repeated key and identical body returns the original draft |
+| `GET` | `/v1/mandates/:id` | reads the current state and atomically materializes `EXPIRED` at `expires_at` |
+| `POST` | `/v1/mandates/:id/activate` | signs the canonical terms and performs the only `DRAFT` → `ACTIVE` transition |
+| `POST` | `/v1/mandates/:id/revoke` | idempotently performs `ACTIVE` → `REVOKED` with its audit event in the same transaction |
+
+All mutable routes require `Idempotency-Key`. Request bodies are strict and reject unknown fields. A mandate contains principal and agent identity, merchant IDs and/or categories, route, cabin, per-purchase and aggregate limits, currency, validity, maximum uses and a logical credential reference. Responses expose a defensively masked credential display; they never expose provider tokens, card data or signing keys.
+
+`DRAFT` has no hash, signature or activation time. Activation validates the time window, canonicalizes `MandateTerms` with RFC 8785/JCS, stores its SHA-256 and signs the same bytes through `SignerPort`. Terms and proofs are immutable after activation. Changing authority requires a new `mandate_id` linked through `supersedes_mandate_id`; the server calculates the next version.
+
+`MandateService.loadActiveMandate()` is the internal seam for BE-06. It returns only signed `ACTIVE` authority inside its validity window. Draft, future, revoked, expired and consumed authority fails closed with a stable reason code. Actual usage reservation/consumption remains owned by BE-07; payment execution is not part of this module.
+
+PostgreSQL enforces proof shape, scope/currency/route constraints, state transitions and post-activation immutability. Expiry uses only the injected `ClockPort`. Revocation locks the mandate row and writes `mandate.revoked` to `audit_events` in the same commit.
+
 ## VuelaYa UCP subset (BE-05)
 
 VuelaYa is the deterministic P0 merchant for principal Marta and agent TravelBot. It implements only the local normalized subset required by the flight demo, pinned to the UCP `2026-08-25` snapshot:
