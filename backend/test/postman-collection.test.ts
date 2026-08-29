@@ -51,6 +51,10 @@ test("Postman collection is valid JSON with executable current routes", async ()
     [
       "Root",
       "Health",
+      "Create mandate rejects unknown fields",
+      "Read missing mandate",
+      "Activate missing mandate",
+      "Revoke missing mandate",
       "VuelaYa UCP profile",
       "List VuelaYa flights",
       "Create signed checkout",

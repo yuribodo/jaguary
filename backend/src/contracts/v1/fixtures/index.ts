@@ -114,9 +114,13 @@ export const normalizedCheckoutFixture = {
 export const mandateFixture = {
   terms: {
     mandate_id: "mandate_marta_travel_001",
+    version: 1,
     principal_id: martaFixture.principal_id,
     agent_id: travelBotFixture.agent_id,
     allowed_merchant_ids: [vuelaYaCapabilitiesFixture.merchant_id],
+    allowed_merchant_categories: ["airline"],
+    route: { origin: "GRU", destination: "COR" },
+    cabin: "ECONOMY",
     max_per_purchase: { amount: 15000, currency: "USD" },
     max_aggregate: { amount: 15000, currency: "USD" },
     max_uses: 1,
@@ -124,11 +128,16 @@ export const mandateFixture = {
     expires_at: "2026-08-30T12:00:00.000Z",
     credential_id: "cred_demo_marta_visa",
   },
+  payment_credential: {
+    credential_id: "cred_demo_marta_visa",
+    display: "Visa •••• 4242",
+  },
   status: "ACTIVE",
-  terms_hash: "6932aa6a5486479a56eb9906184eeef1b49fe60d92d7ef164f3f33f0a569e887",
+  terms_hash: "004d96590e21d373d76147da96b499413bd5879f59c3e833920cc1451ca642ee",
   principal_signature: demoSignature,
   created_at: "2026-08-29T11:59:00.000Z",
   activated_at: "2026-08-29T12:00:00.000Z",
+  authority_valid: true,
 } satisfies Mandate;
 
 export const agentRequestProofFixture = {

@@ -139,6 +139,131 @@
       ]
     },
     {
+      "name": "Mandate lifecycle",
+      "item": [
+        {
+          "name": "Create mandate rejects unknown fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}-mandate-create", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unexpected\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/mandates",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "mandates"]
+            },
+            "description": "Documents the strict create-draft boundary. Seeded agent and credential references are required for a happy-path draft."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Unknown mandate fields fail closed\", function () {",
+                "  pm.response.to.have.status(400);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Read missing mandate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/mandates/mandate_postman_missing",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "mandates", "mandate_postman_missing"]
+            },
+            "description": "Documents the mandate read route and stable missing-resource error."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Missing mandate returns not_found\", function () {",
+                "  pm.response.to.have.status(404);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Activate missing mandate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}-mandate-activate", "type": "text" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/v1/mandates/mandate_postman_missing/activate",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "mandates", "mandate_postman_missing", "activate"]
+            },
+            "description": "Documents the idempotent draft activation route."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Activation requires an existing draft\", function () {",
+                "  pm.response.to.have.status(404);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Revoke missing mandate",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}-mandate-revoke", "type": "text" }
+            ],
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "url": {
+              "raw": "{{baseUrl}}/v1/mandates/mandate_postman_missing/revoke",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "mandates", "mandate_postman_missing", "revoke"]
+            },
+            "description": "Documents the idempotent active-mandate revocation route."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Revocation requires an existing active mandate\", function () {",
+                "  pm.response.to.have.status(404);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
       "name": "VuelaYa UCP subset",
       "item": [
         {
