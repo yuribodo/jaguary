@@ -96,6 +96,14 @@ await database.transaction(async (transaction) => {
 
 The helper reserves one `node-postgres` client for the entire callback, commits on success, rolls back on error and always releases the client. Do not use `database.db` from inside the callback, and never keep a database transaction open while calling Yuno or any other external service. Reserve/transition state in one short transaction, make the external call afterward, then persist the normalized result in another transaction using the same idempotency key.
 
+## Local payment boundary
+
+`POST /authorizations/:id/pay` accepts an empty body and requires the shared `Idempotency-Key` header convention. The service derives the authorized amount, currency, checkout, merchant, principal and logical credential from PostgreSQL, atomically changes `RESERVED` to `PAYMENT_PENDING` while creating one payment attempt, commits, and only then calls the configured `PaymentExecutor`.
+
+Local runs use the deterministic sanitized `FakePaymentExecutor` with an approved outcome by default. Tests can inject any `PaymentExecutor` or configure the fake for `APPROVED`, `DECLINED`, `TIMEOUT` or `UNKNOWN`. The executor receives the authorization ID as its stable provider idempotency key. Retries return a previously persisted result or report a still-pending attempt without executing a second payment.
+
+This BE-08 boundary deliberately leaves authorizations in `PAYMENT_PENDING`. Terminal `CONSUMED`/`FAILED` transitions and reconciliation of `TIMEOUT`/`UNKNOWN` belong to BE-10; no Yuno request, webhook or reconciliation path is present here.
+
 ## Postman collection
 
 Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and executes the complete VuelaYa profile → offer → signed checkout → authorized completion → order flow, plus public error, correlation ID and mutable-request idempotency checks.
