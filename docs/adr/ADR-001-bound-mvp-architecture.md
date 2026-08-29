@@ -45,7 +45,7 @@ O código poderá viver num monorepo, mas `bound-api` continuará sendo um únic
 - Fastify para a API HTTP.
 - PostgreSQL para estado transacional, nonces, reservas e auditoria.
 - `jose` para JWS/JWT ES256 e `zod` para validação de schemas.
-- Merchant fictício VuelaYa com API determinística para o caminho P0.
+- Merchant fictício VuelaYa publicando `/.well-known/ucp` e o subconjunto determinístico de UCP Catalog/Checkout/Order necessário ao caminho P0.
 - Firecrawl Search/Scrape/Interact encapsulado por `DiscoveryPort` para o browser ao vivo P2.
 - Cliente HTTP direto da Yuno encapsulado por `YunoPaymentPort`; o Agent Toolkit não será exposto ao TravelBot.
 - `SignerPort` com chave local de desenvolvimento no hackathon e implementação KMS/HSM em produção.
@@ -70,8 +70,8 @@ Versões específicas ficam fora deste ADR e devem ser fixadas no lockfile do pr
 
 1. A Trusted Surface transforma a intenção em uma proposta estruturada. Um LLM pode ajudar somente nessa interpretação.
 2. A pessoa revisa todos os campos determinísticos e confirma. O backend assina e persiste os mandatos AP2 abertos.
-3. O agente recebe o mandato/prova, encontra a oferta pelo catálogo VuelaYa (P0) ou pelo `DiscoveryPort`/Firecrawl (P2) e envia somente a intenção ao merchant.
-4. O merchant assina um checkout fechado com `checkout_id`, itens, valor, moeda e metadados relevantes.
+3. O agente recebe o mandato/prova, descobre as capabilities UCP de VuelaYa (P0) ou encontra uma oferta pelo `DiscoveryPort`/Firecrawl (P2) e envia somente a intenção ao merchant.
+4. O merchant produz um checkout UCP fechado com `checkout_id`, itens, valor, moeda e metadados relevantes, incluindo a autorização criptográfica exigida pela extensão AP2 negociada.
 5. `POST /verify` valida schema, assinatura do agente, vínculo do mandato, assinatura/hash do checkout, janela de tempo, revogação, escopo, limites, frequência e replay.
 6. Se o resultado calculado for `ALLOW`, a mesma transação PostgreSQL registra o nonce e cria uma autorização `RESERVED`. Limites consideram autorizações `RESERVED`, `PAYMENT_PENDING` e `CONSUMED` para impedir corrida e split payment.
 7. `POST /authorizations/:id/pay` faz uma transição atômica de `RESERVED` para `PAYMENT_PENDING` e chama a Yuno fora da transação de banco, usando `authorization_id` como chave de idempotência.
@@ -90,7 +90,7 @@ interface DiscoveryPort {
 }
 ```
 
-O adapter P0 chama `GET /api/flights` no merchant fictício VuelaYa e mantém a demo reproduzível. O adapter P2 usa Firecrawl para Search/Scrape e `/interact`, retornando candidatos estruturados, URL/proveniência e `liveViewUrl`. A sessão pode navegar e preencher a interface do merchant, mas a ação final disponível ao agente é `requestPurchase(candidate)`; ela produz uma intenção e força o merchant a criar um checkout assinado.
+O adapter P0 lê o perfil `/.well-known/ucp` e usa o subconjunto Catalog/Checkout do merchant fictício VuelaYa, mantendo a demo reproduzível. O adapter P2 usa Firecrawl para Search/Scrape e `/interact`, retornando candidatos estruturados, URL/proveniência e `liveViewUrl`. A sessão pode navegar e preencher a interface do merchant, mas a ação final disponível ao agente é `requestPurchase(candidate)`; ela produz uma intenção e força o merchant a criar um checkout assinado.
 
 O runtime de browser nunca recebe:
 
@@ -242,7 +242,7 @@ Mantida como fallback técnico. É a referência mais especializada para browser
 
 | Prioridade | Entrega | Critério de corte |
 |---|---|---|
-| P0 | AP2 → Verify → revogação → Yuno → receipt, usando VuelaYa mock | Obrigatório e independente da web externa |
+| P0 | UCP → AP2 → Verify → revogação → Yuno → receipt, usando VuelaYa mock | Obrigatório e independente da web externa |
 | P1 | Agent Passport, HITL e matriz adversarial | Depois de todos os invariantes P0 passarem |
 | P2 | TravelBot escolhendo oferta do merchant mock | Agente real, ambiente controlado |
 | P2 WOW | Firecrawl Interact + live view, atrás do `DiscoveryPort` | Só entra sem fragilizar o ensaio P0 |
@@ -268,6 +268,8 @@ Mantida como fallback técnico. É a referência mais especializada para browser
 
 Extrair serviços somente quando houver necessidade operacional comprovada. A primeira candidata é a reconciliação Yuno, executada por worker/outbox. Identity e Verify devem permanecer juntos enquanto a decisão depender de leitura transacional de mandato, revogação, nonce e uso. Em produção, adicionar KMS/HSM, secret manager, rate limiting, storage imutável de auditoria, webhook assinado da Yuno e política formal de retenção.
 
+A separação entre UCP, AP2, Visa TAP/VIC, Bound, Yuno e payment rails, incluindo os contratos de adapters, está registrada no [ADR-002](ADR-002-commerce-protocol-layering.md). O plano de implementação por workstream está em [`../implementation-plan.md`](../implementation-plan.md).
+
 ## Referência visual
 
-O caminho aprovado e as fronteiras de confiança estão em [`../diagrams/bound-technical-architecture.html`](../diagrams/bound-technical-architecture.html).
+O caminho aprovado e as fronteiras de confiança estão em [`../diagrams/bound-technical-architecture.html`](../diagrams/bound-technical-architecture.html). A leitura multiprotocolo está em [`../diagrams/bound-protocol-model.html`](../diagrams/bound-protocol-model.html).

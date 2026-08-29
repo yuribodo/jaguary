@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bound — Protocolos, autoridade e pagamento</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #f5f5f5;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --soft: #7a8399;
+      --accent: #eb6c36;
+      --accent-tint: rgba(235,108,54,0.08);
+      --link: #2e5aa8;
+      --rule: rgba(45,49,66,0.12);
+      --sans: 'Geist', system-ui, sans-serif;
+      --serif: 'Instrument Serif', Georgia, serif;
+      --mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body { background: var(--paper); color: var(--ink); font-family: var(--sans); padding: 48px 32px 80px; }
+    main { width: min(100%, 1280px); margin: 0 auto; }
+    .eyebrow { color: var(--muted); font: 500 8px/1.4 var(--mono); letter-spacing: .18em; text-transform: uppercase; }
+    header .eyebrow { margin-bottom: 8px; }
+    h1 { font: 400 40px/1.08 var(--serif); letter-spacing: -.02em; margin-bottom: 12px; }
+    .lede { max-width: 920px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    figure { margin-top: 72px; }
+    figure .eyebrow { margin-bottom: 8px; }
+    h2 { font: 400 32px/1.12 var(--serif); letter-spacing: -.02em; margin-bottom: 8px; }
+    .copy { max-width: 920px; color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 20px; }
+    .canvas { width: 100%; overflow-x: auto; }
+    svg { display: block; width: 100%; min-width: 960px; height: auto; }
+    figcaption { border-top: 1px solid var(--rule); padding-top: 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    figcaption strong { color: var(--ink); font-weight: 600; }
+    .notes { display: grid; grid-template-columns: 1.1fr .9fr; gap: 24px; margin-top: 48px; }
+    .note { background: #ffffff; border: 1px solid var(--rule); border-radius: 6px; padding: 20px; }
+    .note h3 { font-size: 12px; margin: 8px 0 12px; }
+    .note p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    footer { border-top: 1px solid var(--rule); margin-top: 72px; padding-top: 16px; color: var(--soft); font: 500 8px/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    @media (max-width: 760px) { body { padding: 32px 16px 56px; } h1 { font-size: 32px; } figure { margin-top: 56px; } .notes { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Bound · Protocol model</p>
+      <h1>Uma trust layer, vários caminhos de compra</h1>
+      <p class="lede">UCP, AP2, Visa, Bound e Yuno não competem pela mesma responsabilidade. O produto normaliza commerce e provas externas, aplica uma política determinística e só então permite que um provider protegido resolva a credencial e execute o pagamento.</p>
+    </header>
+
+    <figure>
+      <p class="eyebrow">01 · Layer stack · Responsibility</p>
+      <h2>Cada camada responde uma pergunta diferente</h2>
+      <p class="copy">A separação impede que o agente confunda capacidade de navegar, uma prova de identidade ou posse de uma credencial com permissão atual para movimentar dinheiro.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bound-protocol-layers-title bound-protocol-layers-desc">
+          <title id="bound-protocol-layers-title">Camadas de protocolo e pagamento do Bound</title>
+          <desc id="bound-protocol-layers-desc">Pilha de seis camadas separando commerce, reconhecimento do agente, autoridade delegada, enforcement Bound, credenciais e execução, e os payment rails.</desc>
+          <defs>
+            <marker id="layers-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+            <marker id="layers-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+            <marker id="layers-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+          </defs>
+          <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+          <!-- Direction indicator -->
+          <line x1="192" y1="488" x2="192" y2="72" stroke="#4f5d75" stroke-width="1" marker-end="url(#layers-arrow)"/>
+          <text x="64" y="88" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">HUMAN / AGENT</text>
+          <text x="64" y="480" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">MONEY / BANK</text>
+
+          <!-- Stack -->
+          <rect x="240" y="64" width="920" height="432" rx="8" fill="#f5f5f5" stroke="#4f5d75" stroke-width="1"/>
+          <rect x="240" y="64" width="920" height="72" fill="#ffffff"/>
+          <rect x="240" y="136" width="920" height="72" fill="rgba(45,49,66,0.03)"/>
+          <rect x="240" y="208" width="920" height="72" fill="#ffffff"/>
+          <rect x="240" y="280" width="920" height="72" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <rect x="240" y="352" width="920" height="72" fill="#ffffff"/>
+          <rect x="240" y="424" width="920" height="72" fill="rgba(45,49,66,0.03)"/>
+          <line x1="240" y1="136" x2="1160" y2="136" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+          <line x1="240" y1="208" x2="1160" y2="208" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+          <line x1="240" y1="280" x2="1160" y2="280" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+          <line x1="240" y1="352" x2="1160" y2="352" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+          <line x1="240" y1="424" x2="1160" y2="424" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+
+          <text x="264" y="108" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L5</text>
+          <text x="320" y="108" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Commerce interoperability</text>
+          <text x="1128" y="108" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">UCP · ACP · legacy web</text>
+
+          <text x="264" y="180" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L4</text>
+          <text x="320" y="180" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Agent recognition</text>
+          <text x="1128" y="180" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">Visa TAP · HTTP signatures</text>
+
+          <text x="264" y="252" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L3</text>
+          <text x="320" y="252" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Delegated authority</text>
+          <text x="1128" y="252" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">AP2 · Visa Instruction · ACP proof</text>
+
+          <text x="264" y="324" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L2</text>
+          <text x="320" y="324" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Bound enforcement</text>
+          <text x="1128" y="324" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">scope · amount · revoke · replay</text>
+
+          <text x="264" y="396" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L1</text>
+          <text x="320" y="396" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Credential + execution</text>
+          <text x="1128" y="396" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">Yuno Vault/Payments · Visa VIC</text>
+
+          <text x="264" y="468" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.12em">L0</text>
+          <text x="320" y="468" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif">Payment rails</text>
+          <text x="1128" y="468" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end">Visa · Mastercard · PIX · wallets</text>
+
+          <!-- Legend -->
+          <line x1="40" y1="548" x2="1240" y2="548" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <text x="40" y="568" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+          <rect x="40" y="592" width="16" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+          <text x="68" y="604" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Bound is the deterministic gate</text>
+          <rect x="280" y="592" width="16" height="12" rx="2" fill="#ffffff" stroke="#4f5d75" stroke-width="1"/>
+          <text x="308" y="604" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Replaceable protocol/provider layer</text>
+        </svg>
+      </div>
+      <figcaption><strong>Regra de leitura:</strong> uma camada superior pode descrever intenção ou identidade, mas apenas o enforcement consulta o estado atual. Uma camada inferior pode possuir uma credencial, mas não ganha autoridade por possuí-la.</figcaption>
+    </figure>
+
+    <figure>
+      <p class="eyebrow">02 · Architecture · Adapter routes</p>
+      <h2>Provas diferentes entram no mesmo gate; pagamentos saem por rotas explícitas</h2>
+      <p class="copy">O caminho UCP + AP2 + Yuno é o release gate. Visa e x402 permanecem isolados atrás de feature flags até acesso, semântica e interoperabilidade serem comprovados.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bound-adapter-routes-title bound-adapter-routes-desc">
+          <title id="bound-adapter-routes-title">Rotas multiprotocolo do Bound</title>
+          <desc id="bound-adapter-routes-desc">Arquitetura mostrando UCP com AP2, legacy web com Visa TAP e ACP convergindo para uma compra normalizada e Bound Verify, que libera Yuno, Visa Intelligent Commerce ou x402 por rotas separadas.</desc>
+          <defs>
+            <marker id="routes-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+            <marker id="routes-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+            <marker id="routes-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+          </defs>
+          <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+          <!-- Zones -->
+          <rect x="48" y="48" width="248" height="544" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <rect x="72" y="52" width="120" height="12" rx="2" fill="#f5f5f5"/><text x="132" y="60" fill="rgba(45,49,66,0.48)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">PROTOCOL INPUTS</text>
+          <rect x="336" y="240" width="528" height="160" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <rect x="360" y="244" width="104" height="12" rx="2" fill="#f5f5f5"/><text x="412" y="252" fill="rgba(45,49,66,0.48)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">BOUND TRUST CORE</text>
+          <rect x="896" y="48" width="288" height="544" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <rect x="920" y="52" width="160" height="12" rx="2" fill="#f5f5f5"/><text x="1000" y="60" fill="rgba(45,49,66,0.48)" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">CREDENTIAL / EXECUTION</text>
+
+          <!-- Connectors -->
+          <path d="M 172,176 H 432 Q 440,176 440,184 V 272" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#routes-arrow-link)"/>
+          <line x1="272" y1="320" x2="360" y2="320" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#routes-arrow)"/>
+          <path d="M 172,480 H 432 Q 440,480 440,472 V 368" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#routes-arrow)"/>
+          <line x1="560" y1="320" x2="640" y2="320" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#routes-arrow-accent)"/>
+          <path d="M 704,272 H 912 Q 920,272 920,264 V 176" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#routes-arrow-link)"/>
+          <line x1="840" y1="320" x2="920" y2="320" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#routes-arrow)"/>
+          <path d="M 776,368 H 912 Q 920,368 920,376 V 464" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#routes-arrow)"/>
+
+          <!-- Connector labels -->
+          <rect x="264" y="148" width="96" height="12" rx="2" fill="#f5f5f5"/><text x="312" y="156" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">UCP + AP2</text>
+          <rect x="280" y="292" width="72" height="12" rx="2" fill="#f5f5f5"/><text x="316" y="300" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">TAP + WEB</text>
+          <rect x="264" y="452" width="96" height="12" rx="2" fill="#f5f5f5"/><text x="312" y="460" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">ACP PROOF</text>
+          <rect x="572" y="292" width="56" height="12" rx="2" fill="#f5f5f5"/><text x="600" y="300" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">VERIFY</text>
+          <rect x="768" y="244" width="80" height="12" rx="2" fill="#f5f5f5"/><text x="808" y="252" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">P0 ALLOW</text>
+          <rect x="852" y="292" width="56" height="12" rx="2" fill="#f5f5f5"/><text x="880" y="300" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">FUTURE</text>
+          <rect x="820" y="340" width="72" height="12" rx="2" fill="#f5f5f5"/><text x="856" y="348" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">API BUDGET</text>
+
+          <!-- Input nodes -->
+          <rect x="72" y="96" width="200" height="80" rx="6" fill="#f5f5f5"/><rect x="72" y="96" width="200" height="80" rx="6" fill="#ffffff" stroke="#2e5aa8" stroke-width="1"/>
+          <rect x="84" y="104" width="32" height="12" rx="2" fill="transparent" stroke="rgba(46,90,168,0.48)" stroke-width="0.8"/><text x="100" y="112" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">P0</text>
+          <text x="172" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">UCP merchant</text><text x="172" y="152" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">checkout + AP2 mandate</text>
+
+          <rect x="72" y="280" width="200" height="80" rx="6" fill="#f5f5f5"/><rect x="72" y="280" width="200" height="80" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.32)" stroke-width="1"/>
+          <rect x="84" y="288" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.28)" stroke-width="0.8"/><text x="108" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">SPIKE</text>
+          <text x="172" y="316" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Legacy + Visa TAP</text><text x="172" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">signed HTTP agent</text>
+
+          <rect x="72" y="480" width="200" height="80" rx="6" fill="#f5f5f5"/><rect x="72" y="480" width="200" height="80" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+          <rect x="84" y="488" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.24)" stroke-width="0.8"/><text x="108" y="496" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">LATER</text>
+          <text x="172" y="516" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">ACP merchant</text><text x="172" y="536" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">native delegated proof</text>
+
+          <!-- Trust core nodes -->
+          <rect x="360" y="272" width="200" height="96" rx="6" fill="#f5f5f5"/><rect x="360" y="272" width="200" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <rect x="372" y="280" width="56" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/><text x="400" y="288" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MODEL</text>
+          <text x="460" y="316" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Normalized purchase</text><text x="460" y="340" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">checkout + proof provenance</text>
+
+          <rect x="640" y="272" width="200" height="96" rx="6" fill="#f5f5f5"/><rect x="640" y="272" width="200" height="96" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+          <rect x="652" y="280" width="40" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,0.48)" stroke-width="0.8"/><text x="672" y="288" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">GATE</text>
+          <text x="740" y="316" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Bound Verify</text><text x="740" y="340" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">ALLOW · ESCALATE · DENY</text>
+
+          <!-- Credential and execution nodes -->
+          <rect x="920" y="96" width="240" height="80" rx="6" fill="#f5f5f5"/><rect x="920" y="96" width="240" height="80" rx="6" fill="#ffffff" stroke="#2e5aa8" stroke-width="1"/>
+          <rect x="932" y="104" width="32" height="12" rx="2" fill="transparent" stroke="rgba(46,90,168,0.48)" stroke-width="0.8"/><text x="948" y="112" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">P0</text>
+          <text x="1040" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Yuno Vault + Payments</text><text x="1040" y="152" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">token · routing · PSP / rails</text>
+
+          <rect x="920" y="280" width="240" height="80" rx="6" fill="#f5f5f5"/><rect x="920" y="280" width="240" height="80" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.24)" stroke-width="1" stroke-dasharray="4,3"/>
+          <rect x="932" y="288" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.24)" stroke-width="0.8"/><text x="956" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">SPIKE</text>
+          <text x="1040" y="316" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Visa Intelligent Commerce</text><text x="1040" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">restricted token · VisaNet</text>
+
+          <rect x="920" y="464" width="240" height="80" rx="6" fill="#f5f5f5"/><rect x="920" y="464" width="240" height="80" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+          <rect x="932" y="472" width="48" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.24)" stroke-width="0.8"/><text x="956" y="480" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">LATER</text>
+          <text x="1040" y="500" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">x402 executor</text><text x="1040" y="520" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">paid APIs · onchain facilitator</text>
+
+          <!-- Legend -->
+          <line x1="40" y1="624" x2="1240" y2="624" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+          <text x="40" y="644" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+          <line x1="40" y1="680" x2="72" y2="680" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#routes-arrow-link)"/><text x="84" y="684" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">P0 external call</text>
+          <line x1="232" y1="680" x2="264" y2="680" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#routes-arrow)"/><text x="276" y="684" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Optional / gated</text>
+          <rect x="432" y="672" width="16" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/><text x="460" y="684" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Only economic authority gate</text>
+        </svg>
+      </div>
+      <figcaption><strong>Release rule:</strong> Visa, ACP and x402 can enrich reach, but none may become a hidden bypass. Every enabled route must preserve proof provenance, normalize without widening authority and receive a reserved `authorization_id` before resolving payment credentials.</figcaption>
+    </figure>
+
+    <section class="notes" aria-label="Notas de implementação">
+      <article class="note">
+        <p class="eyebrow">P0 · ship first</p>
+        <h3>UCP + AP2 + Bound + Yuno</h3>
+        <p>VuelaYa is controlled, deterministic and standards-shaped. It proves the complete authorization and payment circuit even when the live web or a network-specific sandbox is unavailable.</p>
+      </article>
+      <article class="note">
+        <p class="eyebrow">Gated · prove access</p>
+        <h3>Visa TAP + VIC</h3>
+        <p>TAP improves legacy merchant recognition; VIC may provide a restricted Visa credential. Sandbox access, Agent Provider onboarding and Yuno token interoperability must be validated before this route is presented as supported.</p>
+      </article>
+    </section>
+
+    <footer>Bound · Protocol model · Related: ADR-002 and payment methods guide · Theme: default editorial</footer>
+  </main>
+</body>
+</html>
