@@ -4,6 +4,7 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import { type ClockPort, type SignerPort } from "./contracts/v1/index.js";
 import { createDatabase, type DatabaseConnection } from "./db/database.js";
 import { configureHttpConventions, generateCorrelationId } from "./http/conventions.js";
+import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
 import { VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
@@ -79,11 +80,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   await app.register(rootRoutes);
   await app.register(healthRoutes);
-  const merchant = new VuelaYaMerchant(
-    options.signer ?? new EphemeralEs256Signer(),
-    options.clock ?? deterministicDemoClock,
-  );
+  const signer = options.signer ?? new EphemeralEs256Signer();
+  const clock = options.clock ?? deterministicDemoClock;
+  const merchant = new VuelaYaMerchant(signer, clock);
   await app.register(vuelaYaRoutes, { merchant });
+  if (database !== undefined) {
+    await app.register(mandateRoutes, {
+      service: new MandateService(database, signer, clock),
+    });
+  }
 
   return app;
 }
