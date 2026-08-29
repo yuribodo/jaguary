@@ -51,6 +51,9 @@ test("Postman collection is valid JSON with executable current routes", async ()
     [
       "Root",
       "Health",
+      "Register TravelBot identity",
+      "Read TravelBot identity",
+      "Reject invalid agent request proof",
       "Create mandate rejects unknown fields",
       "Read missing mandate",
       "Activate missing mandate",

@@ -5,7 +5,10 @@ import { normalizedCheckoutSchema } from "../commerce/schemas.js";
 
 export const reasonCodeSchema = z.enum([
   "invalid_agent_signature",
+  "agent_not_found",
   "agent_not_active",
+  "agent_request_expired",
+  "agent_request_not_yet_valid",
   "mandate_not_active",
   "mandate_revoked",
   "mandate_expired",

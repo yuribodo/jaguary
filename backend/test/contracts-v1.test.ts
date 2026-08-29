@@ -6,6 +6,7 @@ import {
   agentIdentityStatusSchema,
   agentRequestPayloadSchema,
   agentRequestProofSchema,
+  agentRequestVerificationSchema,
   apiErrorCodeSchema,
   apiErrorEnvelopeSchema,
   approvedPaymentResultSchema,
@@ -25,6 +26,7 @@ import {
   declinedPaymentResultSchema,
   flightFulfillmentSchema,
   idempotencyKeySchema,
+  es256PublicJwkSchema,
   mandateSchema,
   mandateStatusSchema,
   mandateTermsSchema,
@@ -100,6 +102,10 @@ test("signed payload schemas reject unknown fields", () => {
     merchant_override: "attacker",
   }));
   assert.throws(() => agentRequestProofSchema.parse({ ...agentRequestProofFixture, private_key: "secret" }));
+  assert.throws(() => es256PublicJwkSchema.parse({
+    ...travelBotFixture.verification_key.public_jwk,
+    d: "private-material-is-never-accepted",
+  }));
 });
 
 test("RFC 8785 canonical content and SHA-256 remain stable", () => {
@@ -119,6 +125,10 @@ test("RFC 8785 canonical content and SHA-256 remain stable", () => {
   };
   assert.equal(canonicalizeJson(reordered), canonicalCheckoutFixture.canonical);
   assert.equal(sha256CanonicalJson(reordered), canonicalCheckoutFixture.sha256);
+  assert.equal(
+    sha256CanonicalJson(agentRequestProofFixture.payload),
+    agentRequestProofFixture.payload_hash,
+  );
   assert.throws(() => canonicalizeJson({ invalid: undefined }));
   assert.throws(() => canonicalizeJson(new Array(1)));
   assert.throws(() => canonicalizeJson(Number.NaN));
@@ -201,7 +211,10 @@ test("decision and reason enums are complete and decision invariants hold", () =
   assert.deepEqual(decisionSchema.options, ["ALLOW", "DENY", "ESCALATE"]);
   const requiredReasons = [
     "invalid_agent_signature",
+    "agent_not_found",
     "agent_not_active",
+    "agent_request_expired",
+    "agent_request_not_yet_valid",
     "mandate_not_active",
     "mandate_revoked",
     "mandate_expired",
@@ -251,6 +264,10 @@ test("all sanitized domain fixtures validate against their public schemas", () =
     ["normalizedCheckout", normalizedCheckoutSchema, normalizedCheckoutFixture],
     ["agentRequestPayload", agentRequestPayloadSchema, agentRequestProofFixture.payload],
     ["agentRequestProof", agentRequestProofSchema, agentRequestProofFixture],
+    ["agentRequestVerification", agentRequestVerificationSchema, {
+      request_body: canonicalCheckoutFixture.input,
+      proof: agentRequestProofFixture,
+    }],
     ["mandateTerms", mandateTermsSchema, mandateFixture.terms],
     ["mandate", mandateSchema, mandateFixture],
     ["normalizedAuthorization", normalizedAuthorizationSchema, normalizedAuthorizationFixture],

@@ -139,6 +139,109 @@
       ]
     },
     {
+      "name": "Agent identity",
+      "item": [
+        {
+          "name": "Register TravelBot identity",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_agent_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"agent_id\":\"agent_travelbot\",\"principal_id\":\"principal_marta\",\"display_name\":\"TravelBot\",\"status\":\"ACTIVE\",\"build_fingerprint\":\"6b52b86b8a1d9c0280c94927d137b3211e3d79efae7cabe529bfba651f6f4324\",\"verification_key\":{\"key_id\":\"key_demo_travelbot_2026\",\"algorithm\":\"ES256\",\"public_jwk\":{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"odBJf4KCPzKuNs7Vn8IeoafYmIpM2ZDeBHWDtCsbCtM\",\"y\":\"k2OdCBi4Pih91d_1N95GlUlwcr06_rsRNFahEA2owlY\"}}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agents"]
+            },
+            "description": "Registers the public-only deterministic TravelBot identity. Replays with the same key are idempotent."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"TravelBot identity is registered idempotently\", function () {",
+                "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                "  const body = pm.response.json();",
+                "  pm.expect(body.agent_id).to.equal(\"agent_travelbot\");",
+                "  pm.expect(body.verification_key.public_jwk.kty).to.equal(\"EC\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Read TravelBot identity",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" }],
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agents/agent_travelbot",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agents", "agent_travelbot"]
+            },
+            "description": "Reads the registered public identity and build fingerprint."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"TravelBot public identity is readable\", function () {",
+                "  pm.response.to.have.status(200);",
+                "  pm.expect(pm.response.json().build_fingerprint).to.have.length(64);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Reject invalid agent request proof",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_agent_verify_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"request_body\":{},\"proof\":{}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agent-requests/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agent-requests", "verify"]
+            },
+            "description": "Exercises fail-closed proof validation without storing a reusable signed proof in the collection."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Invalid agent proof fails closed\", function () {",
+                "  pm.response.to.have.status(400);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
       "name": "Mandate lifecycle",
       "item": [
         {
