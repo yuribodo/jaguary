@@ -139,6 +139,111 @@
       ]
     },
     {
+      "name": "Agent identity",
+      "item": [
+        {
+          "name": "Register TravelBot identity",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_agent_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"agent_id\":\"agent_travelbot\",\"principal_id\":\"principal_marta\",\"display_name\":\"TravelBot\",\"status\":\"ACTIVE\",\"build_fingerprint\":\"6b52b86b8a1d9c0280c94927d137b3211e3d79efae7cabe529bfba651f6f4324\",\"verification_key\":{\"key_id\":\"key_demo_travelbot_2026\",\"algorithm\":\"ES256\",\"public_jwk\":{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"odBJf4KCPzKuNs7Vn8IeoafYmIpM2ZDeBHWDtCsbCtM\",\"y\":\"k2OdCBi4Pih91d_1N95GlUlwcr06_rsRNFahEA2owlY\"}}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agents"]
+            },
+            "description": "Registers the public-only deterministic TravelBot identity. Replays with the same key are idempotent."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"TravelBot identity is registered idempotently\", function () {",
+                "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                "  const body = pm.response.json();",
+                "  pm.expect(body.agent_id).to.equal(\"agent_travelbot\");",
+                "  pm.expect(body.verification_key.public_jwk.kty).to.equal(\"EC\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Read TravelBot identity",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" }],
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agents/agent_travelbot",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agents", "agent_travelbot"]
+            },
+            "description": "Reads the registered public identity and build fingerprint."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"TravelBot public identity is readable\", function () {",
+                "  pm.response.to.have.status(200);",
+                "  pm.expect(pm.response.json().build_fingerprint).to.have.length(64);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Verify TravelBot request signature",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_agent_verify_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "{{correlationId}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"request_body\":{\"checkout_id\":\"checkout_vy_471_gru_cor\",\"merchant_id\":\"merchant_vuelaya\",\"merchant_url\":\"https://demo.vuelaya.example\",\"items\":[{\"item_id\":\"flight_vy_471_gru_cor\",\"name\":\"VuelaYa flight GRU to COR\",\"quantity\":1,\"unit_price\":{\"amount\":13700,\"currency\":\"USD\"},\"total\":{\"amount\":13700,\"currency\":\"USD\"}}],\"total\":{\"amount\":13700,\"currency\":\"USD\"},\"fulfillment\":{\"type\":\"FLIGHT\",\"origin\":\"GRU\",\"destination\":\"COR\",\"departure_at\":\"2026-09-15T10:00:00.000Z\",\"arrival_at\":\"2026-09-15T13:05:00.000Z\"},\"created_at\":\"2026-08-29T12:02:00.000Z\",\"expires_at\":\"2026-08-29T12:17:00.000Z\",\"protocol\":{\"name\":\"UCP\",\"version\":\"2026-08-25\"}},\"proof\":{\"payload\":{\"method\":\"POST\",\"route\":\"/trust/v1/agent-requests/verify\",\"body_hash\":\"b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01\",\"agent_id\":\"agent_travelbot\",\"key_id\":\"key_demo_travelbot_2026\",\"build_fingerprint\":\"6b52b86b8a1d9c0280c94927d137b3211e3d79efae7cabe529bfba651f6f4324\",\"nonce\":\"nonce_travelbot_001\",\"issued_at\":\"2026-08-29T12:03:00.000Z\",\"expires_at\":\"2026-08-29T12:08:00.000Z\"},\"payload_hash\":\"982107e0f9d7beed6b4f9b42d085e76110073961be65d959612b0bae4c1dd22c\",\"algorithm\":\"ES256\",\"key_id\":\"key_demo_travelbot_2026\",\"signature\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleV9kZW1vX3RyYXZlbGJvdF8yMDI2In0.eyJhZ2VudF9pZCI6ImFnZW50X3RyYXZlbGJvdCIsImJvZHlfaGFzaCI6ImIwNTk3NzRiYThlZmViNzIwMGMxYWFlZmE2Nzg2YmYyOTNlNGM4ZDVmZWNlMjRhMTQ3NTg2YTFhMzMwZjljMDEiLCJidWlsZF9maW5nZXJwcmludCI6IjZiNTJiODZiOGExZDljMDI4MGM5NDkyN2QxMzdiMzIxMWUzZDc5ZWZhZTdjYWJlNTI5YmZiYTY1MWY2ZjQzMjQiLCJleHBpcmVzX2F0IjoiMjAyNi0wOC0yOVQxMjowODowMC4wMDBaIiwiaXNzdWVkX2F0IjoiMjAyNi0wOC0yOVQxMjowMzowMC4wMDBaIiwia2V5X2lkIjoia2V5X2RlbW9fdHJhdmVsYm90XzIwMjYiLCJtZXRob2QiOiJQT1NUIiwibm9uY2UiOiJub25jZV90cmF2ZWxib3RfMDAxIiwicm91dGUiOiIvdHJ1c3QvdjEvYWdlbnQtcmVxdWVzdHMvdmVyaWZ5In0.0NIanoQ8IBg3y7Q_gp-l4Dhw1XqrTpu1z1b8l5oi3srpRY2butcPk2nW77nt7AIBXgIFw04k5Z-0As5UoNT62g\"}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/trust/v1/agent-requests/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["trust", "v1", "agent-requests", "verify"]
+            },
+            "description": "Verifies the ES256 fixture and returns identity, nonce and validity without consuming the nonce."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"TravelBot proof verifies\", function () {",
+                "  pm.response.to.have.status(200);",
+                "  const body = pm.response.json();",
+                "  pm.expect(body.agent_id).to.equal(\"agent_travelbot\");",
+                "  pm.expect(body.nonce).to.equal(\"nonce_travelbot_001\");",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
       "name": "VuelaYa UCP subset",
       "item": [
         {

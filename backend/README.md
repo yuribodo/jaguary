@@ -158,6 +158,18 @@ Every response includes `X-Correlation-Id`. A syntactically valid client-provide
 }
 ```
 
+## Agent identity and signed requests
+
+The Trust API persists public-only TravelBot identities and exposes:
+
+- `POST /trust/v1/agents` to register an agent (`Idempotency-Key` required);
+- `GET /trust/v1/agents/:agentId` to read the registered public identity;
+- `POST /trust/v1/agent-requests/verify` to verify a signed request envelope and return normalized identity, nonce and validity data.
+
+Agent keys are strict public P-256 JWKs and active agents use ES256. The compact JWS payload is the RFC 8785/JCS representation of the strict envelope. The envelope binds the HTTP method, route, canonical body hash, agent ID, key ID, build fingerprint, issue time, expiry and nonce. Verification uses the injected `ClockPort`; it does not consume the nonce. Atomic nonce replay enforcement belongs to the future authorization transaction.
+
+Private JWK material is rejected by the registration contract. Request logs contain only the agent ID, key ID and correlation ID; request bodies, proofs, signatures and key material are redacted.
+
 Every `POST`, `PUT`, `PATCH` and `DELETE` request must include an `Idempotency-Key` containing 8–128 safe ASCII characters (`A-Z`, `a-z`, digits, `.`, `_`, `:`, `-`). This issue validates the key at the transport boundary; persistence and replay of stored responses belong to the endpoint implementation workstreams.
 
 The initial mutable surfaces are expected to follow the same rule: agent and mandate creation/transitions, merchant checkout creation/completion, verify, payment execution and demo reset. Read-only profile, offer, checkout, authorization, receipt and audit routes still receive correlation IDs but do not require idempotency keys.

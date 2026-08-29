@@ -51,6 +51,9 @@ test("Postman collection is valid JSON with executable current routes", async ()
     [
       "Root",
       "Health",
+      "Register TravelBot identity",
+      "Read TravelBot identity",
+      "Verify TravelBot request signature",
       "VuelaYa UCP profile",
       "List VuelaYa flights",
       "Create signed checkout",
