@@ -96,6 +96,11 @@ test("the Agents SDK request disables provider storage and parallel tool calls",
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.store, false);
   assert.equal(requests[0]?.parallel_tool_calls, false);
+  assert.match(
+    String(requests[0]?.instructions),
+    /USD 150 = 15000/,
+    "the model contract must express budgets in currency minor units",
+  );
   const tools = requests[0]?.tools as Array<Record<string, unknown>>;
   assert.deepEqual(tools.map(({ name }) => name), ["find_offers"]);
   assert.equal(tools[0]?.strict, true);
