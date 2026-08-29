@@ -14,6 +14,12 @@ pnpm --filter @bound/backend build
 
 The API listens on `http://localhost:3001` by default. Copy `.env.example` to `.env` to override local configuration.
 
+## Postman collection
+
+Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and contains executable checks for the current root and health routes, the public error envelope, correlation IDs, and mutable-request idempotency validation.
+
+Whenever an endpoint or public contract changes, update this collection in the same change. Add the happy path, relevant validation/error examples, assertions for `X-Correlation-Id`, and `Idempotency-Key` on mutable requests. The backend test suite parses the collection to prevent malformed JSON, missing request tests, or accidental credential material.
+
 ## Initial boundaries
 
 - `src/routes`: HTTP transport only.

@@ -1,0 +1,304 @@
+{
+  "info": {
+    "_postman_id": "d3a40c9d-60d4-4ec8-9624-4d18e2315c81",
+    "name": "Bound API",
+    "description": "Executable collection for the Bound backend. Keep this collection synchronized whenever a route, public contract, error code, correlation convention, or idempotency behavior changes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "correlationId",
+      "value": "corr_postman_001",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "idem_postman_001",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Response includes X-Correlation-Id\", function () {",
+          "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.match(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);",
+          "});",
+          "",
+          "const contentType = pm.response.headers.get(\"Content-Type\") || \"\";",
+          "if (contentType.includes(\"application/json\")) {",
+          "  const body = pm.response.json();",
+          "  pm.test(\"JSON response never exposes a stack trace\", function () {",
+          "    pm.expect(JSON.stringify(body)).not.to.include(\"\\\"stack\\\"\");",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Current API",
+      "item": [
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Returns API identity and the health route."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Root returns API metadata\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.deep.equal({ name: \"Bound API\", version: \"0.1.0\", health: \"/health\" });",
+                  "});",
+                  "pm.test(\"Client correlation ID is preserved\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.equal(pm.variables.get(\"correlationId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Checks API readiness and returns an RFC 3339 UTC timestamp."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Health reports ready\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.equal(\"ok\");",
+                  "  pm.expect(body.service).to.equal(\"bound-api\");",
+                  "  pm.expect(body.timestamp).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HTTP conventions",
+      "item": [
+        {
+          "name": "Unknown route returns error envelope",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/__postman/not-found",
+              "host": ["{{baseUrl}}"],
+              "path": ["__postman", "not-found"]
+            },
+            "description": "Exercises the stable 404 error envelope."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Unknown route uses the public error envelope\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error.code).to.equal(\"not_found\");",
+                  "  pm.expect(body.error.message).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.error.details).to.deep.equal({});",
+                  "  pm.expect(body.correlation_id).to.equal(pm.variables.get(\"correlationId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mutable request rejects missing Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/__postman/mutable",
+              "host": ["{{baseUrl}}"],
+              "path": ["__postman", "mutable"]
+            },
+            "description": "The request is rejected by the global mutable-request hook before route resolution."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Missing idempotency key is rejected\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"missing_idempotency_key\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mutable request rejects invalid Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "short",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/__postman/mutable",
+              "host": ["{{baseUrl}}"],
+              "path": ["__postman", "mutable"]
+            },
+            "description": "Exercises the stable invalid idempotency key error."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Invalid idempotency key is rejected\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"invalid_idempotency_key\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mutable request accepts valid Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/__postman/mutable",
+              "host": ["{{baseUrl}}"],
+              "path": ["__postman", "mutable"]
+            },
+            "description": "A valid key passes the hook; the synthetic route then returns the expected 404."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Valid idempotency key passes transport validation\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
