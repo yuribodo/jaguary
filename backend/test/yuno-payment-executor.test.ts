@@ -10,6 +10,7 @@ import {
 import {
   YunoAdapterError,
   YunoPaymentExecutor,
+  type YunoCredentialResolver,
 } from "../src/modules/payments/yuno/executor.js";
 
 const idempotencyKey = "9f79e7e9-40c2-4f62-94bb-0a9487b5d21d";
@@ -29,6 +30,53 @@ async function fixture(name: string): Promise<unknown> {
   return JSON.parse(source) as unknown;
 }
 
+const sanitizedCredentialResolver: YunoCredentialResolver = {
+  resolve: async () => ({
+    accountId: config.accountId,
+    customerId: "33333333-3333-4333-8333-333333333333",
+    vaultedToken: "[REDACTED]",
+  }),
+};
+
+interface ExecutorOverrides {
+  config?: YunoConfig;
+  credentialResolver?: YunoCredentialResolver;
+}
+
+function createExecutor(
+  fetchTransport: typeof fetch,
+  overrides: ExecutorOverrides = {},
+): YunoPaymentExecutor {
+  return new YunoPaymentExecutor(overrides.config ?? config, {
+    fetch: fetchTransport,
+    now: () => fallbackNow,
+    credentialResolver: overrides.credentialResolver ?? sanitizedCredentialResolver,
+  });
+}
+
+function createBoundaryProbe(yunoConfig: YunoConfig = config) {
+  let calls = 0;
+  const countCall = () => {
+    calls += 1;
+  };
+  const executor = createExecutor(
+    async () => {
+      countCall();
+      return new Response(null, { status: 500 });
+    },
+    {
+      config: yunoConfig,
+      credentialResolver: {
+        resolve: async () => {
+          countCall();
+          return undefined;
+        },
+      },
+    },
+  );
+  return { executor, callCount: () => calls };
+}
+
 test("YunoPaymentExecutor approves only a bound authorized payment", async () => {
   let observedRequest: { input: string | URL | Request; init?: RequestInit } | undefined;
   const fetchStub: typeof fetch = async (input, init) => {
@@ -38,17 +86,7 @@ test("YunoPaymentExecutor approves only a bound authorized payment", async () =>
       headers: { "content-type": "application/json" },
     });
   };
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: fetchStub,
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
-    },
-  });
+  const executor = createExecutor(fetchStub);
 
   const result = paymentResultSchema.parse(
     await executor.pay(authorizedPaymentFixture, idempotencyKey),
@@ -95,18 +133,9 @@ test("YunoPaymentExecutor converts fractional minor units without binary divisio
   };
   responseBody.amount.value = 137.01;
   let requestBody: unknown;
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async (_input, init) => {
-      requestBody = JSON.parse(String(init?.body)) as unknown;
-      return new Response(JSON.stringify(responseBody), { status: 201 });
-    },
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
-    },
+  const executor = createExecutor(async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as unknown;
+    return new Response(JSON.stringify(responseBody), { status: 201 });
   });
 
   const result = await executor.pay(payment, idempotencyKey);
@@ -117,20 +146,13 @@ test("YunoPaymentExecutor converts fractional minor units without binary divisio
 });
 
 test("YunoPaymentExecutor normalizes a terminal provider decline", async () => {
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => new Response(JSON.stringify(await fixture("payment-declined")), {
+  const executor = createExecutor(async () => new Response(
+    JSON.stringify(await fixture("payment-declined")),
+    {
       status: 201,
       headers: { "content-type": "application/json" },
-    }),
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
     },
-  });
+  ));
 
   assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
     authorization_id: authorizedPaymentFixture.authorization.authorization_id,
@@ -143,18 +165,8 @@ test("YunoPaymentExecutor normalizes a terminal provider decline", async () => {
 });
 
 test("YunoPaymentExecutor reports a client timeout without claiming payment failure", async () => {
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => {
-      throw new DOMException("request exceeded its deadline", "TimeoutError");
-    },
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
-    },
+  const executor = createExecutor(async () => {
+    throw new DOMException("request exceeded its deadline", "TimeoutError");
   });
 
   assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
@@ -166,18 +178,8 @@ test("YunoPaymentExecutor reports a client timeout without claiming payment fail
 });
 
 test("YunoPaymentExecutor keeps an interrupted transport economically unknown", async () => {
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => {
-      throw new Error("connection reset with synthetic-vaulted-value-never-log");
-    },
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
-    },
+  const executor = createExecutor(async () => {
+    throw new Error("connection reset with synthetic-vaulted-value-never-log");
   });
 
   assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
@@ -189,20 +191,10 @@ test("YunoPaymentExecutor keeps an interrupted transport economically unknown", 
 });
 
 test("YunoPaymentExecutor keeps a provider error economically unknown", async () => {
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => new Response(JSON.stringify({
-      message: "upstream failure",
-      raw_response: "[REDACTED]",
-    }), { status: 503 }),
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
-    },
-  });
+  const executor = createExecutor(async () => new Response(JSON.stringify({
+    message: "upstream failure",
+    raw_response: "[REDACTED]",
+  }), { status: 503 }));
 
   assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
     authorization_id: authorizedPaymentFixture.authorization.authorization_id,
@@ -213,19 +205,12 @@ test("YunoPaymentExecutor keeps a provider error economically unknown", async ()
 });
 
 test("YunoPaymentExecutor treats a malformed success response as unknown", async () => {
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => new Response(JSON.stringify(await fixture("payment-malformed")), {
+  const executor = createExecutor(async () => new Response(
+    JSON.stringify(await fixture("payment-malformed")),
+    {
       status: 201,
-    }),
-    now: () => fallbackNow,
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: config.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: "[REDACTED]",
-      }),
     },
-  });
+  ));
 
   assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
     authorization_id: authorizedPaymentFixture.authorization.authorization_id,
@@ -249,17 +234,9 @@ test("YunoPaymentExecutor never approves mismatched amount or currency bindings"
         amount: { value: number; currency: string };
       };
       responseBody.amount = mismatch.amount;
-      const executor = new YunoPaymentExecutor(config, {
-        fetch: async () => new Response(JSON.stringify(responseBody), { status: 201 }),
-        now: () => fallbackNow,
-        credentialResolver: {
-          resolve: async () => ({
-            accountId: config.accountId,
-            customerId: "33333333-3333-4333-8333-333333333333",
-            vaultedToken: "[REDACTED]",
-          }),
-        },
-      });
+      const executor = createExecutor(
+        async () => new Response(JSON.stringify(responseBody), { status: 201 }),
+      );
 
       assert.deepEqual(await executor.pay(authorizedPaymentFixture, idempotencyKey), {
         authorization_id: authorizedPaymentFixture.authorization.authorization_id,
@@ -273,23 +250,11 @@ test("YunoPaymentExecutor never approves mismatched amount or currency bindings"
 });
 
 test("YunoPaymentExecutor rejects a non-UUID idempotency key before resolving credentials", async () => {
-  let boundaryCalls = 0;
   const invalidKey = "authorization_vy_471_001";
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => {
-      boundaryCalls += 1;
-      return new Response(null, { status: 500 });
-    },
-    credentialResolver: {
-      resolve: async () => {
-        boundaryCalls += 1;
-        return undefined;
-      },
-    },
-  });
+  const boundary = createBoundaryProbe();
 
   await assert.rejects(
-    executor.pay(authorizedPaymentFixture, invalidKey),
+    boundary.executor.pay(authorizedPaymentFixture, invalidKey),
     (error: unknown) => {
       assert.ok(error instanceof YunoAdapterError);
       assert.equal(error.code, "invalid_idempotency_key");
@@ -297,30 +262,18 @@ test("YunoPaymentExecutor rejects a non-UUID idempotency key before resolving cr
       return true;
     },
   );
-  assert.equal(boundaryCalls, 0);
+  assert.equal(boundary.callCount(), 0);
 });
 
 test("YunoPaymentExecutor fails closed when Yuno configuration is disabled", async () => {
-  let boundaryCalls = 0;
   const disabledConfig: YunoConfig = { enabled: false };
-  const executor = new YunoPaymentExecutor(disabledConfig, {
-    fetch: async () => {
-      boundaryCalls += 1;
-      return new Response(null, { status: 500 });
-    },
-    credentialResolver: {
-      resolve: async () => {
-        boundaryCalls += 1;
-        return undefined;
-      },
-    },
-  });
+  const boundary = createBoundaryProbe(disabledConfig);
 
   await assert.rejects(
-    executor.pay(authorizedPaymentFixture, idempotencyKey),
+    boundary.executor.pay(authorizedPaymentFixture, idempotencyKey),
     (error: unknown) => error instanceof YunoAdapterError && error.code === "configuration_error",
   );
-  assert.equal(boundaryCalls, 0);
+  assert.equal(boundary.callCount(), 0);
 });
 
 test("YunoPaymentExecutor rejects incomplete or non-sandbox runtime configuration", async (t) => {
@@ -331,46 +284,19 @@ test("YunoPaymentExecutor rejects incomplete or non-sandbox runtime configuratio
 
   for (const invalidConfiguration of invalidConfigurations) {
     await t.test(invalidConfiguration.name, async () => {
-      let boundaryCalls = 0;
-      const executor = new YunoPaymentExecutor(
-        invalidConfiguration.value as YunoConfig,
-        {
-          fetch: async () => {
-            boundaryCalls += 1;
-            return new Response(null, { status: 500 });
-          },
-          credentialResolver: {
-            resolve: async () => {
-              boundaryCalls += 1;
-              return undefined;
-            },
-          },
-        },
-      );
+      const boundary = createBoundaryProbe(invalidConfiguration.value as YunoConfig);
 
       await assert.rejects(
-        executor.pay(authorizedPaymentFixture, idempotencyKey),
+        boundary.executor.pay(authorizedPaymentFixture, idempotencyKey),
         (error: unknown) => error instanceof YunoAdapterError && error.code === "configuration_error",
       );
-      assert.equal(boundaryCalls, 0);
+      assert.equal(boundary.callCount(), 0);
     });
   }
 });
 
 test("YunoPaymentExecutor rejects currencies without a trusted precision mapping", async () => {
-  let boundaryCalls = 0;
-  const executor = new YunoPaymentExecutor(config, {
-    fetch: async () => {
-      boundaryCalls += 1;
-      return new Response(null, { status: 500 });
-    },
-    credentialResolver: {
-      resolve: async () => {
-        boundaryCalls += 1;
-        return undefined;
-      },
-    },
-  });
+  const boundary = createBoundaryProbe();
   const unsupportedPayment = {
     ...authorizedPaymentFixture,
     authorization: {
@@ -380,10 +306,10 @@ test("YunoPaymentExecutor rejects currencies without a trusted precision mapping
   };
 
   await assert.rejects(
-    executor.pay(unsupportedPayment, idempotencyKey),
+    boundary.executor.pay(unsupportedPayment, idempotencyKey),
     (error: unknown) => error instanceof YunoAdapterError && error.code === "unsupported_currency",
   );
-  assert.equal(boundaryCalls, 0);
+  assert.equal(boundary.callCount(), 0);
 });
 
 test("YunoPaymentExecutor errors redact provider headers, customer data, tokens and raw payloads", async () => {
@@ -401,8 +327,8 @@ test("YunoPaymentExecutor errors redact provider headers, customer data, tokens 
     publicApiKey: sensitiveValues[0]!,
     privateSecretKey: sensitiveValues[1]!,
   };
-  const executor = new YunoPaymentExecutor(sensitiveConfig, {
-    fetch: async () => new Response(JSON.stringify({
+  const executor = createExecutor(
+    async () => new Response(JSON.stringify({
       headers: {
         "public-api-key": sensitiveValues[0],
         "private-secret-key": sensitiveValues[1],
@@ -413,14 +339,17 @@ test("YunoPaymentExecutor errors redact provider headers, customer data, tokens 
       document_number: sensitiveValues[5],
       raw_response: sensitiveValues[6],
     }), { status: 401 }),
-    credentialResolver: {
-      resolve: async () => ({
-        accountId: sensitiveConfig.accountId,
-        customerId: "33333333-3333-4333-8333-333333333333",
-        vaultedToken: sensitiveValues[3]!,
-      }),
+    {
+      config: sensitiveConfig,
+      credentialResolver: {
+        resolve: async () => ({
+          accountId: sensitiveConfig.accountId,
+          customerId: "33333333-3333-4333-8333-333333333333",
+          vaultedToken: sensitiveValues[3]!,
+        }),
+      },
     },
-  });
+  );
 
   await assert.rejects(
     executor.pay(authorizedPaymentFixture, idempotencyKey),
