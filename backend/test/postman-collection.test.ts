@@ -41,6 +41,9 @@ test("Postman collection is valid JSON with executable current routes", async ()
   assert.equal(variables.baseUrl, "http://localhost:3001");
   assert.ok(variables.correlationId);
   assert.ok(variables.idempotencyKey);
+  assert.equal(variables.checkoutId, "checkout_vy_471_gru_cor");
+  assert.equal(variables.checkoutHash, "b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01");
+  assert.ok(variables.orderId);
 
   const requests = flattenItems(collection.item ?? []);
   assert.deepEqual(
@@ -48,6 +51,13 @@ test("Postman collection is valid JSON with executable current routes", async ()
     [
       "Root",
       "Health",
+      "VuelaYa UCP profile",
+      "List VuelaYa flights",
+      "Create signed checkout",
+      "Read signed checkout",
+      "Complete authorized checkout",
+      "Read VuelaYa order",
+      "Checkout rejects client total",
       "Unknown route returns error envelope",
       "Mutable request rejects missing Idempotency-Key",
       "Mutable request rejects invalid Idempotency-Key",

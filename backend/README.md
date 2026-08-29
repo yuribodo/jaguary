@@ -16,7 +16,13 @@ The API listens on `http://localhost:3001` by default. Copy `.env.example` to `.
 
 ## Postman collection
 
-Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and contains executable checks for the current root and health routes, the public error envelope, correlation IDs, and mutable-request idempotency validation.
+Import `postman/Bound API.postman_collection.json` into Postman and start the API with `pnpm dev:backend`. The collection uses `http://localhost:3001` by default and executes the complete VuelaYa profile → offer → signed checkout → authorized completion → order flow, plus public error, correlation ID and mutable-request idempotency checks.
+
+Run the same collection from the command line with:
+
+```bash
+pnpm dlx newman@6.2.1 run "backend/postman/Bound API.postman_collection.json"
+```
 
 Whenever an endpoint or public contract changes, update this collection in the same change. Add the happy path, relevant validation/error examples, assertions for `X-Correlation-Id`, and `Idempotency-Key` on mutable requests. The backend test suite parses the collection to prevent malformed JSON, missing request tests, or accidental credential material.
 
@@ -82,10 +88,77 @@ These are transport boundaries for the follow-up workstreams, not endpoints impl
 | `POST /mandates`, mandate transitions | `Mandate` with `MandateStatus` |
 | `GET /.well-known/ucp` | `MerchantCapabilities` |
 | offer discovery | `OfferCandidate[]` |
-| `POST /merchant/checkouts` | `PurchaseIntent` → `NormalizedCheckout` |
-| checkout completion | `AuthorizedCheckout` → `OrderReceipt` |
+| `POST /ucp/v1/checkout` | `PurchaseIntent` → `NormalizedCheckout` |
+| `POST /ucp/v1/checkout/:id/complete` | `AuthorizedCheckout` → `OrderReceipt` |
 | `POST /verify` | `AgentRequestProof` + `NormalizedCheckout` → `AuthorizationDecision` / `ReservedAuthorization` |
 | `POST /authorizations/:id/pay` | `AuthorizedPayment` → `PaymentResult` |
 | receipt and audit reads | `OrderReceipt` / `AuditEvidence` |
 
 For example, a payment module receives the approved reference `{ "credential_id": "cred_demo_marta_visa", "display": "Visa •••• 4242" }` inside `AuthorizedPayment`; it never accepts a card number or provider-vault token through this contract.
+
+## VuelaYa UCP subset (BE-05)
+
+VuelaYa is the deterministic P0 merchant for principal Marta and agent TravelBot. It implements only the local normalized subset required by the flight demo, pinned to the UCP `2026-08-25` snapshot:
+
+- `dev.ucp.shopping.checkout`;
+- `dev.ucp.common.payment.ap2_mandate`, extending Checkout;
+- deterministic offer discovery, checkout creation/read, authorized completion and order receipt read;
+- merchant-authored `CheckoutTerms`, RFC 8785/JCS canonicalization, SHA-256 and a detached ES256 signature.
+
+This is not a claim of full UCP conformance. The public body at `/.well-known/ucp` intentionally validates against the frozen local `MerchantCapabilities` contract rather than reproducing the complete upstream business-profile schema. Its `Link` response header advertises the implemented local endpoints. The signed fixture retains `https://demo.vuelaya.example` as its stable merchant identity so the BE-01 checkout hash remains unchanged; all executable API calls use `http://localhost:3001`.
+
+### Routes
+
+| Method | Route | Contract / behavior |
+| --- | --- | --- |
+| `GET` | `/.well-known/ucp` | `MerchantCapabilities`; Checkout + AP2 and local endpoint links |
+| `GET` | `/merchant/flights` | `OfferCandidate[]`; one GRU → COR flight for USD 137 (`amount: 13700`) |
+| `POST` | `/ucp/v1/checkout` | strict `PurchaseIntent` → merchant-authored `NormalizedCheckout` |
+| `GET` | `/ucp/v1/checkout/:id` | reads a non-expired signed checkout |
+| `POST` | `/ucp/v1/checkout/:id/complete` | strict `AuthorizedCheckout` → idempotent `OrderReceipt` |
+| `GET` | `/ucp/v1/orders/:id` | reads the sanitized merchant receipt |
+
+Mutable routes require `Idempotency-Key`. Checkout creation and completion also require `UCP-Capabilities: dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate`; omitting AP2 is treated as a downgrade and fails closed. Every response carries `X-Correlation-Id`, and completion copies that correlation ID into `AuditEvidence`.
+
+### Sanitized local flow
+
+Start the API:
+
+```bash
+pnpm dev:backend
+```
+
+Discover the profile and offer:
+
+```bash
+curl -i http://localhost:3001/.well-known/ucp
+curl -i http://localhost:3001/merchant/flights
+```
+
+Create the frozen USD 137 checkout. The agent supplies intent and quantity, never price, items or total:
+
+```bash
+curl -i -X POST http://localhost:3001/ucp/v1/checkout \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: idem_readme_checkout_001' \
+  -H 'UCP-Capabilities: dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate' \
+  -d '{
+    "intent_id":"intent_travelbot_vy_471",
+    "agent_id":"agent_travelbot",
+    "merchant_id":"merchant_vuelaya",
+    "offer_id":"offer_vy_471_gru_cor",
+    "quantity":1,
+    "requested_at":"2026-08-29T12:01:00.000Z"
+  }'
+```
+
+The authoritative terms hash is `b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01`. Use the Postman collection for the complete request because it captures the runtime checkout signature and submits it with the sanitized `ReservedAuthorization` fixture before reading the resulting order.
+
+### Integrity, state and limitations
+
+- Checkout terms are validated with the strict v1 schema before canonicalization. Object-property order does not affect the RFC 8785/JCS hash; changing price, currency, route, item, merchant or expiry does.
+- The signer is available only through `SignerPort`. A P-256 keypair is generated in memory at process startup; no private key is exported, logged, stored or versioned. Restarting the process discards both the key and all in-memory merchant state.
+- The default application clock is the fixed demo instant `2026-08-29T12:04:01.000Z`, keeping the P0 fixture reproducible. Tests inject later clocks to prove offer, checkout and authorization expiry behavior. A production adapter must use an injected system clock and durable storage.
+- Completion requires a schema-valid `RESERVED` authorization bound to authorization ID, checkout ID/hash, merchant, amount and currency. A bare `ALLOW` declaration is rejected. One receipt is stored per checkout and authorization, so retries return the same object.
+- `payment_id` in the merchant receipt is a sanitized logical reference derived from the reserved authorization; VuelaYa never resolves a credential, invokes `PaymentExecutor`, calls Yuno or executes payment. Payment execution and durable authorization state remain downstream workstreams.
+- No PostgreSQL, external website, browser automation, mandate lifecycle, Bound Verify rules, Yuno integration or LLM is part of this module.
