@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { buildApp } from "../src/app.js";
 import {
   agentRequestProofFixture,
+  approvedPaymentFixture,
   authorizationDecisionSchema,
   canonicalizeJson,
   checkoutTermsFixture,
@@ -41,6 +42,7 @@ import {
   nonces,
   paymentCredentials,
   payments,
+  orders,
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
 import { MandateService } from "../src/modules/mandates/index.js";
@@ -49,7 +51,10 @@ import {
   PostgresAuditEventRepository,
   validateAuditChain,
 } from "../src/modules/ledger/index.js";
-import { FakePaymentExecutor } from "../src/modules/payments/index.js";
+import {
+  FakePaymentExecutor,
+  PostgresPaymentClaimStore,
+} from "../src/modules/payments/index.js";
 import { createTestAgentSigner } from "./support/agent-signing.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -336,12 +341,13 @@ type VerifyRequestInput = Parameters<VerifyScenario["sendVerify"]>[0];
 
 async function createPaymentScenario(
   t: { after(callback: () => Promise<void>): void },
+  outcome: "APPROVED" | "DECLINED" | "TIMEOUT" | "UNKNOWN" = "APPROVED",
 ) {
   assert.ok(testDatabaseUrl);
   assert.ok(database);
   await seedAuthorizationGraph();
   const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
+    outcome,
     occurredAt: "2026-08-29T12:04:02.000Z",
   });
   const app = await buildApp({
@@ -628,7 +634,7 @@ integrationTest("a duplicate agent nonce is rejected as replay", async () => {
   );
 });
 
-integrationTest("a duplicate payment idempotency key is rejected", async () => {
+integrationTest("a duplicate payment authorization or provider UUID is rejected", async () => {
   assert.ok(database);
   await seedAuthorizationGraph();
 
@@ -639,7 +645,7 @@ integrationTest("a duplicate payment idempotency key is rejected", async () => {
     amount: reservedAuthorizationFixture.reserved_amount.amount,
     currency: reservedAuthorizationFixture.reserved_amount.currency,
     correlationId: "corr_payment_001",
-    idempotencyKey: "idem_payment_authorization_001",
+    providerIdempotencyKey: "123e4567-e89b-42d3-a456-426614174000",
   };
 
   await database.db.insert(payments).values(paymentAttempt);
@@ -647,6 +653,38 @@ integrationTest("a duplicate payment idempotency key is rejected", async () => {
     database.db.insert(payments).values({
       ...paymentAttempt,
       paymentAttemptId: "payment_attempt_002",
+      providerIdempotencyKey: "123e4567-e89b-42d3-a456-426614174001",
+    }),
+    (error: unknown) => hasPostgresCode(error, "23505"),
+  );
+
+  const originalCheckout = (await database.db.select().from(checkouts))[0]!;
+  const secondCheckoutHash = sha256CanonicalJson({ checkout_id: "checkout_payment_constraint_002" });
+  await database.db.insert(checkouts).values({
+    ...originalCheckout,
+    checkoutId: "checkout_payment_constraint_002",
+    checkoutHash: secondCheckoutHash,
+    correlationId: "corr_payment_constraint_checkout_002",
+    idempotencyKey: "idem_payment_constraint_checkout_002",
+  });
+  const originalAuthorization = (await database.db.select().from(authorizations))[0]!;
+  await database.db.insert(authorizations).values({
+    ...originalAuthorization,
+    authorizationId: "authorization_payment_constraint_002",
+    checkoutId: "checkout_payment_constraint_002",
+    checkoutHash: secondCheckoutHash,
+    proofReference: "proof_payment_constraint_002",
+    proofHash: sha256CanonicalJson({ proof: 2 }),
+    requestHash: sha256CanonicalJson({ request: 2 }),
+    evidenceHash: sha256CanonicalJson({ evidence: 2 }),
+    correlationId: "corr_payment_constraint_authorization_002",
+    idempotencyKey: "idem_payment_constraint_authorization_002",
+  });
+  await assert.rejects(
+    database.db.insert(payments).values({
+      ...paymentAttempt,
+      paymentAttemptId: "payment_attempt_003",
+      authorizationId: "authorization_payment_constraint_002",
     }),
     (error: unknown) => hasPostgresCode(error, "23505"),
   );
@@ -1777,13 +1815,13 @@ integrationTest("a RESERVED authorization starts one persisted payment attempt",
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers["x-correlation-id"], "corr_pay_reserved_001");
   assert.equal(scenario.executor.callCount, 1);
-  assert.deepEqual(scenario.executor.calls, [{
-    authorization_id: reservedAuthorizationFixture.authorization_id,
-    idempotency_key: reservedAuthorizationFixture.authorization_id,
-  }]);
   const authorizationRows = await database.db.select().from(authorizations);
   const paymentRows = await database.db.select().from(payments);
-  assert.equal(authorizationRows[0]?.status, "PAYMENT_PENDING");
+  assert.deepEqual(scenario.executor.calls, [{
+    authorization_id: reservedAuthorizationFixture.authorization_id,
+    idempotency_key: paymentRows[0]?.providerIdempotencyKey,
+  }]);
+  assert.equal(authorizationRows[0]?.status, "CONSUMED");
   assert.equal(paymentRows.length, 1);
   assert.equal(paymentRows[0]?.authorizationId, reservedAuthorizationFixture.authorization_id);
   assert.equal(paymentRows[0]?.credentialId, mandateFixture.terms.credential_id);
@@ -1791,8 +1829,53 @@ integrationTest("a RESERVED authorization starts one persisted payment attempt",
   assert.equal(paymentRows[0]?.currency, reservedAuthorizationFixture.reserved_amount.currency);
   assert.equal(paymentRows[0]?.status, "APPROVED");
   assert.equal(paymentRows[0]?.correlationId, "corr_pay_reserved_001");
-  assert.equal(paymentRows[0]?.idempotencyKey, reservedAuthorizationFixture.authorization_id);
+  assert.match(paymentRows[0]?.providerIdempotencyKey ?? "", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.notEqual(paymentRows[0]?.providerIdempotencyKey, reservedAuthorizationFixture.authorization_id);
+  assert.equal((await database.db.select().from(orders)).length, 1);
+  const paymentEvents = await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.subjectId, reservedAuthorizationFixture.authorization_id));
+  assert.deepEqual(
+    paymentEvents.map(({ eventType }) => eventType).sort(),
+    ["payment.claimed", "payment.result_recorded"],
+  );
 });
+
+integrationTest("DECLINED finalizes the authorization as FAILED without an order", async (t) => {
+  assert.ok(database);
+  const scenario = await createPaymentScenario(t, "DECLINED");
+
+  const response = await scenario.sendPay("idem_pay_declined_001");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().status, "DECLINED");
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "FAILED");
+  assert.equal((await database.db.select().from(orders)).length, 0);
+});
+
+for (const outcome of ["TIMEOUT", "UNKNOWN"] as const) {
+  integrationTest(`${outcome} remains PAYMENT_PENDING and retry never executes again`, async (t) => {
+    assert.ok(database);
+    const scenario = await createPaymentScenario(t, outcome);
+
+    const first = await scenario.sendPay(`idem_pay_${outcome.toLowerCase()}_001`);
+    const repeated = await scenario.sendPay(`idem_pay_${outcome.toLowerCase()}_002`);
+
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.json().status, outcome);
+    assert.equal(repeated.statusCode, 200);
+    assert.deepEqual(repeated.json(), first.json());
+    assert.equal(scenario.executor.callCount, 1);
+    assert.equal((await database.db.select().from(authorizations))[0]?.status, "PAYMENT_PENDING");
+    assert.equal((await database.db.select().from(payments)).length, 1);
+    assert.equal((await database.db.select().from(orders)).length, 0);
+    assert.equal(
+      (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
+      1,
+    );
+  });
+}
 
 integrationTest("two sequential pay calls reuse one persisted result without executing twice", async (t) => {
   assert.ok(database);
@@ -1821,6 +1904,168 @@ integrationTest("concurrent pay calls execute at most once", async (t) => {
   assert.equal(responses.every(({ statusCode }) => statusCode === 200 || statusCode === 409), true);
   assert.equal(scenario.executor.callCount, 1);
   assert.equal((await database.db.select().from(payments)).length, 1);
+  assert.equal((await database.db.select().from(orders)).length, 1);
+  assert.equal(
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
+    1,
+  );
+  assert.equal(
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.claimed"))).length,
+    1,
+  );
+});
+
+integrationTest("reconciliation reuses the persisted provider UUID and applies one terminal result", async (t) => {
+  assert.ok(database);
+  const scenario = await createPaymentScenario(t, "TIMEOUT");
+  const pendingResponse = await scenario.sendPay("idem_pay_reconcile_timeout_001");
+  assert.equal(pendingResponse.statusCode, 200);
+
+  const store = new PostgresPaymentClaimStore(
+    database,
+    { now: () => new Date("2026-08-29T12:04:03.000Z") },
+  );
+  const attempt = await store.loadPendingAttempt(reservedAuthorizationFixture.authorization_id);
+  assert.equal(attempt.idempotency_key, scenario.executor.calls[0]?.idempotency_key);
+  await assert.rejects(
+    store.persistReconciledResult(
+      reservedAuthorizationFixture.authorization_id,
+      "123e4567-e89b-42d3-a456-426614174999",
+      approvedPaymentFixture,
+    ),
+    /idempotency key does not match/,
+  );
+
+  const approved = paymentResultSchema.parse({
+    ...approvedPaymentFixture,
+    authorization_id: reservedAuthorizationFixture.authorization_id,
+    amount: reservedAuthorizationFixture.reserved_amount,
+    payment_id: "payment_authorization_authorization_vy_471_001",
+    provider_reference: "fake_ref_authorization_vy_471_001",
+  });
+  const [first, duplicate] = await Promise.all([
+    store.persistResult(attempt.payment_attempt_id, approved),
+    store.persistResult(attempt.payment_attempt_id, approved),
+  ]);
+
+  assert.deepEqual(first, approved);
+  assert.deepEqual(duplicate, approved);
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "CONSUMED");
+  assert.equal((await database.db.select().from(orders)).length, 1);
+  assert.equal(
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "payment.result_recorded"))).length,
+    2,
+  );
+  await assert.rejects(
+    store.persistResult(attempt.payment_attempt_id, {
+      authorization_id: reservedAuthorizationFixture.authorization_id,
+      amount: reservedAuthorizationFixture.reserved_amount,
+      occurred_at: "2026-08-29T12:04:04.000Z",
+      status: "DECLINED",
+      decline_code: "late_divergent_decline",
+    }),
+    /conflicts with the result already persisted/,
+  );
+  assert.equal((await database.db.select().from(orders)).length, 1);
+});
+
+integrationTest("invalid authorization transitions and terminal regressions fail closed in PostgreSQL", async () => {
+  assert.ok(database);
+  await seedAuthorizationGraph();
+
+  await assert.rejects(
+    database.db
+      .update(authorizations)
+      .set({ status: "CONSUMED" })
+      .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id)),
+    (error: unknown) => hasPostgresCode(error, "23514"),
+  );
+  await database.db
+    .update(authorizations)
+    .set({ status: "PAYMENT_PENDING" })
+    .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
+  await database.db
+    .update(authorizations)
+    .set({ status: "FAILED" })
+    .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
+  await assert.rejects(
+    database.db
+      .update(authorizations)
+      .set({ status: "RESERVED" })
+      .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id)),
+    (error: unknown) => hasPostgresCode(error, "23514"),
+  );
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "FAILED");
+});
+
+integrationTest("an order audit failure rolls back result, terminal transition and order together", async (t) => {
+  assert.ok(administrationPool);
+  assert.ok(database);
+  const scenario = await createPaymentScenario(t);
+  await administrationPool.query(`
+    CREATE FUNCTION reject_payment_order_audit() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.event_type = 'order.confirmed' THEN
+        RAISE EXCEPTION 'forced order audit failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER reject_payment_order_audit_trigger
+      BEFORE INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION reject_payment_order_audit();
+  `);
+  t.after(async () => {
+    await administrationPool?.query(
+      "DROP TRIGGER IF EXISTS reject_payment_order_audit_trigger ON audit_events",
+    );
+    await administrationPool?.query("DROP FUNCTION IF EXISTS reject_payment_order_audit()");
+  });
+
+  const response = await scenario.sendPay("idem_pay_order_rollback_001");
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(scenario.executor.callCount, 1);
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "PAYMENT_PENDING");
+  assert.equal((await database.db.select().from(payments))[0]?.status, null);
+  assert.equal((await database.db.select().from(orders)).length, 0);
+  assert.deepEqual(
+    (await database.db.select().from(auditEvents)).map(({ eventType }) => eventType),
+    ["payment.claimed"],
+  );
+});
+
+integrationTest("a claim audit failure rolls back PAYMENT_PENDING and the attempt before executor I/O", async (t) => {
+  assert.ok(administrationPool);
+  assert.ok(database);
+  const scenario = await createPaymentScenario(t);
+  await administrationPool.query(`
+    CREATE FUNCTION reject_payment_claim_audit() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.event_type = 'payment.claimed' THEN
+        RAISE EXCEPTION 'forced payment claim audit failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER reject_payment_claim_audit_trigger
+      BEFORE INSERT ON audit_events
+      FOR EACH ROW EXECUTE FUNCTION reject_payment_claim_audit();
+  `);
+  t.after(async () => {
+    await administrationPool?.query(
+      "DROP TRIGGER IF EXISTS reject_payment_claim_audit_trigger ON audit_events",
+    );
+    await administrationPool?.query("DROP FUNCTION IF EXISTS reject_payment_claim_audit()");
+  });
+
+  const response = await scenario.sendPay("idem_pay_claim_rollback_001");
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(scenario.executor.callCount, 0);
+  assert.equal((await database.db.select().from(authorizations))[0]?.status, "RESERVED");
+  assert.equal((await database.db.select().from(payments)).length, 0);
+  assert.equal((await database.db.select().from(auditEvents)).length, 0);
 });
 
 integrationTest("missing and non-RESERVED authorizations never reach the executor", async (t) => {
@@ -1830,14 +2075,18 @@ integrationTest("missing and non-RESERVED authorizations never reach the executo
   const missing = await scenario.sendPay("idem_pay_missing_001", "authorization_missing");
   assert.equal(missing.statusCode, 404);
 
-  for (const status of ["PAYMENT_PENDING", "CONSUMED", "FAILED", "CANCELLED"] as const) {
-    await database.db
-      .update(authorizations)
-      .set({ status })
-      .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
-    const response = await scenario.sendPay(`idem_pay_invalid_${status.toLowerCase()}`);
-    assert.equal(response.statusCode, 409, status);
-  }
+  await database.db
+    .update(authorizations)
+    .set({ status: "PAYMENT_PENDING" })
+    .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
+  const pending = await scenario.sendPay("idem_pay_invalid_payment_pending");
+  assert.equal(pending.statusCode, 409);
+  await database.db
+    .update(authorizations)
+    .set({ status: "CONSUMED" })
+    .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
+  const consumed = await scenario.sendPay("idem_pay_invalid_consumed");
+  assert.equal(consumed.statusCode, 409);
   assert.equal(scenario.executor.callCount, 0);
   assert.equal((await database.db.select().from(payments)).length, 0);
 });
@@ -1971,15 +2220,6 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
     reserved_at: row.reservedAt.toISOString(),
     expires_at: row.expiresAt.toISOString(),
   });
-  const paymentResponse = await scenario.app.inject({
-    method: "POST",
-    url: `/authorizations/${row.authorizationId}/pay`,
-    headers: { "idempotency-key": "idem_pay_completion_execute_001" },
-    payload: {},
-  });
-  const payment = paymentResultSchema.parse(paymentResponse.json());
-  assert.equal(payment.status, "APPROVED");
-
   const completionRequest = {
     method: "POST" as const,
     url: `/ucp/v1/checkout/${scenario.checkout.terms.checkout_id}/complete`,
@@ -1989,13 +2229,27 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
     },
     payload: { checkout: scenario.checkout, authorization },
   };
+  const premature = await scenario.app.inject(completionRequest);
+  assert.equal(premature.statusCode, 409);
+  assert.equal((await database.db.select().from(orders)).length, 0);
+
+  const paymentResponse = await scenario.app.inject({
+    method: "POST",
+    url: `/authorizations/${row.authorizationId}/pay`,
+    headers: { "idempotency-key": "idem_pay_completion_execute_001" },
+    payload: {},
+  });
+  const payment = paymentResultSchema.parse(paymentResponse.json());
+  assert.equal(payment.status, "APPROVED");
+
   const completed = await scenario.app.inject(completionRequest);
   const repeated = await scenario.app.inject(completionRequest);
 
-  assert.equal(completed.statusCode, 201);
+  assert.equal(completed.statusCode, 200);
   assert.equal(repeated.statusCode, 200);
   assert.deepEqual(repeated.json(), completed.json());
   assert.equal(completed.json().payment_id, payment.payment_id);
   assert.equal(executor.callCount, 1);
   assert.equal((await database.db.select().from(payments)).length, 1);
+  assert.equal((await database.db.select().from(orders)).length, 1);
 });

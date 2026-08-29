@@ -7,6 +7,7 @@ import {
   approvedPaymentFixture,
   authorizedPaymentFixture,
   paymentResultSchema,
+  type PaymentExecutor,
   type PaymentResult,
 } from "../src/contracts/v1/index.js";
 import {
@@ -14,6 +15,8 @@ import {
   PaymentService,
   type PaymentClaimStore,
 } from "../src/modules/payments/index.js";
+
+const providerIdempotencyKey = "123e4567-e89b-42d3-a456-426614174000";
 
 test("POST /authorizations/:id/pay executes an injected payment executor", async (t) => {
   const executor = new FakePaymentExecutor({
@@ -25,7 +28,7 @@ test("POST /authorizations/:id/pay executes an injected payment executor", async
     claim: async () => ({
       kind: "CLAIMED",
       payment_attempt_id: "payment_attempt_route_001",
-      idempotency_key: authorizedPaymentFixture.authorization.authorization_id,
+      idempotency_key: providerIdempotencyKey,
       payment: authorizedPaymentFixture,
     }),
     persistResult: async (_paymentAttemptId, result) => {
@@ -63,7 +66,7 @@ test("POST /authorizations/:id/pay executes an injected payment executor", async
   assert.deepEqual(persistedResult, expected);
   assert.deepEqual(executor.calls, [{
     authorization_id: authorizedPaymentFixture.authorization.authorization_id,
-    idempotency_key: authorizedPaymentFixture.authorization.authorization_id,
+    idempotency_key: providerIdempotencyKey,
   }]);
 });
 
@@ -100,6 +103,66 @@ test("payment route accepts no caller-authored payment authority", async (t) => 
   assert.equal(executor.callCount, 0);
 });
 
+test("an invalid persisted provider idempotency key fails before executor I/O", async () => {
+  const executor = new FakePaymentExecutor({
+    outcome: "APPROVED",
+    occurredAt: approvedPaymentFixture.occurred_at,
+  });
+  const service = new PaymentService({
+    claim: async () => ({
+      kind: "CLAIMED",
+      payment_attempt_id: "payment_attempt_invalid_provider_key",
+      idempotency_key: authorizedPaymentFixture.authorization.authorization_id,
+      payment: authorizedPaymentFixture,
+    }),
+    persistResult: async () => assert.fail("an invalid provider key must not persist a result"),
+  }, executor);
+
+  await assert.rejects(
+    service.pay(
+      authorizedPaymentFixture.authorization.authorization_id,
+      authorizedPaymentFixture.correlation_id,
+    ),
+  );
+  assert.equal(executor.callCount, 0);
+});
+
+test("a divergent executor result remains unpersisted and fails closed", async () => {
+  let persisted = false;
+  const executor: PaymentExecutor = {
+    async pay() {
+      return {
+        ...approvedPaymentFixture,
+        amount: {
+          ...approvedPaymentFixture.amount,
+          amount: approvedPaymentFixture.amount.amount + 1,
+        },
+      };
+    },
+  };
+  const service = new PaymentService({
+    claim: async () => ({
+      kind: "CLAIMED",
+      payment_attempt_id: "payment_attempt_divergent_result",
+      idempotency_key: providerIdempotencyKey,
+      payment: authorizedPaymentFixture,
+    }),
+    persistResult: async (_paymentAttemptId, result) => {
+      persisted = true;
+      return result;
+    },
+  }, executor);
+
+  await assert.rejects(
+    service.pay(
+      authorizedPaymentFixture.authorization.authorization_id,
+      authorizedPaymentFixture.correlation_id,
+    ),
+    /does not match its persisted authorization/,
+  );
+  assert.equal(persisted, false);
+});
+
 test("payment logs contain no credential display or reusable payment material", async (t) => {
   const chunks: string[] = [];
   const stream = new Writable({
@@ -117,7 +180,7 @@ test("payment logs contain no credential display or reusable payment material", 
     claim: async () => ({
       kind: "CLAIMED",
       payment_attempt_id: "payment_attempt_logs_001",
-      idempotency_key: authorizedPaymentFixture.authorization.authorization_id,
+      idempotency_key: providerIdempotencyKey,
       payment: {
         ...authorizedPaymentFixture,
         credential: {

@@ -35,6 +35,7 @@ import {
   type VerifyRequestBody,
 } from "./modules/verify/index.js";
 import { verifyCheckoutIntegrity, VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
+import { PostgresVuelaYaOrderStore } from "./modules/vuelaya/order-store.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
 import { healthRoutes } from "./routes/health.js";
@@ -141,7 +142,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     });
   }
   const merchant = new VuelaYaMerchant(signer, clock);
-  await app.register(vuelaYaRoutes, { merchant });
+  await app.register(vuelaYaRoutes, {
+    merchant,
+    ...(database === undefined ? {} : { orders: new PostgresVuelaYaOrderStore(database.db) }),
+  });
   let mandateService: MandateService | undefined;
   if (database !== undefined && ledger !== undefined) {
     mandateService = new MandateService(database, signer, clock, ledger);
@@ -191,7 +195,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const paymentService = options.paymentService
     ?? (database === undefined
       ? undefined
-      : new PaymentService(new PostgresPaymentClaimStore(database, clock), paymentExecutor));
+      : new PaymentService(new PostgresPaymentClaimStore(database, clock, ledger), paymentExecutor));
   if (paymentService !== undefined) {
     await app.register(paymentRoutes, { service: paymentService });
   }

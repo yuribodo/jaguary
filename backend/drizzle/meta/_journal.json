@@ -36,6 +36,13 @@
       "when": 1788037258767,
       "tag": "0004_zippy_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788039343603,
+      "tag": "0005_typical_zaladane",
+      "breakpoints": true
     }
   ]
 }
