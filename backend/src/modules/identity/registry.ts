@@ -42,6 +42,18 @@ function toIdentity(row: AgentRow): AgentIdentity {
   });
 }
 
+export async function loadAgentIdentity(
+  database: DatabaseClient,
+  agentId: string,
+): Promise<AgentIdentity | undefined> {
+  const rows = await database
+    .select()
+    .from(agents)
+    .where(eq(agents.agentId, agentId))
+    .limit(1);
+  return rows[0] === undefined ? undefined : toIdentity(rows[0]);
+}
+
 function matchesRegistration(identity: AgentIdentity, registration: AgentRegistration): boolean {
   const storedRegistration: AgentRegistration = {
     agent_id: identity.agent_id,
@@ -117,11 +129,6 @@ export class DrizzleAgentIdentityRegistry implements AgentIdentityRegistryPort {
   }
 
   async get(agentId: string): Promise<AgentIdentity | undefined> {
-    const rows = await this.database
-      .select()
-      .from(agents)
-      .where(eq(agents.agentId, agentId))
-      .limit(1);
-    return rows[0] === undefined ? undefined : toIdentity(rows[0]);
+    return loadAgentIdentity(this.database, agentId);
   }
 }
