@@ -1,0 +1,37 @@
+name: bound
+
+services:
+  postgres-dev:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: bound_dev
+      POSTGRES_USER: bound_dev
+      POSTGRES_PASSWORD: bound_dev_local
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bound_dev -d bound_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+
+  postgres-test:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: bound_test
+      POSTGRES_USER: bound_test
+      POSTGRES_PASSWORD: bound_test_local
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bound_test -d bound_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    tmpfs:
+      - /var/lib/postgresql/data
+
+volumes:
+  postgres-dev-data:

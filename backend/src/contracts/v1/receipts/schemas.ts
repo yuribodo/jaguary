@@ -24,6 +24,10 @@ export const auditEvidenceSchema = z
 
 export type AuditEvidence = z.infer<typeof auditEvidenceSchema>;
 
+export const orderStatusSchema = z.enum(["CONFIRMED", "CANCELLED"]);
+
+export type OrderStatus = z.infer<typeof orderStatusSchema>;
+
 export const orderReceiptSchema = z
   .object({
     receipt_id: identifierSchema,
@@ -32,7 +36,7 @@ export const orderReceiptSchema = z
     authorization_id: identifierSchema,
     payment_id: identifierSchema,
     merchant_id: identifierSchema,
-    status: z.enum(["CONFIRMED", "CANCELLED"]),
+    status: orderStatusSchema,
     items: z.array(commerceItemSchema).min(1),
     total: moneySchema,
     fulfillment: flightFulfillmentSchema,

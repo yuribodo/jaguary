@@ -7,19 +7,27 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:test": "tsx src/db/migrate.ts --test",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/**/*.test.ts"
+    "test": "tsx --test test/**/*.test.ts",
+    "test:integration": "tsx --test test/database.integration.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "11.3.0",
     "dotenv": "17.4.2",
+    "drizzle-orm": "0.45.2",
     "fastify": "5.12.1",
+    "pg": "8.23.0",
     "zod": "4.5.2"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@types/node": "20.19.43",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.10",
     "eslint": "9.39.5",
     "tsx": "4.23.12",
     "typescript": "5.9.3",

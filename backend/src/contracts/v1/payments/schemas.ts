@@ -33,10 +33,14 @@ const paymentResultBase = {
   occurred_at: utcRfc3339Schema,
 };
 
+export const paymentResultStatusSchema = z.enum(["APPROVED", "DECLINED", "TIMEOUT", "UNKNOWN"]);
+
+export type PaymentResultStatus = z.infer<typeof paymentResultStatusSchema>;
+
 export const approvedPaymentResultSchema = z
   .object({
     ...paymentResultBase,
-    status: z.literal("APPROVED"),
+    status: z.literal(paymentResultStatusSchema.enum.APPROVED),
     payment_id: identifierSchema,
     provider_reference: identifierSchema.optional(),
   })
@@ -45,7 +49,7 @@ export const approvedPaymentResultSchema = z
 export const declinedPaymentResultSchema = z
   .object({
     ...paymentResultBase,
-    status: z.literal("DECLINED"),
+    status: z.literal(paymentResultStatusSchema.enum.DECLINED),
     payment_id: identifierSchema.optional(),
     decline_code: z.string().min(1).max(128),
   })
@@ -54,14 +58,14 @@ export const declinedPaymentResultSchema = z
 export const timeoutPaymentResultSchema = z
   .object({
     ...paymentResultBase,
-    status: z.literal("TIMEOUT"),
+    status: z.literal(paymentResultStatusSchema.enum.TIMEOUT),
   })
   .strict();
 
 export const unknownPaymentResultSchema = z
   .object({
     ...paymentResultBase,
-    status: z.literal("UNKNOWN"),
+    status: z.literal(paymentResultStatusSchema.enum.UNKNOWN),
     payment_id: identifierSchema.optional(),
   })
   .strict();
