@@ -43,6 +43,13 @@
       "when": 1788039343603,
       "tag": "0005_typical_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788041736364,
+      "tag": "0006_large_fallen_one",
+      "breakpoints": true
     }
   ]
 }

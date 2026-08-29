@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, or, sql } from "drizzle-orm";
 
 import type { DatabaseClient } from "../../db/database.js";
-import { auditEvents } from "../../db/schema.js";
+import { auditEvents, authorizations, orders, payments } from "../../db/schema.js";
 
-import { calculateEventHash } from "./hash-chain.js";
+import { calculateEventHash, orderAuditChain, validateAuditChain } from "./hash-chain.js";
 import type { AuditEventRepository } from "./ports.js";
 import {
   isLedgerEventType,
@@ -52,7 +52,27 @@ export class PostgresAuditEventRepository implements AuditEventRepository {
       .from(auditEvents)
       .where(eq(auditEvents.subjectId, event.subjectId)))
       .map(storedEvent);
-    const previousHash = findUniqueTip(existing)?.eventHash ?? null;
+    const ordered = orderAuditChain(existing);
+    if (!validateAuditChain(ordered).valid) throw new Error("Audit chain validation failed before append");
+    if (event.deduplicationKey !== undefined) {
+      const replay = (await database
+        .select()
+        .from(auditEvents)
+        .where(eq(auditEvents.deduplicationKey, event.deduplicationKey))
+        .limit(1))[0];
+      if (replay !== undefined) {
+        const stored = storedEvent(replay);
+        if (
+          stored.subjectId !== event.subjectId
+          || stored.eventType !== event.eventType
+          || stored.payloadHash !== event.payloadHash
+        ) {
+          throw new Error("Audit deduplication key was reused with different evidence");
+        }
+        return stored;
+      }
+    }
+    const previousHash = findUniqueTip(ordered)?.eventHash ?? null;
     const candidate: StoredAuditEvent = {
       ...event,
       eventId: `event_${randomUUID()}`,
@@ -69,6 +89,7 @@ export class PostgresAuditEventRepository implements AuditEventRepository {
       payloadHash: candidate.payloadHash,
       previousHash: candidate.previousHash,
       eventHash: candidate.eventHash,
+      deduplicationKey: event.deduplicationKey,
       recordedAt: candidate.recordedAt,
     }).returning())[0];
     if (inserted === undefined) throw new Error("Audit event insert returned no row");
@@ -80,6 +101,43 @@ export class PostgresAuditEventRepository implements AuditEventRepository {
       .select()
       .from(auditEvents)
       .where(eq(auditEvents.correlationId, correlationId))
+      .orderBy(asc(auditEvents.recordedAt), asc(auditEvents.eventId));
+    return rows.map(storedEvent);
+  }
+
+  async findBySubjectId(subjectId: string): Promise<StoredAuditEvent[]> {
+    const rows = await this.database
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.subjectId, subjectId))
+      .orderBy(asc(auditEvents.recordedAt), asc(auditEvents.eventId));
+    return rows.map(storedEvent);
+  }
+
+  async findTimelineEvents(correlationId: string): Promise<StoredAuditEvent[]> {
+    const directSubjects = await this.database
+      .select({ subjectId: auditEvents.subjectId })
+      .from(auditEvents)
+      .where(eq(auditEvents.correlationId, correlationId));
+    const relatedAuthorizations = await this.database
+      .select({ authorizationId: authorizations.authorizationId })
+      .from(authorizations)
+      .leftJoin(payments, eq(payments.authorizationId, authorizations.authorizationId))
+      .leftJoin(orders, eq(orders.authorizationId, authorizations.authorizationId))
+      .where(or(
+        eq(authorizations.correlationId, correlationId),
+        eq(payments.correlationId, correlationId),
+        eq(orders.correlationId, correlationId),
+      ));
+    const subjectIds = [...new Set([
+      ...directSubjects.map(({ subjectId }) => subjectId),
+      ...relatedAuthorizations.map(({ authorizationId }) => authorizationId),
+    ])];
+    if (subjectIds.length === 0) return [];
+    const rows = await this.database
+      .select()
+      .from(auditEvents)
+      .where(inArray(auditEvents.subjectId, subjectIds))
       .orderBy(asc(auditEvents.recordedAt), asc(auditEvents.eventId));
     return rows.map(storedEvent);
   }

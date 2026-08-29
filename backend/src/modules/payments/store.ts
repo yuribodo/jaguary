@@ -265,33 +265,42 @@ async function appendPaymentResultEvent(
   ledger: AuditLedgerPort,
   database: DatabaseClient,
   payment: PaymentRow,
+  authorization: AuthorizationRow,
   result: PaymentResult,
-  nextStatus: ReturnType<typeof authorizationStatusFor>,
   now: Date,
 ): Promise<void> {
+  const eventType = {
+    APPROVED: "payment.approved",
+    DECLINED: "payment.declined",
+    TIMEOUT: "payment.timeout",
+    UNKNOWN: "payment.unknown",
+  } as const;
   await ledger.append(database, {
-    correlationId: payment.correlationId,
-    eventType: "payment.result_recorded",
+    correlationId: authorization.correlationId,
+    eventType: eventType[result.status],
     subjectId: payment.authorizationId,
     payload: {
+      principal_id: authorization.principalId,
+      agent_id: authorization.agentId,
+      mandate_id: authorization.mandateId,
+      checkout_id: authorization.checkoutId,
       payment_attempt_id: payment.paymentAttemptId,
       authorization_id: payment.authorizationId,
-      provider_idempotency_key: payment.providerIdempotencyKey,
-      result_status: result.status,
-      from_status: "PAYMENT_PENDING",
-      to_status: nextStatus,
+      status: result.status,
       ...("payment_id" in result && result.payment_id !== undefined
         ? { payment_id: result.payment_id }
         : {}),
       ...("provider_reference" in result && result.provider_reference !== undefined
-        ? { provider_reference: result.provider_reference }
+        ? { provider_reference_hash: sha256CanonicalJson({ provider_reference: result.provider_reference }) }
         : {}),
       ...("decline_code" in result ? { decline_code: result.decline_code } : {}),
       amount: result.amount,
       occurred_at: result.occurred_at,
-      recorded_at: now.toISOString(),
-    },
+      request_correlation_id: payment.correlationId,
+      payment_executor_called: true,
+    } as never,
     recordedAt: now,
+    deduplicationKey: `payment-result:${payment.paymentAttemptId}:${result.status}`,
   });
 }
 
@@ -310,24 +319,34 @@ async function createApprovedOrder(
     .limit(1))[0];
   if (checkout === undefined) throw new Error("Approved payment checkout does not exist");
   const orderId = stableIdentifier("order", authorization.authorizationId);
+  const receiptId = stableIdentifier("receipt", authorization.authorizationId);
   const orderEvent = await ledger.append(database, {
-    correlationId: payment.correlationId,
+    correlationId: authorization.correlationId,
     eventType: "order.confirmed",
-    subjectId: orderId,
+    subjectId: authorization.authorizationId,
     payload: {
-      order_id: orderId,
+      principal_id: authorization.principalId,
+      agent_id: authorization.agentId,
+      mandate_id: authorization.mandateId,
       checkout_id: checkout.checkoutId,
       authorization_id: authorization.authorizationId,
+      payment_attempt_id: payment.paymentAttemptId,
       payment_id: result.payment_id,
+      order_id: orderId,
+      receipt_id: receiptId,
       merchant_id: checkout.merchantId,
+      status: "CONFIRMED",
       total: { amount: checkout.totalAmount, currency: checkout.currency },
-      confirmed_at: now.toISOString(),
+      issued_at: now.toISOString(),
+      request_correlation_id: payment.correlationId,
+      payment_executor_called: true,
     },
     recordedAt: now,
+    deduplicationKey: `order:${authorization.authorizationId}`,
   });
   await database.insert(orders).values({
     orderId,
-    receiptId: stableIdentifier("receipt", authorization.authorizationId),
+    receiptId,
     checkoutId: checkout.checkoutId,
     authorizationId: authorization.authorizationId,
     paymentId: result.payment_id,
@@ -445,19 +464,23 @@ export class PostgresPaymentClaimStore implements PaymentClaimStore, PaymentReco
         updatedAt: now,
       });
       await this.#ledger.append(transaction, {
-        correlationId,
-        eventType: "payment.claimed",
+        correlationId: authorization.correlationId,
+        eventType: "payment.attempt_started",
         subjectId: authorizationId,
         payload: {
+          principal_id: authorization.principalId,
+          agent_id: authorization.agentId,
+          mandate_id: authorization.mandateId,
+          checkout_id: authorization.checkoutId,
           payment_attempt_id: paymentAttemptId,
           authorization_id: authorizationId,
-          provider_idempotency_key: providerIdempotencyKey,
-          from_status: "RESERVED",
-          to_status: "PAYMENT_PENDING",
           amount: { amount: authorization.reservedAmount, currency: authorization.currency },
-          claimed_at: now.toISOString(),
+          started_at: now.toISOString(),
+          request_correlation_id: correlationId,
+          payment_executor_called: false,
         },
         recordedAt: now,
+        deduplicationKey: `payment-attempt:${paymentAttemptId}`,
       });
       return {
         kind: "CLAIMED",
@@ -518,8 +541,8 @@ export class PostgresPaymentClaimStore implements PaymentClaimStore, PaymentReco
         this.#ledger,
         transaction,
         payment,
+        authorization,
         parsed,
-        nextAuthorizationStatus,
         now,
       );
       if (parsed.status === "APPROVED") {

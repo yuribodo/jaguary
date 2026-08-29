@@ -1,6 +1,7 @@
 import type { DatabaseClient } from "../../db/database.js";
+import { PublicApiError } from "../../contracts/v1/index.js";
 
-import { calculatePayloadHash } from "./hash-chain.js";
+import { calculatePayloadHash, orderAuditChain, validateAuditChain } from "./hash-chain.js";
 import type { AuditEventRepository, AuditLedgerPort } from "./ports.js";
 import { auditTimelineSchema, sanitizeLedgerPayload, type AuditTimeline } from "./schemas.js";
 import type { AuditAppendInput, StoredAuditEvent } from "./types.js";
@@ -36,21 +37,31 @@ export class AuditLedgerService implements AuditLedgerPort {
       sanitizedPayload,
       payloadHash: calculatePayloadHash(sanitizedPayload),
       recordedAt: input.recordedAt,
+      deduplicationKey: input.deduplicationKey,
     });
   }
 
   async getTimeline(correlationId: string): Promise<AuditTimeline> {
-    const events = await this.repository.findByCorrelationId(correlationId);
+    const events = await this.repository.findTimelineEvents(correlationId);
+    if (events.length === 0) {
+      throw new PublicApiError(404, "not_found", "Audit timeline not found");
+    }
     const positions = chainPositions(events);
     events.sort((left, right) => {
-      const timeDifference = left.recordedAt.getTime() - right.recordedAt.getTime();
-      if (timeDifference !== 0) return timeDifference;
       if (left.subjectId === right.subjectId) {
         const positionDifference = (positions.get(left.eventHash) ?? 0) - (positions.get(right.eventHash) ?? 0);
         if (positionDifference !== 0) return positionDifference;
       }
+      const timeDifference = left.recordedAt.getTime() - right.recordedAt.getTime();
+      if (timeDifference !== 0) return timeDifference;
       return left.eventId.localeCompare(right.eventId);
     });
+    for (const subjectId of new Set(events.map((event) => event.subjectId))) {
+      const chain = orderAuditChain(events.filter((event) => event.subjectId === subjectId));
+      if (!validateAuditChain(chain).valid) {
+        throw new Error("Audit chain validation failed");
+      }
+    }
     return auditTimelineSchema.parse({
       correlation_id: correlationId,
       events: events.map((event) => ({
@@ -65,5 +76,11 @@ export class AuditLedgerService implements AuditLedgerPort {
         recorded_at: event.recordedAt.toISOString(),
       })),
     });
+  }
+
+  async validateSubject(subjectId: string): Promise<StoredAuditEvent[]> {
+    const events = orderAuditChain(await this.repository.findBySubjectId(subjectId));
+    if (!validateAuditChain(events).valid) throw new Error("Audit chain validation failed");
+    return events;
   }
 }

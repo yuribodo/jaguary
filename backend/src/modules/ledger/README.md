@@ -23,6 +23,8 @@ Hashes use the repository's RFC 8785 JSON Canonicalization Scheme implementation
 }
 ```
 
-Chains are scoped by `subject_id`. Mandate lifecycle and pre-authorization decisions use the mandate ID because no authorization exists for a denied request. A successful reservation starts an authorization-ID chain. Before reading the tip and inserting, the repository obtains a transaction-scoped PostgreSQL advisory lock derived from the subject ID. This serializes concurrent appends and prevents two committed tips.
+Chains are scoped by `subject_id`. Mandate lifecycle and pre-authorization decisions use the mandate ID because no authorization exists for a denied request. A successful reservation, its payment attempts/results and its order use one authorization-ID chain. Before reading the tip and inserting, the repository obtains a transaction-scoped PostgreSQL advisory lock derived from the subject ID, reconstructs and validates the existing chain, then appends. This serializes concurrent writes and prevents two committed tips.
 
-The timeline is filtered by `correlation_id` and ordered by `recorded_at`, then causal linkage for same-subject ties, then `event_id`. The event ID gives a stable total order for unrelated events with identical timestamps.
+The timeline resolves a supplied Verify or Pay correlation ID to related authorization subjects, loads each complete subject chain and validates `payload_hash`, `previous_hash` and `event_hash`. Same-subject events are always ordered by causal links; unrelated subjects are ordered by `recorded_at` and then `event_id`. Missing or invalid chains fail closed instead of returning partial evidence.
+
+Decision, payment-result and order events use unique internal deduplication keys. Retries return existing evidence rather than creating a second terminal event. Public payloads expose explicit `payment_executor_called` booleans and only logical IDs, authorized values, hashes and masked/hashed references.

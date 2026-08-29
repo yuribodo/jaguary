@@ -40,6 +40,11 @@
       "key": "orderId",
       "value": "order_authorization_vy_471_001",
       "type": "string"
+    },
+    {
+      "key": "receiptId",
+      "value": "receipt_authorization_vy_471_001",
+      "type": "string"
     }
   ],
   "event": [
@@ -524,7 +529,7 @@
           ]
         },
         {
-          "name": "Complete authorized checkout",
+          "name": "Reject completion without approved payment",
           "request": {
             "method": "POST",
             "header": [
@@ -559,7 +564,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout", "{{checkoutId}}", "complete"]
             },
-            "description": "Completes only with a schema-valid, checkout-bound RESERVED authorization; VuelaYa does not execute payment."
+            "description": "Completion fails closed unless PostgreSQL contains the matching authorization and approved payment."
           },
           "response": [],
           "event": [
@@ -568,13 +573,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Authorized completion creates one sanitized receipt\", function () {",
-                  "  pm.response.to.have.status(201);",
-                  "  const receipt = pm.response.json();",
-                  "  pm.expect(receipt.checkout_id).to.equal(pm.collectionVariables.get(\"checkoutId\"));",
-                  "  pm.expect(receipt.authorization_id).to.equal(\"authorization_vy_471_001\");",
-                  "  pm.expect(receipt.evidence.correlation_id).to.equal(pm.collectionVariables.get(\"correlationId\"));",
-                  "  pm.collectionVariables.set(\"orderId\", receipt.order_id);",
+                  "pm.test(\"Completion fails closed without persisted authority and payment\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -600,9 +601,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Order receipt is readable\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().order_id).to.equal(pm.collectionVariables.get(\"orderId\"));",
+                  "pm.test(\"Missing order uses a sanitized public error\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -762,6 +763,67 @@
                   "  pm.response.to.have.status(404);",
                   "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.equal(pm.collectionVariables.get(\"correlationId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Audit and receipts",
+      "item": [
+        {
+          "name": "Read missing receipt",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/receipts/{{receiptId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["receipts", "{{receiptId}}"]
+            },
+            "description": "Reads a persisted sanitized OrderReceipt by receipt_id; this clean-DB example proves the public not_found envelope."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Missing receipt fails safely\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read missing audit timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audit/{{correlationId}}-missing",
+              "host": ["{{baseUrl}}"],
+              "path": ["audit", "{{correlationId}}-missing"]
+            },
+            "description": "Reads a validated full-flow timeline by any correlated Verify, Pay or completion correlation ID."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Missing audit timeline fails safely\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }

@@ -18,6 +18,7 @@ import {
   auditRoutes,
   AuditLedgerService,
   PostgresAuditEventRepository,
+  PostgresReceiptStore,
 } from "./modules/ledger/index.js";
 import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
 import {
@@ -35,7 +36,6 @@ import {
   type VerifyRequestBody,
 } from "./modules/verify/index.js";
 import { verifyCheckoutIntegrity, VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
-import { PostgresVuelaYaOrderStore } from "./modules/vuelaya/order-store.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
 import { healthRoutes } from "./routes/health.js";
@@ -141,10 +141,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
       verifier: agentVerifier,
     });
   }
+  const receiptStore = database === undefined || ledger === undefined
+    ? undefined
+    : new PostgresReceiptStore(database, ledger);
   const merchant = new VuelaYaMerchant(signer, clock);
   await app.register(vuelaYaRoutes, {
     merchant,
-    ...(database === undefined ? {} : { orders: new PostgresVuelaYaOrderStore(database.db) }),
+    ...(receiptStore === undefined ? {} : { orders: receiptStore }),
   });
   let mandateService: MandateService | undefined;
   if (database !== undefined && ledger !== undefined) {
@@ -186,7 +189,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await app.register(verifyRoutes, { orchestrator: verifyOrchestrator });
   }
   if (ledger !== undefined) {
-    await app.register(auditRoutes, { ledger });
+    await app.register(auditRoutes, { ledger, receipts: receiptStore });
   }
   const paymentExecutor = options.paymentExecutor ?? new FakePaymentExecutor({
     outcome: "APPROVED",

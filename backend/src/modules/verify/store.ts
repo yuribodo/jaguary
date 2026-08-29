@@ -16,12 +16,15 @@ import {
 import type { DatabaseClient, DatabaseConnection } from "../../db/database.js";
 import {
   authorizations,
+  auditEvents,
   checkouts,
   nonces,
 } from "../../db/schema.js";
 import { loadAgentIdentity } from "../identity/registry.js";
 import {
   AuditLedgerService,
+  isLedgerEventType,
+  ledgerPayloadSchemas,
   PostgresAuditEventRepository,
   type AuditLedgerPort,
 } from "../ledger/index.js";
@@ -37,6 +40,15 @@ import type {
 import { evaluate } from "./policy.js";
 
 const CAPACITY_STATUSES = ["PAYMENT_PENDING", "CONSUMED"] as const;
+const DECISION_AUDIT_TYPES = [
+  "authorization.denied",
+  "authorization.replay_detected",
+  "authorization.escalated",
+] as const;
+
+function isDecisionAuditType(value: string): value is (typeof DECISION_AUDIT_TYPES)[number] {
+  return DECISION_AUDIT_TYPES.some((eventType) => eventType === value);
+}
 
 function decisionFrom(
   evaluation: PolicyEvaluation,
@@ -148,6 +160,42 @@ async function idempotentDecision(
   return decisionFromAuthorization(row);
 }
 
+async function idempotentAuditedDecision(
+  database: DatabaseClient,
+  command: ReservationInspectionCommand,
+): Promise<AuthorizationDecision | undefined> {
+  const row = (await database
+    .select({ eventType: auditEvents.eventType, payload: auditEvents.sanitizedPayload })
+    .from(auditEvents)
+    .where(eq(auditEvents.deduplicationKey, `verify:${command.idempotency_key}`))
+    .limit(1))[0];
+  if (
+    row === undefined
+    || !isLedgerEventType(row.eventType)
+    || !isDecisionAuditType(row.eventType)
+  ) return undefined;
+  const parsed = ledgerPayloadSchemas[row.eventType].safeParse(row.payload);
+  if (!parsed.success || !("decision" in parsed.data)) {
+    throw new Error("Stored decision audit payload is invalid");
+  }
+  if (
+    parsed.data.request_hash !== command.request_hash
+    || parsed.data.proof_payload_hash !== command.request.proof.payload_hash
+  ) {
+    throw new PublicApiError(
+      409,
+      "idempotency_conflict",
+      "Idempotency-Key was already used with a different Bound Verify request",
+    );
+  }
+  return authorizationDecisionSchema.parse({
+    decision: parsed.data.decision,
+    reasons: parsed.data.reasons,
+    policy_version: parsed.data.policy_version,
+    evidence_hash: parsed.data.evidence_hash,
+  });
+}
+
 function checkoutFromRow(row: typeof checkouts.$inferSelect): NormalizedCheckout {
   return normalizedCheckoutSchema.parse({
     terms: {
@@ -233,11 +281,14 @@ async function appendDecisionAudit(
   const payload = {
     mandate_id: authorization.mandate_id,
     checkout_id: checkout.terms.checkout_id,
+    principal_id: authorization.principal_id,
     agent_id: authorization.agent_id,
     decision: evaluation.decision,
     reasons: evaluation.reasons,
     policy_version: evaluation.policy_version,
     evidence_hash: sha256CanonicalJson(evaluation),
+    request_hash: command.request_hash,
+    proof_payload_hash: command.request.proof.payload_hash,
     decided_at: command.now.toISOString(),
     payment_executor_called: false as const,
   };
@@ -248,6 +299,7 @@ async function appendDecisionAudit(
       subjectId: authorization.mandate_id,
       payload,
       recordedAt: command.now,
+      deduplicationKey: `verify:${command.idempotency_key}`,
     });
   } else if (evaluation.reasons.includes("replay_detected")) {
     await ledger.append(database, {
@@ -256,6 +308,7 @@ async function appendDecisionAudit(
       subjectId: authorization.mandate_id,
       payload,
       recordedAt: command.now,
+      deduplicationKey: `verify:${command.idempotency_key}`,
     });
   } else {
     await ledger.append(database, {
@@ -264,6 +317,7 @@ async function appendDecisionAudit(
       subjectId: authorization.mandate_id,
       payload,
       recordedAt: command.now,
+      deduplicationKey: `verify:${command.idempotency_key}`,
     });
   }
 }
@@ -325,7 +379,8 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
   ) {}
 
   async inspect(command: ReservationInspectionCommand): Promise<ReservationInspection> {
-    const idempotent = await idempotentDecision(this.database.db, command);
+    const idempotent = await idempotentDecision(this.database.db, command)
+      ?? await idempotentAuditedDecision(this.database.db, command);
     if (idempotent !== undefined) {
       return {
         idempotent_decision: idempotent,
@@ -463,14 +518,19 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
           authorization_id: authorizationId,
           mandate_id: authorization.mandate_id,
           checkout_id: checkout.terms.checkout_id,
+          principal_id: authorization.principal_id,
+          agent_id: authorization.agent_id,
+          merchant_id: checkout.terms.merchant_id,
           decision: evaluation.decision,
           policy_version: evaluation.policy_version,
           evidence_hash: evidenceHash,
           reserved_amount: checkout.terms.total,
           reserved_at: command.now.toISOString(),
           expires_at: expiresAt.toISOString(),
+          payment_executor_called: false,
         },
         recordedAt: command.now,
+        deduplicationKey: `verify:${command.idempotency_key}`,
       });
       return decisionFrom(evaluation, authorizationId);
     });

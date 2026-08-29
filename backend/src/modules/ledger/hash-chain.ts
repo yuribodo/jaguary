@@ -40,6 +40,21 @@ export type ChainValidationResult =
   | { valid: true }
   | { valid: false; index: number; reason: "mixed_subjects" | "missing_payload" | "payload_hash_mismatch" | "previous_hash_mismatch" | "event_hash_mismatch" };
 
+/** Reconstructs one unambiguous subject chain from its hash links. */
+export function orderAuditChain(events: readonly StoredAuditEvent[]): StoredAuditEvent[] {
+  if (events.length === 0) return [];
+  const roots = events.filter((event) => event.previousHash === null);
+  if (roots.length !== 1) throw new Error("Audit subject chain has an inconsistent number of roots");
+  const ordered = [roots[0]!];
+  while (ordered.length < events.length) {
+    const previous = ordered.at(-1)!;
+    const children = events.filter((event) => event.previousHash === previous.eventHash);
+    if (children.length !== 1) throw new Error("Audit subject chain has an inconsistent link");
+    ordered.push(children[0]!);
+  }
+  return ordered;
+}
+
 /** Validates one subject chain in its loaded order and recomputes every hash. */
 export function validateAuditChain(events: readonly StoredAuditEvent[]): ChainValidationResult {
   const subjectId = events[0]?.subjectId;
