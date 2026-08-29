@@ -1,9 +1,17 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyServerOptions } from "fastify";
 
-import { type ClockPort, type SignerPort } from "./contracts/v1/index.js";
+import {
+  type AgentIdentityRegistryPort,
+  type AgentRequestVerifierPort,
+  type ClockPort,
+  type SignerPort,
+} from "./contracts/v1/index.js";
 import { createDatabase, type DatabaseConnection } from "./db/database.js";
 import { configureHttpConventions, generateCorrelationId } from "./http/conventions.js";
+import { DrizzleAgentIdentityRegistry } from "./modules/identity/registry.js";
+import { agentIdentityRoutes } from "./modules/identity/routes.js";
+import { AgentRequestVerifier } from "./modules/identity/verifier.js";
 import { VuelaYaMerchant } from "./modules/vuelaya/merchant.js";
 import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
@@ -15,6 +23,8 @@ export interface BuildAppOptions {
   clock?: ClockPort;
   databaseUrl?: string;
   database?: DatabaseConnection;
+  agentRegistry?: AgentIdentityRegistryPort;
+  agentVerifier?: AgentRequestVerifierPort;
   logger?: FastifyServerOptions["logger"];
   signer?: SignerPort;
 }
@@ -25,6 +35,13 @@ const redactedLogPaths = [
   "connectionString",
   "req.headers.authorization",
   "req.headers.cookie",
+  "req.body",
+  "*.proof",
+  "*.signature",
+  "*.public_jwk",
+  "*.private_jwk",
+  "*.public_key",
+  "*.private_key",
   "*.password",
   "*.secret",
   "*.token",
@@ -53,6 +70,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     genReqId: generateCorrelationId,
   });
 
+  const clock = options.clock ?? deterministicDemoClock;
   const database = options.database
     ?? (options.databaseUrl === undefined
       ? undefined
@@ -79,9 +97,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   await app.register(rootRoutes);
   await app.register(healthRoutes);
+  const agentRegistry = options.agentRegistry
+    ?? (database === undefined ? undefined : new DrizzleAgentIdentityRegistry(database.db, clock));
+  if (agentRegistry !== undefined) {
+    await app.register(agentIdentityRoutes, {
+      registry: agentRegistry,
+      verifier: options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock),
+    });
+  }
   const merchant = new VuelaYaMerchant(
     options.signer ?? new EphemeralEs256Signer(),
-    options.clock ?? deterministicDemoClock,
+    clock,
   );
   await app.register(vuelaYaRoutes, { merchant });
 
