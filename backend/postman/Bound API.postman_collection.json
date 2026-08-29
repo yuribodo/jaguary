@@ -20,6 +20,26 @@
       "key": "idempotencyKey",
       "value": "idem_postman_001",
       "type": "string"
+    },
+    {
+      "key": "checkoutId",
+      "value": "checkout_vy_471_gru_cor",
+      "type": "string"
+    },
+    {
+      "key": "checkoutHash",
+      "value": "b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01",
+      "type": "string"
+    },
+    {
+      "key": "checkoutJson",
+      "value": "{}",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "order_authorization_vy_471_001",
+      "type": "string"
     }
   ],
   "event": [
@@ -110,6 +130,300 @@
                   "  pm.expect(body.status).to.equal(\"ok\");",
                   "  pm.expect(body.service).to.equal(\"bound-api\");",
                   "  pm.expect(body.timestamp).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "VuelaYa UCP subset",
+      "item": [
+        {
+          "name": "VuelaYa UCP profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/ucp",
+              "host": ["{{baseUrl}}"],
+              "path": [".well-known", "ucp"]
+            },
+            "description": "Returns the pinned normalized VuelaYa profile. Local endpoint relations are advertised in Link."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Profile publishes Checkout + AP2\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.merchant_id).to.equal(\"merchant_vuelaya\");",
+                  "  pm.expect(body.protocol).to.deep.equal({ name: \"UCP\", version: \"2026-08-25\" });",
+                  "  pm.expect(body.capabilities.map((capability) => capability.name)).to.deep.equal([\"dev.ucp.shopping.checkout\", \"dev.ucp.common.payment.ap2_mandate\"]);",
+                  "  pm.expect(body.capabilities[1].extends).to.deep.equal([\"dev.ucp.shopping.checkout\"]);",
+                  "  pm.expect(pm.response.headers.get(\"Link\")).to.include(\"/ucp/v1/checkout\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List VuelaYa flights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/merchant/flights",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchant", "flights"]
+            },
+            "description": "Lists the deterministic GRU to COR offer for USD 137."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Flight offer is deterministic\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const offers = pm.response.json();",
+                  "  pm.expect(offers).to.have.lengthOf(1);",
+                  "  pm.expect(offers[0].offer_id).to.equal(\"offer_vy_471_gru_cor\");",
+                  "  pm.expect(offers[0].total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
+                  "  pm.expect(offers[0].fulfillment.origin).to.equal(\"GRU\");",
+                  "  pm.expect(offers[0].fulfillment.destination).to.equal(\"COR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create signed checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-checkout",
+                "type": "text"
+              },
+              {
+                "key": "UCP-Capabilities",
+                "value": "dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"intent_id\": \"intent_travelbot_vy_471\",\n  \"agent_id\": \"agent_travelbot\",\n  \"merchant_id\": \"merchant_vuelaya\",\n  \"offer_id\": \"offer_vy_471_gru_cor\",\n  \"quantity\": 1,\n  \"requested_at\": \"2026-08-29T12:01:00.000Z\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ucp/v1/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["ucp", "v1", "checkout"]
+            },
+            "description": "Sends only PurchaseIntent. VuelaYa recalculates and signs the authoritative checkout."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Checkout has frozen canonical hash and merchant signature\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const checkout = pm.response.json();",
+                  "  pm.expect(checkout.checkout_hash).to.equal(pm.collectionVariables.get(\"checkoutHash\"));",
+                  "  pm.expect(checkout.terms.total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
+                  "  pm.expect(checkout.merchant_signature.algorithm).to.equal(\"ES256\");",
+                  "  pm.collectionVariables.set(\"checkoutId\", checkout.terms.checkout_id);",
+                  "  pm.collectionVariables.set(\"checkoutJson\", JSON.stringify(checkout));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read signed checkout",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ucp/v1/checkout/{{checkoutId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["ucp", "v1", "checkout", "{{checkoutId}}"]
+            },
+            "description": "Reads the server-side checkout by stable identifier."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Stored checkout is readable\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().terms.checkout_id).to.equal(pm.collectionVariables.get(\"checkoutId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete authorized checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-complete",
+                "type": "text"
+              },
+              {
+                "key": "UCP-Capabilities",
+                "value": "dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{correlationId}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checkout\": {{checkoutJson}},\n  \"authorization\": {\n    \"authorization_id\": \"authorization_vy_471_001\",\n    \"mandate_id\": \"mandate_marta_travel_001\",\n    \"checkout_id\": \"{{checkoutId}}\",\n    \"checkout_hash\": \"{{checkoutHash}}\",\n    \"principal_id\": \"principal_marta\",\n    \"agent_id\": \"agent_travelbot\",\n    \"merchant_id\": \"merchant_vuelaya\",\n    \"reserved_amount\": { \"amount\": 13700, \"currency\": \"USD\" },\n    \"status\": \"RESERVED\",\n    \"reserved_at\": \"2026-08-29T12:03:01.000Z\",\n    \"expires_at\": \"2026-08-29T12:18:01.000Z\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ucp/v1/checkout/{{checkoutId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["ucp", "v1", "checkout", "{{checkoutId}}", "complete"]
+            },
+            "description": "Completes only with a schema-valid, checkout-bound RESERVED authorization; VuelaYa does not execute payment."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Authorized completion creates one sanitized receipt\", function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const receipt = pm.response.json();",
+                  "  pm.expect(receipt.checkout_id).to.equal(pm.collectionVariables.get(\"checkoutId\"));",
+                  "  pm.expect(receipt.authorization_id).to.equal(\"authorization_vy_471_001\");",
+                  "  pm.expect(receipt.evidence.correlation_id).to.equal(pm.collectionVariables.get(\"correlationId\"));",
+                  "  pm.collectionVariables.set(\"orderId\", receipt.order_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read VuelaYa order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ucp/v1/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["ucp", "v1", "orders", "{{orderId}}"]
+            },
+            "description": "Reads the sanitized OrderReceipt."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Order receipt is readable\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().order_id).to.equal(pm.collectionVariables.get(\"orderId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Checkout rejects client total",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-invalid",
+                "type": "text"
+              },
+              {
+                "key": "UCP-Capabilities",
+                "value": "dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"intent_id\": \"intent_invalid_economics\",\n  \"agent_id\": \"agent_travelbot\",\n  \"merchant_id\": \"merchant_vuelaya\",\n  \"offer_id\": \"offer_vy_471_gru_cor\",\n  \"quantity\": 1,\n  \"requested_at\": \"2026-08-29T12:01:00.000Z\",\n  \"total\": { \"amount\": 1, \"currency\": \"USD\" }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ucp/v1/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["ucp", "v1", "checkout"]
+            },
+            "description": "Strict PurchaseIntent rejects client-authored totals."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Unknown economic field is rejected\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
                   "});"
                 ]
               }
