@@ -13,6 +13,11 @@ import { configureHttpConventions, generateCorrelationId } from "./http/conventi
 import { DrizzleAgentIdentityRegistry } from "./modules/identity/registry.js";
 import { agentIdentityRoutes } from "./modules/identity/routes.js";
 import { AgentRequestVerifier } from "./modules/identity/verifier.js";
+import {
+  auditRoutes,
+  AuditLedgerService,
+  PostgresAuditEventRepository,
+} from "./modules/ledger/index.js";
 import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
 import {
   PostgresAuthorizationReservationStore,
@@ -109,8 +114,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(rootRoutes);
   await app.register(healthRoutes);
   const signer = options.signer ?? new EphemeralEs256Signer();
+  const ledger = database === undefined
+    ? undefined
+    : new AuditLedgerService(new PostgresAuditEventRepository(database.db));
   const agentRegistry = options.agentRegistry
-    ?? (database === undefined ? undefined : new DrizzleAgentIdentityRegistry(database.db, clock));
+    ?? (database === undefined || ledger === undefined
+      ? undefined
+      : new DrizzleAgentIdentityRegistry(database, clock, ledger));
   const agentVerifier = agentRegistry === undefined
     ? undefined
     : (options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock));
@@ -123,8 +133,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const merchant = new VuelaYaMerchant(signer, clock);
   await app.register(vuelaYaRoutes, { merchant });
   let mandateService: MandateService | undefined;
-  if (database !== undefined) {
-    mandateService = new MandateService(database, signer, clock);
+  if (database !== undefined && ledger !== undefined) {
+    mandateService = new MandateService(database, signer, clock, ledger);
     await app.register(mandateRoutes, {
       service: mandateService,
     });
@@ -153,13 +163,16 @@ export async function buildApp(options: BuildAppOptions = {}) {
           }
         },
       },
-      reservationStore: new PostgresAuthorizationReservationStore(database),
+      reservationStore: new PostgresAuthorizationReservationStore(database, ledger),
       clock,
       humanApprovalRequired: options.humanApprovalRequired ?? (() => false),
     });
   }
   if (verifyOrchestrator !== undefined) {
     await app.register(verifyRoutes, { orchestrator: verifyOrchestrator });
+  }
+  if (ledger !== undefined) {
+    await app.register(auditRoutes, { ledger });
   }
 
   return app;

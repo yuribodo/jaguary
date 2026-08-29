@@ -58,8 +58,14 @@ export interface ReservationCommand extends ReservationInspectionCommand {
   evaluation: PolicyEvaluation;
 }
 
+export interface DecisionAuditCommand extends ReservationInspectionCommand {
+  correlation_id: string;
+  evaluation: PolicyEvaluation;
+}
+
 export interface AuthorizationReservationPort {
   inspect(command: ReservationInspectionCommand): Promise<ReservationInspection>;
+  recordDecision(command: DecisionAuditCommand): Promise<void>;
   reserve(command: ReservationCommand): Promise<AuthorizationDecision>;
 }
 
@@ -160,7 +166,14 @@ export class VerifyOrchestrator {
       usage: inspection.usage,
       nonce_status: inspection.nonce_status,
     });
-    if (evaluation.decision !== "ALLOW") return decisionFrom(evaluation);
+    if (evaluation.decision !== "ALLOW") {
+      await this.options.reservationStore.recordDecision({
+        ...inspectionCommand,
+        correlation_id: correlationId,
+        evaluation,
+      });
+      return decisionFrom(evaluation);
+    }
     if (inspection.idempotent_decision !== undefined) return inspection.idempotent_decision;
     if (agentRequest === undefined || agent === undefined) {
       throw new Error("ALLOW evaluation is missing verified agent state");

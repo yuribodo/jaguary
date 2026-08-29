@@ -13,8 +13,13 @@ import {
   type ClockPort,
   type Es256PublicJwk,
 } from "../../contracts/v1/index.js";
-import type { DatabaseClient } from "../../db/database.js";
+import type { DatabaseClient, DatabaseConnection } from "../../db/database.js";
 import { agents } from "../../db/schema.js";
+import {
+  AuditLedgerService,
+  PostgresAuditEventRepository,
+  type AuditLedgerPort,
+} from "../ledger/index.js";
 
 type AgentRow = typeof agents.$inferSelect;
 
@@ -68,8 +73,11 @@ function matchesRegistration(identity: AgentIdentity, registration: AgentRegistr
 
 export class DrizzleAgentIdentityRegistry implements AgentIdentityRegistryPort {
   constructor(
-    private readonly database: DatabaseClient,
+    private readonly database: DatabaseConnection,
     private readonly clock: ClockPort,
+    private readonly ledger: AuditLedgerPort = new AuditLedgerService(
+      new PostgresAuditEventRepository(database.db),
+    ),
   ) {}
 
   async register(
@@ -82,53 +90,69 @@ export class DrizzleAgentIdentityRegistry implements AgentIdentityRegistryPort {
     }
     const registration = parsed.data;
     const createdAt = this.clock.now();
-    const inserted = await this.database
-      .insert(agents)
-      .values({
-        agentId: registration.agent_id,
-        principalId: registration.principal_id,
-        displayName: registration.display_name,
-        status: registration.status,
-        buildFingerprint: registration.build_fingerprint,
-        verificationKeyId: registration.verification_key.key_id,
-        verificationAlgorithm: registration.verification_key.algorithm,
-        verificationPublicKey: canonicalizeJson(registration.verification_key.public_jwk),
-        correlationId: context.correlationId,
-        idempotencyKey: context.idempotencyKey,
-        createdAt,
-        updatedAt: createdAt,
-      })
-      .onConflictDoNothing()
-      .returning();
+    return this.database.transaction(async (transaction) => {
+      const inserted = await transaction
+        .insert(agents)
+        .values({
+          agentId: registration.agent_id,
+          principalId: registration.principal_id,
+          displayName: registration.display_name,
+          status: registration.status,
+          buildFingerprint: registration.build_fingerprint,
+          verificationKeyId: registration.verification_key.key_id,
+          verificationAlgorithm: registration.verification_key.algorithm,
+          verificationPublicKey: canonicalizeJson(registration.verification_key.public_jwk),
+          correlationId: context.correlationId,
+          idempotencyKey: context.idempotencyKey,
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .onConflictDoNothing()
+        .returning();
 
-    if (inserted[0] !== undefined) {
-      return { agent: toIdentity(inserted[0]), created: true };
-    }
-
-    const [idempotentRows, agentRows] = await Promise.all([
-      this.database.select().from(agents).where(eq(agents.idempotencyKey, context.idempotencyKey)).limit(1),
-      this.database.select().from(agents).where(eq(agents.agentId, registration.agent_id)).limit(1),
-    ]);
-    const idempotentRow = idempotentRows[0];
-    if (idempotentRow !== undefined) {
-      const existing = toIdentity(idempotentRow);
-      if (matchesRegistration(existing, registration)) {
-        return { agent: existing, created: false };
+      if (inserted[0] !== undefined) {
+        await this.ledger.append(transaction, {
+          correlationId: context.correlationId,
+          eventType: "agent.registered",
+          subjectId: registration.agent_id,
+          payload: {
+            agent_id: registration.agent_id,
+            principal_id: registration.principal_id,
+            status: registration.status,
+            build_fingerprint: registration.build_fingerprint,
+            key_id: registration.verification_key.key_id,
+            registered_at: createdAt.toISOString(),
+          },
+          recordedAt: createdAt,
+        });
+        return { agent: toIdentity(inserted[0]), created: true };
       }
-      throw new PublicApiError(
-        409,
-        "idempotency_conflict",
-        "Idempotency-Key was already used for another agent registration",
-      );
-    }
 
-    if (agentRows[0] !== undefined) {
-      throw new PublicApiError(409, "invalid_request", "Agent ID is already registered");
-    }
-    throw new PublicApiError(409, "invalid_request", "Agent key ID is already registered");
+      const [idempotentRows, agentRows] = await Promise.all([
+        transaction.select().from(agents).where(eq(agents.idempotencyKey, context.idempotencyKey)).limit(1),
+        transaction.select().from(agents).where(eq(agents.agentId, registration.agent_id)).limit(1),
+      ]);
+      const idempotentRow = idempotentRows[0];
+      if (idempotentRow !== undefined) {
+        const existing = toIdentity(idempotentRow);
+        if (matchesRegistration(existing, registration)) {
+          return { agent: existing, created: false };
+        }
+        throw new PublicApiError(
+          409,
+          "idempotency_conflict",
+          "Idempotency-Key was already used for another agent registration",
+        );
+      }
+
+      if (agentRows[0] !== undefined) {
+        throw new PublicApiError(409, "invalid_request", "Agent ID is already registered");
+      }
+      throw new PublicApiError(409, "invalid_request", "Agent key ID is already registered");
+    });
   }
 
   async get(agentId: string): Promise<AgentIdentity | undefined> {
-    return loadAgentIdentity(this.database, agentId);
+    return loadAgentIdentity(this.database.db, agentId);
   }
 }

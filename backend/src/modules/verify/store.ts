@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 
 import {
   authorizationDecisionSchema,
@@ -15,16 +15,21 @@ import {
 } from "../../contracts/v1/index.js";
 import type { DatabaseClient, DatabaseConnection } from "../../db/database.js";
 import {
-  auditEvents,
   authorizations,
   checkouts,
   nonces,
 } from "../../db/schema.js";
 import { loadAgentIdentity } from "../identity/registry.js";
+import {
+  AuditLedgerService,
+  PostgresAuditEventRepository,
+  type AuditLedgerPort,
+} from "../ledger/index.js";
 import { loadMandateForVerification } from "../mandates/service.js";
 
 import type {
   AuthorizationReservationPort,
+  DecisionAuditCommand,
   ReservationCommand,
   ReservationInspection,
   ReservationInspectionCommand,
@@ -215,45 +220,56 @@ async function persistCheckout(
   }
 }
 
-async function appendAuditEvent(
+async function appendDecisionAudit(
+  ledger: AuditLedgerPort,
   database: DatabaseClient,
-  input: {
-    correlationId: string;
-    eventType: string;
-    subjectId: string;
-    payloadHash: string;
-    recordedAt: Date;
-  },
+  command: DecisionAuditCommand | ReservationCommand,
+  evaluation: PolicyEvaluation,
 ): Promise<void> {
-  const previous = (await database
-    .select({ eventHash: auditEvents.eventHash })
-    .from(auditEvents)
-    .where(eq(auditEvents.subjectId, input.subjectId))
-    .orderBy(desc(auditEvents.recordedAt), desc(auditEvents.eventId))
-    .limit(1))[0];
-  const eventId = `event_${randomUUID()}`;
-  const evidence = {
-    event_id: eventId,
-    correlation_id: input.correlationId,
-    event_type: input.eventType,
-    subject_id: input.subjectId,
-    payload_hash: input.payloadHash,
-    previous_hash: previous?.eventHash ?? null,
-    recorded_at: input.recordedAt.toISOString(),
+  if (evaluation.decision === "ALLOW") {
+    throw new Error("ALLOW is represented by authorization.reserved, not a decision-only event");
+  }
+  const { authorization, checkout } = command.request.request_body;
+  const payload = {
+    mandate_id: authorization.mandate_id,
+    checkout_id: checkout.terms.checkout_id,
+    agent_id: authorization.agent_id,
+    decision: evaluation.decision,
+    reasons: evaluation.reasons,
+    policy_version: evaluation.policy_version,
+    evidence_hash: sha256CanonicalJson(evaluation),
+    decided_at: command.now.toISOString(),
+    payment_executor_called: false as const,
   };
-  await database.insert(auditEvents).values({
-    eventId,
-    correlationId: input.correlationId,
-    eventType: input.eventType,
-    subjectId: input.subjectId,
-    payloadHash: input.payloadHash,
-    previousHash: evidence.previous_hash,
-    eventHash: sha256CanonicalJson(evidence),
-    recordedAt: input.recordedAt,
-  });
+  if (evaluation.decision === "ESCALATE") {
+    await ledger.append(database, {
+      correlationId: command.correlation_id,
+      eventType: "authorization.escalated",
+      subjectId: authorization.mandate_id,
+      payload,
+      recordedAt: command.now,
+    });
+  } else if (evaluation.reasons.includes("replay_detected")) {
+    await ledger.append(database, {
+      correlationId: command.correlation_id,
+      eventType: "authorization.replay_detected",
+      subjectId: authorization.mandate_id,
+      payload,
+      recordedAt: command.now,
+    });
+  } else {
+    await ledger.append(database, {
+      correlationId: command.correlation_id,
+      eventType: "authorization.denied",
+      subjectId: authorization.mandate_id,
+      payload,
+      recordedAt: command.now,
+    });
+  }
 }
 
 async function cancelExpiredReservations(
+  ledger: AuditLedgerPort,
   database: DatabaseClient,
   mandateId: string,
   now: Date,
@@ -269,17 +285,18 @@ async function cancelExpiredReservations(
     ))
     .returning({ authorizationId: authorizations.authorizationId });
   for (const row of expired) {
-    await appendAuditEvent(database, {
+    await ledger.append(database, {
       correlationId,
       eventType: "authorization.cancelled",
       subjectId: row.authorizationId,
-      payloadHash: sha256CanonicalJson({
+      payload: {
         authorization_id: row.authorizationId,
         from_status: "RESERVED",
         to_status: "CANCELLED",
         cancelled_at: now.toISOString(),
         reason: "reservation_expired",
-      }),
+        payment_executor_called: false,
+      },
       recordedAt: now,
     });
   }
@@ -300,7 +317,12 @@ async function lockReplayKeys(
 }
 
 export class PostgresAuthorizationReservationStore implements AuthorizationReservationPort {
-  constructor(private readonly database: DatabaseConnection) {}
+  constructor(
+    private readonly database: DatabaseConnection,
+    private readonly ledger: AuditLedgerPort = new AuditLedgerService(
+      new PostgresAuditEventRepository(database.db),
+    ),
+  ) {}
 
   async inspect(command: ReservationInspectionCommand): Promise<ReservationInspection> {
     const idempotent = await idempotentDecision(this.database.db, command);
@@ -330,6 +352,12 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
     return { usage, nonce_status: replayed ? "USED" : "UNUSED" };
   }
 
+  async recordDecision(command: DecisionAuditCommand): Promise<void> {
+    await this.database.transaction(async (transaction) => {
+      await appendDecisionAudit(this.ledger, transaction, command, command.evaluation);
+    });
+  }
+
   async reserve(command: ReservationCommand): Promise<AuthorizationDecision> {
     return this.database.transaction(async (transaction) => {
       await lockReplayKeys(transaction, command);
@@ -343,6 +371,7 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
         command.now,
       );
       await cancelExpiredReservations(
+        this.ledger,
         transaction,
         authorization.mandate_id,
         command.now,
@@ -374,7 +403,10 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
         usage,
         nonce_status: replayed ? "USED" : "UNUSED",
       });
-      if (evaluation.decision !== "ALLOW") return decisionFrom(evaluation);
+      if (evaluation.decision !== "ALLOW") {
+        await appendDecisionAudit(this.ledger, transaction, command, evaluation);
+        return decisionFrom(evaluation);
+      }
 
       await persistCheckout(transaction, checkout, command);
       const authorizationId = `authorization_${randomUUID()}`;
@@ -423,11 +455,11 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
         expiresAt,
         updatedAt: command.now,
       });
-      await appendAuditEvent(transaction, {
+      await this.ledger.append(transaction, {
         correlationId: command.correlation_id,
         eventType: "authorization.reserved",
         subjectId: authorizationId,
-        payloadHash: sha256CanonicalJson({
+        payload: {
           authorization_id: authorizationId,
           mandate_id: authorization.mandate_id,
           checkout_id: checkout.terms.checkout_id,
@@ -437,7 +469,7 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
           reserved_amount: checkout.terms.total,
           reserved_at: command.now.toISOString(),
           expires_at: expiresAt.toISOString(),
-        }),
+        },
         recordedAt: command.now,
       });
       return decisionFrom(evaluation, authorizationId);

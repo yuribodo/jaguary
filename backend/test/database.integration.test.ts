@@ -41,6 +41,11 @@ import {
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
 import { MandateService } from "../src/modules/mandates/index.js";
+import {
+  AuditLedgerService,
+  PostgresAuditEventRepository,
+  validateAuditChain,
+} from "../src/modules/ledger/index.js";
 import { createTestAgentSigner } from "./support/agent-signing.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -497,7 +502,7 @@ integrationTest("a successful transaction commits all writes", async () => {
 
 integrationTest("agent registration is persistent, readable and idempotent", async () => {
   assert.ok(database);
-  const registry = new DrizzleAgentIdentityRegistry(database.db, {
+  const registry = new DrizzleAgentIdentityRegistry(database, {
     now: () => new Date(travelBotFixture.created_at),
   });
   const registration = {
@@ -1300,6 +1305,12 @@ integrationTest("two concurrent requests with the same nonce return ALLOW and re
   assert.equal(decisions.some(({ reasons }) => reasons.includes("replay_detected")), true);
   assert.equal((await database.db.select().from(authorizations)).length, 1);
   assert.equal((await database.db.select().from(nonces)).length, 1);
+  const replayEvents = await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.replay_detected"));
+  assert.equal(replayEvents.length, 1);
+  assert.equal(replayEvents[0]?.sanitizedPayload?.payment_executor_called, false);
 });
 
 integrationTest("an exact Idempotency-Key retry returns the committed authorization once", async (t) => {
@@ -1362,6 +1373,12 @@ integrationTest("a revocation committed before reservation prevents authorizatio
   assert.equal(decision.reasons.includes("mandate_revoked"), true);
   assert.equal((await database.db.select().from(authorizations)).length, 0);
   assert.equal((await database.db.select().from(nonces)).length, 0);
+  const denial = (await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.denied")))[0];
+  assert.equal(denial?.sanitizedPayload?.payment_executor_called, false);
+  assert.deepEqual(denial?.sanitizedPayload?.reasons, ["mandate_revoked"]);
 });
 
 integrationTest("DENY does not persist a nonce, checkout or payable authorization", async (t) => {
@@ -1383,6 +1400,11 @@ integrationTest("DENY does not persist a nonce, checkout or payable authorizatio
   assert.equal((await database.db.select().from(authorizations)).length, 0);
   assert.equal((await database.db.select().from(nonces)).length, 0);
   assert.equal((await database.db.select().from(checkouts)).length, 0);
+  const denial = (await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.denied")))[0];
+  assert.equal(denial?.sanitizedPayload?.payment_executor_called, false);
 });
 
 integrationTest("ESCALATE does not persist a nonce, checkout or payable authorization", async (t) => {
@@ -1397,6 +1419,11 @@ integrationTest("ESCALATE does not persist a nonce, checkout or payable authoriz
   assert.equal((await database.db.select().from(authorizations)).length, 0);
   assert.equal((await database.db.select().from(nonces)).length, 0);
   assert.equal((await database.db.select().from(checkouts)).length, 0);
+  const escalation = (await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.eventType, "authorization.escalated")))[0];
+  assert.equal(escalation?.sanitizedPayload?.payment_executor_called, false);
 });
 
 integrationTest("an audit write failure rolls back checkout, nonce and authorization together", async (t) => {
@@ -1430,7 +1457,10 @@ integrationTest("an audit write failure rolls back checkout, nonce and authoriza
   assert.equal((await database.db.select().from(authorizations)).length, 0);
   assert.equal((await database.db.select().from(nonces)).length, 0);
   assert.equal((await database.db.select().from(checkouts)).length, 0);
-  assert.equal((await database.db.select().from(auditEvents)).length, 0);
+  assert.equal(
+    (await database.db.select().from(auditEvents).where(eq(auditEvents.eventType, "authorization.reserved"))).length,
+    0,
+  );
 });
 
 integrationTest("RESERVED, PAYMENT_PENDING and CONSUMED all count against aggregate limits", async (t) => {
@@ -1508,4 +1538,183 @@ integrationTest("expired RESERVED and CANCELLED release capacity while PAYMENT_P
     .where(eq(auditEvents.eventType, "authorization.cancelled"));
   assert.equal(cancellationEvents.length, 1);
   assert.equal(cancellationEvents[0]?.subjectId, "authorization_prior_expired_reserved");
+});
+
+integrationTest("concurrent ledger appends serialize into one verifiable subject chain", async () => {
+  assert.ok(database);
+  const repository = new PostgresAuditEventRepository(database.db);
+  const ledger = new AuditLedgerService(repository);
+  const recordedAt = new Date("2026-08-29T12:10:00.000Z");
+  const correlationId = "corr_concurrent_ledger_001";
+  const append = () => database!.transaction((transaction) => ledger.append(transaction, {
+    correlationId,
+    eventType: "mandate.created",
+    subjectId: "mandate_concurrent_ledger_001",
+    payload: {
+      mandate_id: "mandate_concurrent_ledger_001",
+      principal_id: "principal_concurrent_ledger_001",
+      agent_id: "agent_concurrent_ledger_001",
+      status: "DRAFT",
+      created_at: recordedAt.toISOString(),
+    },
+    recordedAt,
+  }));
+
+  await Promise.all([
+    append(),
+    append(),
+  ]);
+
+  const rows = await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.subjectId, "mandate_concurrent_ledger_001"));
+  const roots = rows.filter((row) => row.previousHash === null);
+  const tips = rows.filter((row) => !rows.some((candidate) => candidate.previousHash === row.eventHash));
+  assert.equal(rows.length, 2);
+  assert.equal(roots.length, 1);
+  assert.equal(tips.length, 1);
+
+  const loaded = await repository.findByCorrelationId(correlationId);
+  loaded.sort((left, right) => left.previousHash === null ? -1 : right.previousHash === null ? 1 : 0);
+  assert.deepEqual(validateAuditChain(loaded), { valid: true });
+  const timeline = await ledger.getTimeline(correlationId);
+  assert.equal(timeline.events[0]?.previous_hash, null);
+  assert.equal(timeline.events[1]?.previous_hash, timeline.events[0]?.event_hash);
+});
+
+integrationTest("a failed business transaction leaves no orphan audit event", async () => {
+  assert.ok(database);
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+
+  await assert.rejects(database.transaction(async (transaction) => {
+    await ledger.append(transaction, {
+      correlationId: "corr_orphan_rollback_001",
+      eventType: "mandate.created",
+      subjectId: "mandate_orphan_rollback_001",
+      payload: {
+        mandate_id: "mandate_orphan_rollback_001",
+        principal_id: "principal_orphan_rollback_001",
+        agent_id: "agent_orphan_rollback_001",
+        status: "DRAFT",
+        created_at: "2026-08-29T12:11:00.000Z",
+      },
+      recordedAt: new Date("2026-08-29T12:11:00.000Z"),
+    });
+    throw new Error("forced business failure");
+  }), /forced business failure/);
+
+  const events = await database.db
+    .select()
+    .from(auditEvents)
+    .where(eq(auditEvents.correlationId, "corr_orphan_rollback_001"));
+  assert.equal(events.length, 0);
+});
+
+integrationTest("audit_events rejects update and delete mutations", async () => {
+  assert.ok(database);
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const stored = await database.transaction((transaction) => ledger.append(transaction, {
+    correlationId: "corr_append_only_001",
+    eventType: "mandate.created",
+    subjectId: "mandate_append_only_001",
+    payload: {
+      mandate_id: "mandate_append_only_001",
+      principal_id: "principal_append_only_001",
+      agent_id: "agent_append_only_001",
+      status: "DRAFT",
+      created_at: "2026-08-29T12:12:00.000Z",
+    },
+    recordedAt: new Date("2026-08-29T12:12:00.000Z"),
+  }));
+
+  await assert.rejects(
+    database.db.update(auditEvents).set({ correlationId: "corr_mutated" }).where(eq(auditEvents.eventId, stored.eventId)),
+    (error) => hasPostgresCode(error, "55000"),
+  );
+  await assert.rejects(
+    database.db.delete(auditEvents).where(eq(auditEvents.eventId, stored.eventId)),
+    (error) => hasPostgresCode(error, "55000"),
+  );
+});
+
+integrationTest("GET /audit returns an ordered allowlisted timeline without sensitive material", async (t) => {
+  assert.ok(testDatabaseUrl);
+  assert.ok(database);
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const correlationId = "corr_timeline_security_001";
+  await database.transaction(async (transaction) => {
+    await ledger.append(transaction, {
+      correlationId,
+      eventType: "agent.registered",
+      subjectId: "agent_timeline_001",
+      payload: {
+        agent_id: "agent_timeline_001",
+        principal_id: "principal_timeline_001",
+        status: "ACTIVE",
+        build_fingerprint: "a".repeat(64),
+        key_id: "key_timeline_001",
+        registered_at: "2026-08-29T12:14:00.000Z",
+      },
+      recordedAt: new Date("2026-08-29T12:14:00.000Z"),
+    });
+    await ledger.append(transaction, {
+      correlationId,
+      eventType: "mandate.created",
+      subjectId: "mandate_timeline_001",
+      payload: {
+        mandate_id: "mandate_timeline_001",
+        principal_id: "principal_timeline_001",
+        agent_id: "agent_timeline_001",
+        status: "DRAFT",
+        created_at: "2026-08-29T12:13:00.000Z",
+      },
+      recordedAt: new Date("2026-08-29T12:13:00.000Z"),
+    });
+  });
+  await database.db.insert(auditEvents).values({
+    eventId: "event_untrusted_payload_001",
+    correlationId,
+    eventType: "mandate.created",
+    subjectId: "mandate_untrusted_payload_001",
+    sanitizedPayload: {
+      proof: "raw-proof-value",
+      signature: "raw-signature-value",
+      credential_id: "credential-reusable-value",
+      pan: "4242424242424242",
+      cvv: "123",
+      token: "provider-token-value",
+    },
+    payloadHash: "b".repeat(64),
+    previousHash: null,
+    eventHash: "c".repeat(64),
+    recordedAt: new Date("2026-08-29T12:15:00.000Z"),
+  });
+
+  const app = await buildApp({ databaseUrl: testDatabaseUrl, logger: false });
+  t.after(async () => app.close());
+  const response = await app.inject({ method: "GET", url: `/audit/${correlationId}` });
+
+  assert.equal(response.statusCode, 200);
+  const timeline = response.json<{
+    events: Array<{ event_id: string; recorded_at: string; payload: Record<string, unknown> | null }>;
+  }>();
+  assert.deepEqual(timeline.events.map(({ recorded_at }) => recorded_at), [
+    "2026-08-29T12:13:00.000Z",
+    "2026-08-29T12:14:00.000Z",
+    "2026-08-29T12:15:00.000Z",
+  ]);
+  assert.equal(
+    timeline.events.find(({ event_id }) => event_id === "event_untrusted_payload_001")?.payload,
+    null,
+  );
+  for (const forbidden of [
+    "raw-proof-value",
+    "raw-signature-value",
+    "credential-reusable-value",
+    "4242424242424242",
+    "provider-token-value",
+  ]) {
+    assert.equal(response.body.includes(forbidden), false);
+  }
 });
