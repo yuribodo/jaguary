@@ -215,8 +215,14 @@ integrationTest("agent registration is persistent, readable and idempotent", asy
   const registry = new DrizzleAgentIdentityRegistry(database.db, {
     now: () => new Date(travelBotFixture.created_at),
   });
-  const { created_at: createdAt, ...registration } = travelBotFixture;
-  void createdAt;
+  const registration = {
+    agent_id: travelBotFixture.agent_id,
+    principal_id: travelBotFixture.principal_id,
+    display_name: travelBotFixture.display_name,
+    status: travelBotFixture.status,
+    build_fingerprint: travelBotFixture.build_fingerprint,
+    verification_key: travelBotFixture.verification_key,
+  };
   const context = {
     correlationId: "corr_register_agent_001",
     idempotencyKey: "idem_register_agent_001",

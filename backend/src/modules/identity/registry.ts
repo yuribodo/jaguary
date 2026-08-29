@@ -43,8 +43,14 @@ function toIdentity(row: AgentRow): AgentIdentity {
 }
 
 function matchesRegistration(identity: AgentIdentity, registration: AgentRegistration): boolean {
-  const { created_at: createdAt, ...storedRegistration } = identity;
-  void createdAt;
+  const storedRegistration: AgentRegistration = {
+    agent_id: identity.agent_id,
+    principal_id: identity.principal_id,
+    display_name: identity.display_name,
+    status: identity.status,
+    build_fingerprint: identity.build_fingerprint,
+    verification_key: identity.verification_key,
+  };
   return canonicalizeJson(storedRegistration) === canonicalizeJson(registration);
 }
 

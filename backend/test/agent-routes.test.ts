@@ -43,9 +43,14 @@ class TestAgentRegistry implements AgentIdentityRegistryPort {
 }
 
 function registrationOf(agent: AgentIdentity): AgentRegistration {
-  const { created_at: createdAt, ...registration } = agent;
-  void createdAt;
-  return registration;
+  return {
+    agent_id: agent.agent_id,
+    principal_id: agent.principal_id,
+    display_name: agent.display_name,
+    status: agent.status,
+    build_fingerprint: agent.build_fingerprint,
+    verification_key: agent.verification_key,
+  };
 }
 
 test("agent registration and read endpoints preserve idempotency and correlation", async (t) => {

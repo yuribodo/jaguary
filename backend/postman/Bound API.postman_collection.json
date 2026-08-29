@@ -205,7 +205,7 @@
           }]
         },
         {
-          "name": "Verify TravelBot request signature",
+          "name": "Reject invalid agent request proof",
           "request": {
             "method": "POST",
             "header": [
@@ -215,7 +215,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"request_body\":{\"checkout_id\":\"checkout_vy_471_gru_cor\",\"merchant_id\":\"merchant_vuelaya\",\"merchant_url\":\"https://demo.vuelaya.example\",\"items\":[{\"item_id\":\"flight_vy_471_gru_cor\",\"name\":\"VuelaYa flight GRU to COR\",\"quantity\":1,\"unit_price\":{\"amount\":13700,\"currency\":\"USD\"},\"total\":{\"amount\":13700,\"currency\":\"USD\"}}],\"total\":{\"amount\":13700,\"currency\":\"USD\"},\"fulfillment\":{\"type\":\"FLIGHT\",\"origin\":\"GRU\",\"destination\":\"COR\",\"departure_at\":\"2026-09-15T10:00:00.000Z\",\"arrival_at\":\"2026-09-15T13:05:00.000Z\"},\"created_at\":\"2026-08-29T12:02:00.000Z\",\"expires_at\":\"2026-08-29T12:17:00.000Z\",\"protocol\":{\"name\":\"UCP\",\"version\":\"2026-08-25\"}},\"proof\":{\"payload\":{\"method\":\"POST\",\"route\":\"/trust/v1/agent-requests/verify\",\"body_hash\":\"b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01\",\"agent_id\":\"agent_travelbot\",\"key_id\":\"key_demo_travelbot_2026\",\"build_fingerprint\":\"6b52b86b8a1d9c0280c94927d137b3211e3d79efae7cabe529bfba651f6f4324\",\"nonce\":\"nonce_travelbot_001\",\"issued_at\":\"2026-08-29T12:03:00.000Z\",\"expires_at\":\"2026-08-29T12:08:00.000Z\"},\"payload_hash\":\"982107e0f9d7beed6b4f9b42d085e76110073961be65d959612b0bae4c1dd22c\",\"algorithm\":\"ES256\",\"key_id\":\"key_demo_travelbot_2026\",\"signature\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleV9kZW1vX3RyYXZlbGJvdF8yMDI2In0.eyJhZ2VudF9pZCI6ImFnZW50X3RyYXZlbGJvdCIsImJvZHlfaGFzaCI6ImIwNTk3NzRiYThlZmViNzIwMGMxYWFlZmE2Nzg2YmYyOTNlNGM4ZDVmZWNlMjRhMTQ3NTg2YTFhMzMwZjljMDEiLCJidWlsZF9maW5nZXJwcmludCI6IjZiNTJiODZiOGExZDljMDI4MGM5NDkyN2QxMzdiMzIxMWUzZDc5ZWZhZTdjYWJlNTI5YmZiYTY1MWY2ZjQzMjQiLCJleHBpcmVzX2F0IjoiMjAyNi0wOC0yOVQxMjowODowMC4wMDBaIiwiaXNzdWVkX2F0IjoiMjAyNi0wOC0yOVQxMjowMzowMC4wMDBaIiwia2V5X2lkIjoia2V5X2RlbW9fdHJhdmVsYm90XzIwMjYiLCJtZXRob2QiOiJQT1NUIiwibm9uY2UiOiJub25jZV90cmF2ZWxib3RfMDAxIiwicm91dGUiOiIvdHJ1c3QvdjEvYWdlbnQtcmVxdWVzdHMvdmVyaWZ5In0.0NIanoQ8IBg3y7Q_gp-l4Dhw1XqrTpu1z1b8l5oi3srpRY2butcPk2nW77nt7AIBXgIFw04k5Z-0As5UoNT62g\"}}",
+              "raw": "{\"request_body\":{},\"proof\":{}}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -223,7 +223,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["trust", "v1", "agent-requests", "verify"]
             },
-            "description": "Verifies the ES256 fixture and returns identity, nonce and validity without consuming the nonce."
+            "description": "Exercises fail-closed proof validation without storing a reusable signed proof in the collection."
           },
           "response": [],
           "event": [{
@@ -231,11 +231,9 @@
             "script": {
               "type": "text/javascript",
               "exec": [
-                "pm.test(\"TravelBot proof verifies\", function () {",
-                "  pm.response.to.have.status(200);",
-                "  const body = pm.response.json();",
-                "  pm.expect(body.agent_id).to.equal(\"agent_travelbot\");",
-                "  pm.expect(body.nonce).to.equal(\"nonce_travelbot_001\");",
+                "pm.test(\"Invalid agent proof fails closed\", function () {",
+                "  pm.response.to.have.status(400);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
                 "});"
               ]
             }

@@ -53,7 +53,7 @@ test("Postman collection is valid JSON with executable current routes", async ()
       "Health",
       "Register TravelBot identity",
       "Read TravelBot identity",
-      "Verify TravelBot request signature",
+      "Reject invalid agent request proof",
       "VuelaYa UCP profile",
       "List VuelaYa flights",
       "Create signed checkout",

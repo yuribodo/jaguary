@@ -74,7 +74,8 @@ export class AgentRequestVerifier implements AgentRequestVerifierPort {
       const verification = await compactVerify(proof.signature, key, {
         algorithms: ["ES256"],
       });
-      const headerKeys = Object.keys(verification.protectedHeader).sort();
+      const headerKeys = Object.keys(verification.protectedHeader)
+        .sort((left, right) => left.localeCompare(right));
       if (
         headerKeys.length !== 2
         || headerKeys[0] !== "alg"

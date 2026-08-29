@@ -46,7 +46,7 @@ export async function createTestAgentSigner(
 
   return {
     agent,
-    async sign(body, payloadOverrides = {}, protectedHeader) {
+    async sign(body, payloadOverrides, protectedHeader) {
       const payload: AgentRequestPayload = {
         method: "POST",
         route: "/trust/v1/agent-requests/verify",
@@ -57,7 +57,7 @@ export async function createTestAgentSigner(
         nonce: "nonce_travelbot_test_001",
         issued_at: "2026-08-29T12:03:00.000Z",
         expires_at: "2026-08-29T12:08:00.000Z",
-        ...payloadOverrides,
+        ...(payloadOverrides ?? {}),
       };
       const canonicalPayload = encoder.encode(canonicalizeJson(payload));
       const header = protectedHeader ?? {
