@@ -93,12 +93,13 @@ Suggested timebox: one day.
 #### Workstream C
 
 - Create Yuno customer/payment-method enrollment spike.
-- Store only the logical credential reference outside the Yuno adapter.
+- Store only provider, lifecycle status, masked display metadata and the logical credential reference outside the Yuno adapter.
+- Ensure a financial mandate cannot be activated unless the referenced credential is `ACTIVE` and owned by the same principal.
 - Build a fake `PaymentExecutor` with the exact future Yuno contract.
 
 #### Workstream D
 
-- Build the mandate review screen and TravelBot `findOffers`/`requestPurchase` tools.
+- Build payment-method enrollment/selection before mandate review and the TravelBot `findOffers`/`requestPurchase` tools.
 - Display decision steps from reason codes rather than generated explanations.
 
 #### Workstream E

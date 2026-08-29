@@ -3,7 +3,7 @@
 - Status: Proposto
 - Data: 2026-08-29
 - Escopo: Bound MVP e evolução multiprotocolo
-- Relacionado: [ADR-001](ADR-001-bound-mvp-architecture.md)
+- Relacionado: [ADR-001](ADR-001-bound-mvp-architecture.md), [ADR-003](ADR-003-agent-identity-assurance.md), [ADR-004](ADR-004-credential-enrollment-and-external-checkout.md)
 
 ## Contexto
 
@@ -35,6 +35,8 @@ Bound adotará uma arquitetura multiprotocolo com modelos internos normalizados.
 | Credential | Yuno Vault é o provider P0. Visa VIC é um provider/controle futuro, condicionado a acesso e interoperabilidade. |
 | Payment execution | Yuno é o executor P0, server-side e após reserva. Outros executors são possíveis sem alterar Verify. |
 | Rails | Visa, Mastercard, PIX, wallets e PSPs permanecem abaixo de Yuno ou do executor selecionado. |
+
+O cadastro obrigatório da credencial, a distinção entre pagamento sandbox e compra externa real e os gates de Visa VIC/Mastercard Agent Pay estão definidos no [ADR-004](ADR-004-credential-enrollment-and-external-checkout.md).
 
 ### Caminho P0
 

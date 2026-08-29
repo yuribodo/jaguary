@@ -16,6 +16,14 @@ TravelBot purchase request
 
 The agent never receives PAN, CVV, a Yuno private key or a reusable `vaulted_token`.
 
+## Enrollment is mandatory
+
+A principal must enroll an active payment method before a financial mandate can be activated. Enrollment is performed on a provider-controlled secure surface. Bound stores only a logical credential reference, provider, sanitized display metadata and lifecycle status; it never implements its own card-entry form.
+
+The mandate and credential must belong to the same principal. A `PENDING`, `SUSPENDED`, `REVOKED` or `EXPIRED` credential cannot activate a new mandate or create a new payable reservation. Historical evidence remains available after revocation.
+
+See [ADR-004](adr/ADR-004-credential-enrollment-and-external-checkout.md) for the accepted enrollment and external-checkout decision.
+
 ## Responsibility by layer
 
 | Layer | Primary technology | Question it answers | Does not do |
@@ -92,7 +100,15 @@ Merchant acquirer → VisaNet → issuer
 
 This route gets closer to purchasing on existing sites, but does not mean “every website”: the site may block automation, ignore TAP, require login/CAPTCHA/3DS or operate outside the available Visa program. The Agent Provider must also satisfy Visa onboarding requirements.
 
-VIC is described by Visa as still being developed and deployed, with availability varying by market. Treat it as a gated spike until sandbox access and credentials are confirmed.
+VIC is described by Visa as still being developed and deployed, with availability varying by market. Treat it as a gated spike until product access, Agent Provider onboarding and credentials are confirmed. As of 2026-08-29, a generic Visa Developer sandbox project exists, but VIC displays `Product Access Required`. Sandbox data is mock data and cannot execute a production purchase.
+
+### Mastercard Agent Pay
+
+Mastercard Agent Pay is a second future credential/network adapter. It registers agents and uses agentic network tokens with authenticated intent. It is partner-led rather than a confirmed self-service dependency for this project. Yuno has been announced as an enabling partner for Agent Pay in Latin America, so access and supported checkout shapes should be investigated through the Yuno hackathon channel. Until an API contract, sandbox and onboarding are confirmed, it remains a gated spike rather than a supported route.
+
+### Google AP2, UCP and Google Pay
+
+AP2 supplies verifiable delegated authority; UCP supplies commerce interoperability for integrated merchants. Google Pay can execute checkout only on compatible merchant or Google surfaces. These components do not expose a user's saved card as a portable credential for an arbitrary browser agent. Bound adopts AP2/UCP without treating Google as the credential provider for legacy external checkout.
 
 ## How Visa and AP2 coexist
 
@@ -136,6 +152,8 @@ Decision for now:
 | Direct merchant API | Structured/custom adapter | Merchant API | Bound → Yuno | Controlled fallback |
 | Legacy site + browser | Live web | Browser automation | Not allowed with raw credentials | Discovery P2 |
 | Legacy site + TAP + VIC | Live web + signed agent | Guest checkout | Restricted Visa credential | Gated experiment |
+| Legacy site + Mastercard Agent Pay | Live web + registered agent | Existing checkout form | Restricted agentic network token | Gated experiment |
+| Google/UCP eligible merchant | Structured | UCP / compatible Google surface | Google Pay on supported surface | External ecosystem, not a portable credential API |
 | ACP merchant | ACP | ACP checkout | ACP proof/payment adapter | Future |
 | Paid API/tool | HTTP/MCP | `402 Payment Required` | x402 wallet/facilitator | Future, not consumer-flight P0 |
 
@@ -148,6 +166,8 @@ Decision for now:
 5. Merchant, checkout hash, amount, currency and idempotency key are bound to the authorization.
 6. Browser content is untrusted and cannot change a mandate or create a payment credential.
 7. A Yuno/Visa timeout remains an unknown payment state until reconciled with the same idempotency key.
+8. A financial mandate cannot be activated without an `ACTIVE` credential owned by the same principal.
+9. A sandbox payment, controlled-merchant order and real external purchase are labeled as different outcomes.
 
 ## Official integration documentation
 

@@ -44,9 +44,13 @@ pnpm check
 - [Implementation plan and team workstreams](docs/implementation-plan.md)
 - [ADR-001 — MVP transactional architecture](docs/adr/ADR-001-bound-mvp-architecture.md)
 - [ADR-002 — Commerce, authorization and payment protocol layering](docs/adr/ADR-002-commerce-protocol-layering.md)
+- [ADR-003 — Agent identity assurance and KYA evolution](docs/adr/ADR-003-agent-identity-assurance.md)
+- [ADR-004 — Credential enrollment and external checkout](docs/adr/ADR-004-credential-enrollment-and-external-checkout.md)
 
 ## MVP sentence
 
 > UCP gives the agent a commerce language. AP2 gives it verifiable authority. Bound enforces that authority. Yuno resolves and executes the payment.
 
 The primary demo path is `UCP → AP2 → Bound Verify → Yuno → receipt`. Visa TAP and Visa Intelligent Commerce are complementary paths for agent recognition and payment credentials on legacy web checkouts; they are not required to complete P0.
+
+A financial mandate requires a previously enrolled, active payment credential owned by the same principal. Enrollment happens on a provider-controlled secure surface; Bound stores only a logical reference and masked display metadata. P0 creates a sandbox payment and a VuelaYa order. A real purchase on an external production site is a separate, gated route that requires network credential onboarding such as Visa Intelligent Commerce or Mastercard Agent Pay.

@@ -84,6 +84,7 @@ Exit: CI can migrate a clean database and contract tests pass without external s
 Goal: complete the entire purchase with VuelaYa fixtures and fake payment.
 
 - Register TravelBot identity and verify signed requests.
+- Seed a sanitized active logical payment credential owned by Marta; mandate activation fails when the reference is missing, inactive or owned by another principal.
 - Implement mandate creation, activation, expiry, consumption and revocation.
 - Publish the minimum VuelaYa UCP profile and deterministic flight fixtures.
 - Create and sign authoritative checkouts.
@@ -97,7 +98,7 @@ Exit: happy path creates one fake payment and one order; revoked, over-limit, ex
 
 Goal: replace fake execution with Yuno sandbox without changing domain contracts.
 
-- Enroll or seed a sandbox payment method and retain only a logical credential reference outside the adapter.
+- Enroll a sandbox payment method through a Yuno-controlled secure surface and retain only an active logical credential reference outside the adapter.
 - Implement the server-side Yuno client, normalized errors and idempotency.
 - Model `RESERVED → PAYMENT_PENDING → CONSUMED | FAILED` and reconcile unknown outcomes.
 - Produce correlated append-only audit events, receipt hashes and proof that Yuno was or was not called.
