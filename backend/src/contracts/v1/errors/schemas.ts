@@ -9,6 +9,7 @@ export const transportErrorCodeSchema = z.enum([
   "not_found",
   "missing_idempotency_key",
   "invalid_idempotency_key",
+  "idempotency_conflict",
   "internal_error",
 ]);
 
