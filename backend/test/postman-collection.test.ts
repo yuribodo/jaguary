@@ -45,6 +45,7 @@ test("Postman collection is valid JSON with executable current routes", async ()
   assert.equal(variables.checkoutHash, "d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79afde052b77b0f071d");
   assert.ok(variables.orderId);
   assert.ok(variables.receiptId);
+  assert.ok(variables.conversationId);
 
   const requests = flattenItems(collection.item ?? []);
   assert.deepEqual(
@@ -70,6 +71,9 @@ test("Postman collection is valid JSON with executable current routes", async ()
       "Pay rejects missing authorization",
       "Read missing receipt",
       "Read missing audit timeline",
+      "Create conversation",
+      "Read conversation",
+      "Append message as SSE",
       "Unknown route returns error envelope",
       "Mutable request rejects missing Idempotency-Key",
       "Mutable request rejects invalid Idempotency-Key",
