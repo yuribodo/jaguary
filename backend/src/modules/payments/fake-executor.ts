@@ -51,7 +51,7 @@ export class FakePaymentExecutor implements PaymentExecutor {
       amount: payment.authorization.reserved_amount,
       occurred_at: this.options.occurredAt,
     };
-    const paymentId = fakeIdentifier("payment_fake", authorizationId);
+    const paymentId = fakeIdentifier("payment_authorization", authorizationId);
 
     switch (this.options.outcome) {
       case "APPROVED":

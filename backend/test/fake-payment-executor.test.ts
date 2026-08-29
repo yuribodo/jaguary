@@ -22,7 +22,7 @@ test("FakePaymentExecutor deterministically approves a payment", async () => {
     amount: authorizedPaymentFixture.authorization.reserved_amount,
     occurred_at: occurredAt,
     status: "APPROVED",
-    payment_id: "payment_fake_authorization_vy_471_001",
+    payment_id: "payment_authorization_authorization_vy_471_001",
     provider_reference: "fake_ref_authorization_vy_471_001",
   });
 });
@@ -39,7 +39,7 @@ test("FakePaymentExecutor deterministically declines a payment", async () => {
     amount: authorizedPaymentFixture.authorization.reserved_amount,
     occurred_at: occurredAt,
     status: "DECLINED",
-    payment_id: "payment_fake_authorization_vy_471_001",
+    payment_id: "payment_authorization_authorization_vy_471_001",
     decline_code: "fake_declined",
   });
 });
@@ -71,7 +71,7 @@ test("FakePaymentExecutor deterministically returns an unknown outcome", async (
     amount: authorizedPaymentFixture.authorization.reserved_amount,
     occurred_at: occurredAt,
     status: "UNKNOWN",
-    payment_id: "payment_fake_authorization_vy_471_001",
+    payment_id: "payment_authorization_authorization_vy_471_001",
   });
 });
 
