@@ -7,11 +7,16 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowDownIcon,
   BanIcon,
   BotIcon,
+  CheckIcon,
   ChevronDownIcon,
   CircleAlertIcon,
+  CircleDollarSignIcon,
+  CircleIcon,
   FileCheck2Icon,
   MessageSquareIcon,
   PlaneIcon,
@@ -94,6 +99,8 @@ const TRAVELBOT_ID = "agent_travelbot";
 const MARTA_CREDENTIAL_ID = "cred_demo_marta_visa";
 const STARTER_PROMPT =
   "Quero viajar de São Paulo para Córdoba, econômica, até US$ 150.";
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
+const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
 
 type SurfaceData = {
   agent: AgentIdentity;
@@ -163,12 +170,23 @@ function shortId(value: string, start = 12, end = 8) {
 }
 
 function conversationStatusLabel(phase: Phase, mandate?: Mandate) {
-  if (mandate?.status === "DRAFT") return "Mandato em revisão";
-  if (mandate?.status === "ACTIVE") return "Mandato ativo";
-  if (mandate?.status === "REVOKED") return "Mandato revogado";
-  if (phase === "review") return "Mandato em revisão";
+  if (mandate?.status === "DRAFT") return "Confirmação necessária";
+  if (mandate?.status === "ACTIVE") return "Autorização ativa";
+  if (mandate?.status === "REVOKED") return "Autorização revogada";
+  if (mandate?.status === "EXPIRED") return "Autorização expirada";
+  if (mandate?.status === "CONSUMED") return "Autorização utilizada";
+  if (phase === "review") return "Preparando autorização";
   if (phase === "offers") return "Oferta encontrada";
   return "Conversa nova";
+}
+
+function mandateStatusLabel(status?: Mandate["status"]) {
+  if (status === "DRAFT") return "Aguardando confirmação";
+  if (status === "ACTIVE") return "Ativa";
+  if (status === "REVOKED") return "Revogada";
+  if (status === "EXPIRED") return "Expirada";
+  if (status === "CONSUMED") return "Utilizada";
+  return "Ainda não criada";
 }
 
 function AssistantMessage({
@@ -182,10 +200,28 @@ function AssistantMessage({
   name?: string;
   identified?: boolean;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <Message className="max-w-full" from="assistant">
-      <div className="flex items-start gap-3">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full border bg-card shadow-xs">
+    <motion.div
+      animate={{ opacity: 1, transform: "translateY(0px)" }}
+      className="w-full"
+      initial={{
+        opacity: 0,
+        transform: reduceMotion ? "translateY(0px)" : "translateY(6px)",
+      }}
+      layout="position"
+      transition={{
+        duration: reduceMotion ? 0.12 : 0.22,
+        ease: EASE_OUT,
+        layout: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", duration: 0.28, bounce: 0 },
+      }}
+    >
+      <Message className="max-w-full" from="assistant">
+        <div className="flex items-start gap-3">
+        <span className="mt-0.5 grid size-7 shrink-0 place-items-center text-blue-700">
           {name === "TravelBot" ? (
             <BotIcon className="size-4" />
           ) : (
@@ -193,36 +229,101 @@ function AssistantMessage({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-center gap-2">
-            <strong className="text-sm">{name}</strong>
+          <div className="mb-1.5 flex items-center gap-2">
+            <strong className="text-xs">{name}</strong>
             {identified ? (
-              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-800">
-                <ShieldCheckIcon className="size-3" />
-                identificado
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-700">
+                <i className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+                verificado
               </span>
             ) : null}
           </div>
-          <MessageContent className="w-full gap-4 overflow-visible text-[15px] leading-7">
+          <MessageContent className="w-full gap-4 overflow-visible text-[13px] leading-6">
             {text ? <p className="max-w-2xl">{text}</p> : null}
             {children}
           </MessageContent>
         </div>
-      </div>
-    </Message>
+        </div>
+      </Message>
+    </motion.div>
   );
 }
 
-function UserMessage({ children }: { children: string }) {
+function UserMessage({
+  children,
+  layoutId,
+}: {
+  children: string;
+  layoutId?: string;
+}) {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <Message from="user">
-      <MessageContent className="max-w-[85%] rounded-2xl rounded-br-sm bg-secondary px-4 py-3 text-sm leading-6">
-        {children}
-      </MessageContent>
-    </Message>
+    <motion.div
+      animate={{ opacity: 1, transform: "translateY(0px)" }}
+      className="flex w-full justify-end"
+      initial={{
+        opacity: 0,
+        transform: reduceMotion ? "translateY(0px)" : "translateY(4px)",
+      }}
+      layout="position"
+      layoutId={layoutId}
+      transition={{
+        duration: reduceMotion ? 0.1 : 0.18,
+        ease: EASE_OUT,
+        layout: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", duration: 0.28, bounce: 0 },
+      }}
+    >
+      <Message from="user">
+        <MessageContent className="max-w-[85%] rounded-lg rounded-br-sm border bg-secondary px-3.5 py-2.5 text-[13px] leading-6">
+          {children}
+        </MessageContent>
+      </Message>
+    </motion.div>
+  );
+}
+
+function StateReveal({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      animate={{ filter: "blur(0px)", opacity: 1, transform: "translateY(0px)" }}
+      className={className}
+      exit={{
+        filter: reduceMotion ? "blur(0px)" : "blur(2px)",
+        opacity: 0,
+        transform: reduceMotion ? "translateY(0px)" : "translateY(-2px)",
+      }}
+      initial={{
+        filter: reduceMotion ? "blur(0px)" : "blur(2px)",
+        opacity: 0,
+        transform: reduceMotion ? "translateY(0px)" : "translateY(4px)",
+      }}
+      layout="position"
+      transition={{
+        duration: reduceMotion ? 0.08 : 0.18,
+        ease: EASE_OUT,
+        layout: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", duration: 0.26, bounce: 0 },
+      }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
 function ApiStatus({ loadState }: { loadState: LoadState }) {
+  const reduceMotion = useReducedMotion();
   let state: "checking" | "online" | "offline" | "error" = "online";
   if (loadState.kind === "loading") state = "checking";
   if (loadState.kind === "error") {
@@ -239,7 +340,7 @@ function ApiStatus({ loadState }: { loadState: LoadState }) {
     <output
       className={cn(
         "hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex",
-        state === "online" && "text-emerald-800",
+        state === "online" && "text-emerald-700",
         (state === "offline" || state === "error") && "text-destructive",
       )}
       aria-live="polite"
@@ -251,8 +352,298 @@ function ApiStatus({ loadState }: { loadState: LoadState }) {
         )}
         aria-hidden="true"
       />
-      {label}
+      <AnimatePresence initial={false} mode="wait">
+        <motion.span
+          animate={{ filter: "blur(0px)", opacity: 1 }}
+          exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+          initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+          key={state}
+          transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+        >
+          {label}
+        </motion.span>
+      </AnimatePresence>
     </output>
+  );
+}
+
+type RunStep = {
+  label: string;
+  detail?: string;
+  state: "done" | "current" | "waiting" | "blocked";
+};
+
+function RunTimeline({
+  phase,
+  mandate,
+  action,
+}: {
+  phase: Phase;
+  mandate?: Mandate;
+  action: ActionState;
+}) {
+  const reduceMotion = useReducedMotion();
+  const authorityDone = mandate?.status === "ACTIVE" || mandate?.status === "CONSUMED";
+  const authorityBlocked = mandate?.status === "REVOKED" || mandate?.status === "EXPIRED";
+  const steps: RunStep[] = [
+    {
+      label: "Entender pedido",
+      state: phase === "welcome" ? "current" : "done",
+    },
+    {
+      label: "Encontrar opção",
+      state: phase === "welcome" ? "waiting" : phase === "offers" ? "current" : "done",
+    },
+    {
+      label: "Fixar checkout",
+      state:
+        action.kind === "checkout"
+          ? "current"
+          : phase === "review" || phase === "mandate"
+            ? "done"
+            : "waiting",
+    },
+    {
+      label: "Obter autoridade",
+      detail: mandate?.status === "DRAFT" ? "Precisa da sua confirmação" : undefined,
+      state: authorityBlocked
+        ? "blocked"
+        : authorityDone
+          ? "done"
+          : phase === "review" || phase === "mandate"
+            ? "current"
+            : "waiting",
+    },
+    {
+      label: "Comprar e emitir",
+      detail: "Ainda não conectado",
+      state: "waiting",
+    },
+  ];
+
+  return (
+    <ol className="grid gap-0">
+      {steps.map((step, index) => (
+        <li className="relative grid grid-cols-[18px_1fr] gap-2.5 pb-4 last:pb-0" key={step.label}>
+          {index < steps.length - 1 ? (
+            <i className="absolute top-4 bottom-0 left-[7px] w-px bg-border" aria-hidden="true" />
+          ) : null}
+          <span
+            className={cn(
+              "relative z-10 mt-0.5 grid size-4 place-items-center rounded-full border bg-panel",
+              step.state === "done" && "border-emerald-600 bg-emerald-600 text-white",
+              step.state === "current" && "border-blue-600 text-blue-600 shadow-[0_0_0_3px_rgb(73_105_216/0.1)]",
+              step.state === "blocked" && "border-destructive bg-destructive text-white",
+            )}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                animate={{ filter: "blur(0px)", opacity: 1 }}
+                className="grid place-items-center"
+                exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+                initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+                key={step.state}
+                transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+              >
+                {step.state === "done" ? (
+                  <CheckIcon className="size-2.5 stroke-[3]" />
+                ) : step.state === "current" ? (
+                  <CircleIcon className="size-1.5 fill-current" />
+                ) : step.state === "blocked" ? (
+                  <BanIcon className="size-2.5" />
+                ) : null}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+          <span className="grid min-w-0 gap-0.5">
+            <strong className={cn("text-xs font-medium", step.state === "waiting" && "text-muted-foreground")}>{step.label}</strong>
+            <AnimatePresence initial={false}>
+              {step.detail ? (
+                <motion.small
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  className="text-[10px] leading-4 text-muted-foreground"
+                  exit={{ opacity: 0, transform: "translateY(-2px)" }}
+                  initial={{ opacity: 0, transform: "translateY(2px)" }}
+                  transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+                >
+                  {step.detail}
+                </motion.small>
+              ) : null}
+            </AnimatePresence>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function InspectorPanel({
+  data,
+  offer,
+  mandate,
+  phase,
+  action,
+}: {
+  data?: SurfaceData;
+  offer?: OfferCandidate;
+  mandate?: Mandate;
+  phase: Phase;
+  action: ActionState;
+}) {
+  const reduceMotion = useReducedMotion();
+  const limit = mandate?.terms.max_aggregate.amount ?? 15000;
+  const projected = offer?.total.amount ?? 0;
+  const isConsumed = mandate?.status === "CONSUMED";
+  const spent = isConsumed ? projected : 0;
+  const available = Math.max(0, limit - spent);
+  const projectedRemaining = Math.max(0, limit - projected);
+  const percentage = limit ? Math.min(100, (projected / limit) * 100) : 0;
+  const currency = offer?.total.currency ?? mandate?.terms.max_aggregate.currency ?? "USD";
+
+  return (
+    <motion.aside
+      animate={{ opacity: 1, transform: "translateX(0px)" }}
+      aria-label="Detalhes da operação"
+      className="hidden w-[19rem] shrink-0 flex-col border-l bg-panel xl:flex"
+      initial={{
+        opacity: 0,
+        transform: reduceMotion ? "translateX(0px)" : "translateX(10px)",
+      }}
+      transition={{ duration: reduceMotion ? 0.12 : 0.22, ease: EASE_OUT }}
+    >
+      <div className="flex h-11 items-center justify-between border-b px-3">
+        <strong className="text-xs font-medium">Detalhes</strong>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <section className="border-b p-4" aria-labelledby="run-title">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="panel-label" id="run-title">Progresso</h2>
+            <AnimatePresence initial={false}>
+              {action.kind ? (
+                <motion.span
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  className="inline-flex items-center gap-1.5 text-[10px] text-blue-700"
+                  exit={{ opacity: 0, transform: "translateY(-2px)" }}
+                  initial={{ opacity: 0, transform: "translateY(2px)" }}
+                  transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+                >
+                  <i className="size-1.5 animate-pulse rounded-full bg-blue-600" />
+                  trabalhando
+                </motion.span>
+              ) : null}
+            </AnimatePresence>
+          </div>
+          <RunTimeline action={action} mandate={mandate} phase={phase} />
+        </section>
+
+        <section className="border-b p-4" aria-labelledby="budget-title">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="panel-label" id="budget-title">Limite</h2>
+          </div>
+          <div className="rounded-lg border bg-background/35 p-3">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <span className="block text-[10px] text-muted-foreground">Disponível agora</span>
+                <AnimatePresence initial={false} mode="wait">
+                  <motion.strong
+                    animate={{ filter: "blur(0px)", opacity: 1 }}
+                    className="mt-1 block text-xl font-semibold tabular-nums"
+                    exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+                    initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+                    key={`${available}-${currency}`}
+                    transition={{ duration: reduceMotion ? 0.08 : 0.18, ease: EASE_OUT }}
+                  >
+                    {formatMoney({ amount: available, currency })}
+                  </motion.strong>
+                </AnimatePresence>
+              </div>
+              <span className="pb-0.5 font-mono text-[10px] text-muted-foreground">de {formatMoney({ amount: limit, currency })}</span>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-sm bg-muted" aria-label={`${percentage.toFixed(0)}% do limite será usado`}>
+              <motion.div
+                animate={{ transform: `scaleX(${percentage / 100})` }}
+                className={cn("h-full origin-left bg-blue-600", isConsumed && "bg-emerald-600")}
+                initial={false}
+                transition={{ duration: reduceMotion ? 0.1 : 0.24, ease: EASE_IN_OUT }}
+              />
+            </div>
+            <AnimatePresence initial={false}>
+              {offer ? (
+                <motion.dl
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  className="mt-3 grid gap-2 border-t pt-3 text-xs"
+                  exit={{ opacity: 0, transform: "translateY(-3px)" }}
+                  initial={{ opacity: 0, transform: "translateY(3px)" }}
+                  transition={{ duration: reduceMotion ? 0.08 : 0.18, ease: EASE_OUT }}
+                >
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">{isConsumed ? "Debitado" : "Compra proposta"}</dt>
+                  <dd className={cn("font-medium tabular-nums", isConsumed && "text-destructive")}>− {formatMoney(offer.total)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">{isConsumed ? "Saldo restante" : "Restará se aprovado"}</dt>
+                  <dd className="font-medium tabular-nums">{formatMoney({ amount: projectedRemaining, currency })}</dd>
+                </div>
+                </motion.dl>
+              ) : null}
+            </AnimatePresence>
+          </div>
+          <AnimatePresence initial={false}>
+            {isConsumed ? (
+              <motion.p
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                className="mt-2 flex items-center gap-1.5 text-[10px] text-emerald-700"
+                exit={{ opacity: 0, transform: "translateY(-2px)" }}
+                initial={{ opacity: 0, transform: "translateY(2px)" }}
+                transition={{ duration: reduceMotion ? 0.08 : 0.18, ease: EASE_OUT }}
+              >
+                <CircleDollarSignIcon className="size-3" />
+                Pagamento confirmado
+              </motion.p>
+            ) : null}
+          </AnimatePresence>
+        </section>
+
+        <section className="p-4" aria-labelledby="context-title">
+          <h2 className="panel-label mb-3" id="context-title">Contexto</h2>
+          <dl className="grid gap-2.5 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Agente</dt>
+              <dd className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full bg-muted-foreground", data && "bg-emerald-500")} />{data?.agent.display_name ?? "Carregando"}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Companhia</dt>
+              <dd>{data?.merchant.merchant_name ?? "—"}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Pagamento</dt>
+              <dd>Visa •••• 4242</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Autoridade</dt>
+              <dd
+                className={cn(
+                  "inline-flex items-center gap-1.5 text-[11px]",
+                  mandate?.status === "ACTIVE" && "text-emerald-700",
+                  mandate?.status === "REVOKED" && "text-destructive",
+                )}
+              >
+                <i
+                  className={cn(
+                    "size-1.5 rounded-full bg-muted-foreground/60",
+                    mandate?.status === "ACTIVE" && "bg-current",
+                    mandate?.status === "REVOKED" && "bg-current",
+                  )}
+                  aria-hidden="true"
+                />
+                {mandateStatusLabel(mandate?.status)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </motion.aside>
   );
 }
 
@@ -296,21 +687,22 @@ function AppSidebar({
 
   return (
     <Sidebar className="border-sidebar-border" collapsible="icon">
-      <SidebarHeader className="gap-3 border-b border-sidebar-border p-3">
-        <div className="flex h-10 items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-          <strong className="text-[1.65rem] font-normal leading-none [font-family:var(--font-serif)] group-data-[collapsible=icon]:hidden">
-            Bound
+      <SidebarHeader className="gap-2 border-b border-sidebar-border p-2.5">
+        <div className="flex h-9 items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <span className="grid size-6 shrink-0 place-items-center rounded bg-primary text-[10px] font-bold text-primary-foreground">B</span>
+          <strong className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+            Bound Control
           </strong>
           <SidebarTrigger
             aria-label="Recolher barra lateral"
-            className="ml-auto size-9 group-data-[collapsible=icon]:ml-0"
+            className="ml-auto size-8 group-data-[collapsible=icon]:ml-0"
             title="Recolher barra lateral (Ctrl+B)"
           />
         </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="h-11 border border-sidebar-border bg-background px-3 shadow-none"
+              className="h-9 border border-sidebar-border bg-background px-2.5 text-xs shadow-none"
               onClick={startNewConversation}
               tooltip="Nova conversa"
             >
@@ -322,7 +714,7 @@ function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup className="px-3 py-4">
+        <SidebarGroup className="px-2.5 py-3">
           <SidebarGroupLabel className="px-2 font-mono text-[10px] tracking-[0.12em] uppercase">
             Conversas recentes
           </SidebarGroupLabel>
@@ -331,7 +723,7 @@ function AppSidebar({
               {hasConversation ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    className="h-auto min-h-16 items-start rounded-l-none border-l-2 border-blue-600 px-3 py-3"
+                    className="h-auto min-h-14 items-start rounded-md border border-blue-600/20 bg-blue-600/5 px-2.5 py-2.5"
                     isActive
                     onClick={focusConversation}
                     tooltip="GRU → COR"
@@ -351,11 +743,6 @@ function AppSidebar({
                 </li>
               )}
             </SidebarMenu>
-            {hasConversation ? (
-              <p className="px-2 pt-7 text-sm text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden">
-                Nenhuma outra conversa
-              </p>
-            ) : null}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -383,11 +770,11 @@ function AppSidebar({
             </span>
             <ChevronDownIcon className="size-3 text-sidebar-foreground/50 transition-transform duration-150 group-open/identity:rotate-180 group-data-[collapsible=icon]:hidden" />
           </summary>
-          <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-sidebar-border bg-popover p-4 text-popover-foreground shadow-lg group-data-[collapsible=icon]:left-10">
+          <div className="bound-popover bound-popover-bottom absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-sidebar-border bg-popover p-4 text-popover-foreground shadow-lg group-data-[collapsible=icon]:left-10">
             {data ? (
               <>
                 <div className="mb-4 flex items-center gap-2">
-                  <ShieldCheckIcon className="size-5 text-emerald-800" />
+                  <ShieldCheckIcon className="size-5 text-emerald-700" />
                   <div className="grid">
                     <strong className="text-sm">Agente identificado</strong>
                     <span className="text-xs text-muted-foreground">
@@ -442,28 +829,48 @@ function Header({
   phase: Phase;
   mandate?: Mandate;
 }) {
+  const reduceMotion = useReducedMotion();
+  const operationLabel = phase === "welcome" ? "Nova operação" : "GRU → COR";
+  const statusLabel = conversationStatusLabel(phase, mandate);
+
   return (
-    <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:px-6">
-      <div className="flex items-center gap-2">
-        <SidebarTrigger aria-label="Alternar barra lateral" />
-        <div className="grid leading-tight">
-          <strong className="text-sm">
-            {phase === "welcome" ? "Bound" : "GRU → COR"}
-          </strong>
-          <span className="hidden text-[10px] text-muted-foreground sm:block">
-            {conversationStatusLabel(phase, mandate)}
-          </span>
-        </div>
+    <header className="relative z-20 flex h-11 shrink-0 items-center justify-between border-b bg-panel px-2 md:px-3">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <SidebarTrigger aria-label="Alternar barra lateral" className="size-8 md:hidden" />
+        <AnimatePresence initial={false} mode="wait">
+          <motion.strong
+            animate={{ filter: "blur(0px)", opacity: 1 }}
+            className="truncate text-xs font-medium"
+            exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            key={operationLabel}
+            transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+          >
+            {operationLabel}
+          </motion.strong>
+        </AnimatePresence>
+        <AnimatePresence initial={false} mode="wait">
+          <motion.span
+            animate={{ filter: "blur(0px)", opacity: 1 }}
+            className="ml-1 hidden border-l pl-2 text-[10px] text-muted-foreground sm:inline"
+            exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            key={statusLabel}
+            transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+          >
+            {statusLabel}
+          </motion.span>
+        </AnimatePresence>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <ApiStatus loadState={loadState} />
         <details className="group relative">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 text-xs font-medium hover:bg-muted [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-[11px] font-medium hover:bg-muted [&::-webkit-details-marker]:hidden">
             Evidência
             <ChevronDownIcon className="size-3 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
-          <div className="absolute top-11 right-0 w-[min(88vw,28rem)] rounded-xl border bg-popover p-4 shadow-xl">
+          <div className="bound-popover absolute top-9 right-0 w-[min(88vw,28rem)] rounded-lg border bg-popover p-4 shadow-xl">
             <span className="block text-[11px] text-muted-foreground">
               Último correlation ID
             </span>
@@ -484,10 +891,18 @@ function ErrorCard({
   error: BoundApiError;
   onRetry?: () => void;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <div
+    <motion.div
+      animate={{ opacity: 1, transform: "translateY(0px)" }}
       className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+      initial={{
+        opacity: 0,
+        transform: reduceMotion ? "translateY(0px)" : "translateY(4px)",
+      }}
       role="alert"
+      transition={{ duration: reduceMotion ? 0.1 : 0.18, ease: EASE_OUT }}
     >
       {error.offline ? (
         <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -521,7 +936,7 @@ function ErrorCard({
           </Button>
         ) : null}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -539,20 +954,15 @@ function OfferCard({
   onSelect: () => void;
 }) {
   return (
-    <article className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-      <div className="flex items-center justify-between border-b px-4 py-3 md:px-5">
+    <article className="overflow-hidden rounded-lg border bg-card shadow-sm">
+      <div className="flex items-center border-b px-4 py-3 md:px-5">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-lg bg-blue-600/10 text-blue-800">
-            <PlaneIcon className="size-4" />
-          </span>
+          <PlaneIcon className="size-4 text-blue-700" />
           <div className="grid">
             <strong className="text-sm">{merchant.merchant_name}</strong>
             <span className="text-xs text-muted-foreground">Oferta encontrada</span>
           </div>
         </div>
-        <span className="rounded-full border px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-          merchant
-        </span>
       </div>
 
       <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-6 md:gap-6 md:px-6">
@@ -586,7 +996,7 @@ function OfferCard({
           <dd className="mt-1 font-medium">Econômica</dd>
         </div>
         <div className="border-l p-3 md:p-4">
-          <dt className="text-muted-foreground">Merchant</dt>
+          <dt className="text-muted-foreground">Companhia</dt>
           <dd className="mt-1 font-medium">{merchant.merchant_name}</dd>
         </div>
         <div className="col-span-2 border-t p-3 md:col-span-1 md:border-t-0 md:border-l md:p-4">
@@ -600,16 +1010,20 @@ function OfferCard({
           <span className="text-xs text-muted-foreground">Total</span>
           <strong className="text-xl">{formatMoney(offer.total)}</strong>
         </div>
-        {selected ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-800">
-            <FileCheck2Icon className="size-4" />
-            Selecionada
-          </span>
-        ) : (
-          <Button disabled={busy} onClick={onSelect}>
-            {busy ? "Criando checkout…" : "Selecionar oferta"}
-          </Button>
-        )}
+        <AnimatePresence initial={false} mode="wait">
+          <StateReveal key={selected ? "selected" : busy ? "busy" : "select"}>
+            {selected ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                <FileCheck2Icon className="size-4" />
+                Selecionada
+              </span>
+            ) : (
+              <Button disabled={busy} onClick={onSelect}>
+                {busy ? "Criando checkout…" : "Selecionar oferta"}
+              </Button>
+            )}
+          </StateReveal>
+        </AnimatePresence>
       </div>
     </article>
   );
@@ -631,33 +1045,29 @@ function ScopeGrid({
     };
 
   const values = [
-    ["Agente", data.agent.display_name, data.agent.agent_id],
-    ["Merchant", data.merchant.merchant_name, data.merchant.merchant_id],
+    ["Agente", data.agent.display_name],
+    ["Companhia", data.merchant.merchant_name],
     [
       "Rota",
       offer.fulfillment.origin + " → " + offer.fulfillment.destination,
-      "somente este trajeto",
     ],
     [
       "Cabine",
       cabinLabel(mandate?.terms.cabin ?? "ECONOMY"),
-      "sem upgrade autônomo",
     ],
     [
       "Limite",
       formatMoney(maxPurchase),
-      "1 uso · oferta " + formatMoney(offer.total),
     ],
     [
-      "Expiração",
+      "Expira",
       formatDateTime(mandate?.terms.expires_at ?? mandateExpiry(offer)),
-      "termina automaticamente",
     ],
   ];
 
   return (
-    <dl className="grid grid-cols-1 overflow-hidden rounded-xl border sm:grid-cols-2">
-      {values.map(([label, value, note], index) => (
+    <dl className="grid grid-cols-1 overflow-hidden rounded-md border sm:grid-cols-2">
+      {values.map(([label, value], index) => (
         <div
           className={cn(
             "min-w-0 p-3.5",
@@ -668,12 +1078,7 @@ function ScopeGrid({
           key={label}
         >
           <dt className="text-[11px] text-muted-foreground">{label}</dt>
-          <dd className="mt-1 text-sm font-medium">
-            {value}
-            <small className="mt-0.5 block truncate font-mono text-[10px] font-normal text-muted-foreground">
-              {note}
-            </small>
-          </dd>
+          <dd className="mt-1 text-sm font-medium">{value}</dd>
         </div>
       ))}
     </dl>
@@ -698,6 +1103,8 @@ function EvidenceDetails({
         </span>
         <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
+      <div className="bound-disclosure">
+        <div className="overflow-hidden">
       <dl className="mb-3 grid gap-3 rounded-xl bg-muted/50 p-4 text-xs">
         <div>
           <dt className="text-muted-foreground">Checkout ID</dt>
@@ -746,6 +1153,8 @@ function EvidenceDetails({
       <p className="pb-3 text-xs text-muted-foreground">
         O checkout fixa os termos comerciais; ele não é uma decisão de autorização.
       </p>
+        </div>
+      </div>
     </details>
   );
 }
@@ -755,12 +1164,13 @@ function DecisionState({ state }: { state: AuthorizationSurfaceState }) {
     <div className="flex gap-3 rounded-xl border border-dashed p-3.5">
       <BanIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div>
-        <span className="text-[10px] text-muted-foreground uppercase">
-          Bound Verify / BE-07
-        </span>
-        <strong className="mt-0.5 block text-sm">{state.label}</strong>
+        <strong className="block text-sm">
+          {state.kind === "NOT_CONNECTED" ? "Compra ainda não disponível" : state.label}
+        </strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          {state.description}
+          {state.kind === "NOT_CONNECTED"
+            ? "Falta conectar verificação e pagamento."
+            : state.description}
         </p>
       </div>
     </div>
@@ -796,179 +1206,231 @@ function MandateCard({
   onCancelRevoke: () => void;
   onRevoke: () => void;
 }) {
-  const status = mandate?.status ?? "PROPOSTA";
+  const reduceMotion = useReducedMotion();
+  const statusKey = mandate?.status ?? "NOT_CREATED";
+  const statusLabel = mandateStatusLabel(mandate?.status);
   const isDraft = mandate?.status === "DRAFT";
   const active = mandate?.status === "ACTIVE";
   const revoked = mandate?.status === "REVOKED";
 
   return (
-    <article className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <motion.article
+      className="overflow-hidden rounded-lg border bg-card shadow-sm"
+      layout
+      transition={{
+        layout: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", duration: 0.28, bounce: 0 },
+      }}
+    >
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3 md:px-5">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-lg bg-blue-600/10 text-blue-800">
-            <ShieldCheckIcon className="size-4" />
-          </span>
-          <div className="grid">
-            <strong className="text-sm">Carta de autoridade</strong>
-            <span className="text-xs text-muted-foreground">Mandato de viagem · Bound</span>
-          </div>
+          <ShieldCheckIcon className="size-4 text-blue-700" />
+          <strong className="text-sm">Autorização</strong>
         </div>
-        <span
-          className={cn(
-            "rounded-full border px-2 py-0.5 font-mono text-[10px]",
-            active && "border-emerald-700/30 bg-emerald-700/5 text-emerald-800",
-            revoked && "border-destructive/30 bg-destructive/5 text-destructive",
-          )}
-        >
-          {status}
-        </span>
+        <AnimatePresence initial={false} mode="wait">
+          <motion.span
+            animate={{ filter: "blur(0px)", opacity: 1 }}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-[11px] text-muted-foreground",
+              active && "text-emerald-700",
+              revoked && "text-destructive",
+            )}
+            exit={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            initial={{ filter: reduceMotion ? "blur(0px)" : "blur(2px)", opacity: 0 }}
+            key={statusKey}
+            transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: EASE_OUT }}
+          >
+            <i
+              className={cn(
+                "size-1.5 rounded-full bg-muted-foreground/60",
+                isDraft && "bg-amber-500",
+                active && "bg-current",
+                revoked && "bg-current",
+              )}
+              aria-hidden="true"
+            />
+            {statusLabel}
+          </motion.span>
+        </AnimatePresence>
       </div>
 
       <div className="space-y-5 p-4 md:p-5">
         <p className="text-sm leading-6">
-          Marta autoriza <strong>{data.agent.display_name}</strong> a comprar uma
-          passagem de <strong>{offer.fulfillment.origin}</strong> para{" "}
-          <strong>{offer.fulfillment.destination}</strong> dentro destes limites:
+          Autorizar <strong>{data.agent.display_name}</strong> a comprar{" "}
+          <strong>{offer.fulfillment.origin} → {offer.fulfillment.destination}</strong>:
         </p>
 
         <ScopeGrid data={data} mandate={mandate} offer={offer} />
 
-        {!mandate ? (
-          <div className="flex flex-col gap-3 rounded-xl bg-muted/60 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <strong className="text-sm">Criar primeiro como rascunho</strong>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                DRAFT persiste os termos, mas ainda não concede autoridade.
-              </p>
-            </div>
-            <Button
-              className="sm:shrink-0"
-              disabled={action.kind === "draft"}
-              onClick={onCreateDraft}
-              variant="outline"
-            >
-              {action.kind === "draft" ? "Criando DRAFT…" : "Criar DRAFT"}
-            </Button>
+        <div className="grid overflow-hidden rounded-md border bg-background/25 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="p-3.5">
+            <span className="text-[10px] text-muted-foreground">Limite disponível</span>
+            <strong className="mt-1 block text-base tabular-nums">
+              {formatMoney(mandate?.terms.max_aggregate ?? { amount: 15000, currency: offer.total.currency })}
+            </strong>
           </div>
-        ) : null}
+          <div className="hidden items-center border-x px-4 text-muted-foreground sm:flex">
+            <ArrowDownIcon className="size-4 -rotate-90" />
+          </div>
+          <div className="border-t p-3.5 sm:border-t-0">
+            <span className="text-[10px] text-muted-foreground">Restará após a compra</span>
+            <strong className="mt-1 block text-base tabular-nums">
+              {formatMoney({
+                amount: Math.max(0, (mandate?.terms.max_aggregate.amount ?? 15000) - offer.total.amount),
+                currency: offer.total.currency,
+              })}
+            </strong>
+          </div>
+        </div>
 
-        {isDraft ? (
-          <Confirmation
-            approval={{ id: "activate-" + mandate.terms.mandate_id }}
-            className="gap-3 border-blue-700/25 bg-blue-700/5 p-4"
-            state="approval-requested"
-          >
-            <ConfirmationRequest>
-              <ConfirmationTitle className="grid gap-1 text-foreground">
-                <strong>Conceder esta autoridade ao TravelBot?</strong>
-                <span className="text-xs font-normal leading-5 text-muted-foreground">
-                  A ativação assina os termos. O mandato continuará limitado,
-                  expirável e revogável.
-                </span>
-              </ConfirmationTitle>
-              <ConfirmationActions className="self-stretch">
-                <ConfirmationAction
-                  className="w-full sm:ml-auto sm:w-auto"
-                  disabled={action.kind === "activate"}
-                  onClick={onActivate}
-                >
-                  {action.kind === "activate" ? "Ativando…" : "Autorizar TravelBot"}
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
-          </Confirmation>
-        ) : null}
+        <AnimatePresence initial={false} mode="wait">
+          {!mandate ? (
+            <StateReveal className="flex justify-end" key="proposal">
+              <Button
+                disabled={action.kind === "draft"}
+                onClick={onCreateDraft}
+                variant="outline"
+              >
+                {action.kind === "draft" ? "Preparando…" : "Preparar autorização"}
+              </Button>
+            </StateReveal>
+          ) : null}
 
-        {active ? (
-          <Confirmation
-            approval={{
-              id: "active-" + mandate.terms.mandate_id,
-              approved: true,
-            }}
-            className="border-emerald-700/25 bg-emerald-700/5 p-4"
-            state="output-available"
-          >
-            <ConfirmationAccepted>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <ShieldCheckIcon className="size-5 shrink-0 text-emerald-800" />
-                <div className="grid flex-1">
-                  <strong className="text-sm text-foreground">Autoridade ativa</strong>
+          {isDraft ? (
+            <StateReveal key="draft">
+              <Confirmation
+                approval={{ id: "activate-" + mandate.terms.mandate_id }}
+                className="gap-3 border-blue-700/25 bg-blue-700/5 p-4"
+                state="approval-requested"
+              >
+                <ConfirmationRequest>
+                  <ConfirmationTitle className="grid gap-1 text-foreground">
+                    <strong>Conceder esta autoridade ao TravelBot?</strong>
+                    <span className="text-xs font-normal leading-5 text-muted-foreground">
+                      Limitada a estes termos e revogável a qualquer momento.
+                    </span>
+                  </ConfirmationTitle>
+                  <ConfirmationActions className="self-stretch">
+                    <ConfirmationAction
+                      className="w-full sm:ml-auto sm:w-auto"
+                      disabled={action.kind === "activate"}
+                      onClick={onActivate}
+                    >
+                      {action.kind === "activate" ? "Ativando…" : "Autorizar TravelBot"}
+                    </ConfirmationAction>
+                  </ConfirmationActions>
+                </ConfirmationRequest>
+              </Confirmation>
+            </StateReveal>
+          ) : null}
+
+          {active ? (
+            <StateReveal key="active">
+              <Confirmation
+                approval={{
+                  id: "active-" + mandate.terms.mandate_id,
+                  approved: true,
+                }}
+                className="border-emerald-700/25 bg-emerald-700/5 p-4"
+                state="output-available"
+              >
+                <ConfirmationAccepted>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <ShieldCheckIcon className="size-5 shrink-0 text-emerald-700" />
+                    <div className="grid flex-1">
+                      <strong className="text-sm text-foreground">Autoridade ativa</strong>
+                    </div>
+                    <Button
+                      disabled={action.kind === "refresh"}
+                      onClick={onRefresh}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      <RefreshCwIcon />
+                      Atualizar
+                    </Button>
+                  </div>
+                </ConfirmationAccepted>
+              </Confirmation>
+            </StateReveal>
+          ) : null}
+
+          {revoked ? (
+            <StateReveal key="revoked">
+              <div className="flex gap-3 rounded-xl border border-destructive/25 bg-destructive/5 p-4">
+                <BanIcon className="size-5 shrink-0 text-destructive" />
+                <div className="grid">
+                  <strong className="text-sm">Autoridade revogada</strong>
                   <span className="text-xs text-muted-foreground">
-                    Termos assinados; o mandato pode ser revogado a qualquer momento.
+                    Encerrada em {formatDateTime(mandate.revoked_at)}
                   </span>
                 </div>
-                <Button
-                  disabled={action.kind === "refresh"}
-                  onClick={onRefresh}
-                  size="sm"
-                  variant="ghost"
-                >
-                  <RefreshCwIcon />
-                  Atualizar
+              </div>
+            </StateReveal>
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {action.error ? <ErrorCard error={action.error} /> : null}
+        </AnimatePresence>
+        <EvidenceDetails checkout={checkout} mandate={mandate} />
+        <AnimatePresence initial={false}>
+          {active ? (
+            <StateReveal key="decision">
+              <DecisionState state={decision} />
+            </StateReveal>
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false} mode="wait">
+          {active && !confirmRevoke ? (
+            <StateReveal key="revoke-action">
+              <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Revogar encerra este mandato, não a identidade do agente.
+                </p>
+                <Button onClick={onAskRevoke} size="sm" variant="ghost">
+                  <BanIcon />
+                  Revogar mandato
                 </Button>
               </div>
-            </ConfirmationAccepted>
-          </Confirmation>
-        ) : null}
+            </StateReveal>
+          ) : null}
 
-        {revoked ? (
-          <div className="flex gap-3 rounded-xl border border-destructive/25 bg-destructive/5 p-4">
-            <BanIcon className="size-5 shrink-0 text-destructive" />
-            <div className="grid">
-              <strong className="text-sm">Autoridade revogada</strong>
-              <span className="text-xs text-muted-foreground">
-                Encerrada em {formatDateTime(mandate.revoked_at)}
-              </span>
-            </div>
-          </div>
-        ) : null}
-
-        {action.error ? <ErrorCard error={action.error} /> : null}
-        <EvidenceDetails checkout={checkout} mandate={mandate} />
-        {active ? <DecisionState state={decision} /> : null}
-
-        {active && !confirmRevoke ? (
-          <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              Revogar encerra este mandato, não a identidade do agente.
-            </p>
-            <Button onClick={onAskRevoke} size="sm" variant="ghost">
-              <BanIcon />
-              Revogar mandato
-            </Button>
-          </div>
-        ) : null}
-
-        {active && confirmRevoke ? (
-          <Confirmation
-            approval={{ id: "revoke-" + mandate.terms.mandate_id }}
-            className="gap-3 border-destructive/30 bg-destructive/5 p-4"
-            state="approval-requested"
-          >
-            <ConfirmationRequest>
-              <ConfirmationTitle className="grid gap-1 text-foreground">
-                <strong>Revogar esta autoridade?</strong>
-                <span className="text-xs font-normal text-muted-foreground">
-                  Esta ação encerra o mandato de forma definitiva.
-                </span>
-              </ConfirmationTitle>
-              <ConfirmationActions className="self-stretch">
-                <ConfirmationAction onClick={onCancelRevoke} variant="ghost">
-                  Cancelar
-                </ConfirmationAction>
-                <ConfirmationAction
-                  disabled={action.kind === "revoke"}
-                  onClick={onRevoke}
-                  variant="destructive"
-                >
-                  {action.kind === "revoke" ? "Revogando…" : "Confirmar revogação"}
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
-          </Confirmation>
-        ) : null}
+          {active && confirmRevoke ? (
+            <StateReveal key="revoke-confirmation">
+              <Confirmation
+                approval={{ id: "revoke-" + mandate.terms.mandate_id }}
+                className="gap-3 border-destructive/30 bg-destructive/5 p-4"
+                state="approval-requested"
+              >
+                <ConfirmationRequest>
+                  <ConfirmationTitle className="grid gap-1 text-foreground">
+                    <strong>Revogar esta autoridade?</strong>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      Esta ação encerra o mandato de forma definitiva.
+                    </span>
+                  </ConfirmationTitle>
+                  <ConfirmationActions className="self-stretch">
+                    <ConfirmationAction onClick={onCancelRevoke} variant="ghost">
+                      Cancelar
+                    </ConfirmationAction>
+                    <ConfirmationAction
+                      disabled={action.kind === "revoke"}
+                      onClick={onRevoke}
+                      variant="destructive"
+                    >
+                      {action.kind === "revoke" ? "Revogando…" : "Confirmar revogação"}
+                    </ConfirmationAction>
+                  </ConfirmationActions>
+                </ConfirmationRequest>
+              </Confirmation>
+            </StateReveal>
+          ) : null}
+        </AnimatePresence>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
@@ -1203,7 +1665,7 @@ export function TrustedSurface() {
   return (
     <SidebarProvider
       className="h-dvh min-h-[38rem] overflow-hidden"
-      style={{ "--sidebar-width": "17rem" } as CSSProperties}
+      style={{ "--sidebar-width": "14.5rem" } as CSSProperties}
     >
       <AppSidebar
         data={data}
@@ -1211,33 +1673,44 @@ export function TrustedSurface() {
         onReset={resetConversation}
         phase={phase}
       />
-      <SidebarInset className="h-dvh min-w-0 overflow-hidden">
-        <Header
-          correlationId={lastCorrelationId}
-          loadState={loadState}
-          mandate={mandate}
-          phase={phase}
-        />
+      <SidebarInset className="h-dvh min-w-0 flex-row overflow-hidden">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Header
+            correlationId={lastCorrelationId}
+            loadState={loadState}
+            mandate={mandate}
+            phase={phase}
+          />
 
-        <Conversation className="min-h-0 bg-background">
+        <Conversation className="min-h-0 bg-workspace">
           <ConversationContent
-            className="mx-auto w-full max-w-3xl gap-8 px-4 py-8 md:px-6 md:py-12"
+            className={cn(
+              "mx-auto min-h-full w-full max-w-3xl gap-7 px-4 py-8 [justify-content:safe_flex-end] md:px-8 md:py-12",
+            )}
             id="conversation-start"
           >
           <AssistantMessage
             identified={Boolean(data)}
-            text="Oi, Marta. Posso buscar uma passagem e preparar um mandato limitado para você revisar. Eu só ganho autoridade depois da sua confirmação explícita."
+            text="Oi, Marta. O que você quer comprar?"
           >
-            {phase === "welcome" ? (
-              <Suggestions className="pt-2">
-                <Suggestion
-                  className="h-auto max-w-[calc(100vw-5rem)] whitespace-normal py-2 text-left"
-                  disabled={loadState.kind !== "ready"}
-                  onClick={startRequest}
-                  suggestion={STARTER_PROMPT}
-                />
-              </Suggestions>
-            ) : null}
+            <AnimatePresence initial={false}>
+              {phase === "welcome" ? (
+                <motion.div
+                  exit={{ filter: "blur(2px)", opacity: 0 }}
+                  layoutId="starter-prompt"
+                  transition={{ duration: 0.16, ease: EASE_OUT }}
+                >
+                  <Suggestions className="pt-2">
+                    <Suggestion
+                      className="h-auto max-w-[calc(100vw-5rem)] whitespace-normal py-2 text-left"
+                      disabled={loadState.kind !== "ready"}
+                      onClick={startRequest}
+                      suggestion={STARTER_PROMPT}
+                    />
+                  </Suggestions>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </AssistantMessage>
 
           {loadState.kind === "loading" ? (
@@ -1257,7 +1730,13 @@ export function TrustedSurface() {
             </AssistantMessage>
           ) : null}
 
-          {sentPrompt ? <UserMessage>{sentPrompt}</UserMessage> : null}
+          {sentPrompt ? (
+            <UserMessage
+              layoutId={sentPrompt === STARTER_PROMPT ? "starter-prompt" : undefined}
+            >
+              {sentPrompt}
+            </UserMessage>
+          ) : null}
 
           {phase !== "welcome" && data ? (
             <AssistantMessage
@@ -1298,48 +1777,33 @@ export function TrustedSurface() {
           selectedOffer &&
           checkout &&
           data ? (
-            <>
-              <UserMessage>
-                {"Quero seguir com a opção de " +
-                  formatMoney(selectedOffer.total) +
-                  "."}
-              </UserMessage>
-              <AssistantMessage text="A VuelaYa fixou o checkout. Agora revise a autoridade separadamente:">
-                <MandateCard
-                  action={action}
-                  checkout={checkout}
-                  confirmRevoke={confirmRevoke}
-                  data={data}
-                  decision={decision}
-                  mandate={mandate}
-                  offer={selectedOffer}
-                  onActivate={() => void activateMandate()}
-                  onAskRevoke={() => setConfirmRevoke(true)}
-                  onCancelRevoke={() => setConfirmRevoke(false)}
-                  onCreateDraft={() => void createDraft(data, selectedOffer)}
-                  onRefresh={() => void refreshMandate()}
-                  onRevoke={() => void revokeMandate()}
-                />
-              </AssistantMessage>
-            </>
-          ) : null}
-
-          {phase === "mandate" && mandate?.status === "ACTIVE" ? (
-            <AssistantMessage text="Mandato ativo. Isso ainda não é uma compra nem uma decisão ALLOW; a policy BE-06 existe no backend, mas POST /verify e a reserva BE-07 continuam explicitamente não conectados." />
-          ) : null}
-
-          {mandate?.status === "REVOKED" ? (
-            <AssistantMessage text="A autoridade foi encerrada. Minha identidade continua ativa, mas este mandato não pode mais ser usado." />
+            <AssistantMessage text="Revise antes de autorizar:">
+              <MandateCard
+                action={action}
+                checkout={checkout}
+                confirmRevoke={confirmRevoke}
+                data={data}
+                decision={decision}
+                mandate={mandate}
+                offer={selectedOffer}
+                onActivate={() => void activateMandate()}
+                onAskRevoke={() => setConfirmRevoke(true)}
+                onCancelRevoke={() => setConfirmRevoke(false)}
+                onCreateDraft={() => void createDraft(data, selectedOffer)}
+                onRefresh={() => void refreshMandate()}
+                onRevoke={() => void revokeMandate()}
+              />
+            </AssistantMessage>
           ) : null}
           </ConversationContent>
           <ConversationScrollButton aria-label="Ir para o fim da conversa" />
         </Conversation>
 
-        <footer className="shrink-0 border-t bg-background px-3 py-3 md:px-6">
+        <footer className="shrink-0 border-t bg-panel px-3 py-2.5 md:px-6">
           <PromptInput className="mx-auto max-w-3xl" onSubmit={handleSubmit}>
             <PromptInputBody>
               <PromptInputTextarea
-                className="min-h-14"
+                className="min-h-12"
                 disabled={loadState.kind !== "ready"}
                 onChange={(event) => setComposerValue(event.currentTarget.value)}
                 placeholder="Converse com o TravelBot…"
@@ -1347,11 +1811,7 @@ export function TrustedSurface() {
               />
             </PromptInputBody>
             <PromptInputFooter>
-              <PromptInputTools>
-                <span className="hidden text-[10px] text-muted-foreground sm:inline">
-                  Enter envia · Shift + Enter quebra linha
-                </span>
-              </PromptInputTools>
+              <PromptInputTools aria-hidden="true" />
               <PromptInputSubmit
                 disabled={
                   loadState.kind !== "ready" || !composerValue.trim()
@@ -1360,10 +1820,15 @@ export function TrustedSurface() {
               />
             </PromptInputFooter>
           </PromptInput>
-          <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-            Sem cartão, pagamento ou decisão de compra nesta superfície.
-          </p>
         </footer>
+        </main>
+        <InspectorPanel
+          action={action}
+          data={data}
+          mandate={mandate}
+          offer={selectedOffer}
+          phase={phase}
+        />
       </SidebarInset>
     </SidebarProvider>
   );
