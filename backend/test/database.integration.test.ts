@@ -6,6 +6,7 @@ import { Pool } from "pg";
 
 import {
   agentRequestProofFixture,
+  canonicalizeJson,
   checkoutTermsFixture,
   mandateFixture,
   normalizedAuthorizationFixture,
@@ -15,6 +16,7 @@ import {
 } from "../src/contracts/v1/index.js";
 import { createDatabase, type DatabaseConnection } from "../src/db/database.js";
 import { migrateDatabase } from "../src/db/migrate.js";
+import { DrizzleAgentIdentityRegistry } from "../src/modules/identity/registry.js";
 import {
   agents,
   authorizations,
@@ -40,9 +42,10 @@ async function seedAuthorizationGraph(): Promise<void> {
       principalId: travelBotFixture.principal_id,
       displayName: travelBotFixture.display_name,
       status: travelBotFixture.status,
+      buildFingerprint: travelBotFixture.build_fingerprint,
       verificationKeyId: travelBotFixture.verification_key.key_id,
       verificationAlgorithm: travelBotFixture.verification_key.algorithm,
-      verificationPublicKey: travelBotFixture.verification_key.public_key,
+      verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
       correlationId: "corr_seed_agent_001",
       idempotencyKey: "idem_seed_agent_001",
       createdAt: new Date(travelBotFixture.created_at),
@@ -207,6 +210,37 @@ integrationTest("a successful transaction commits all writes", async () => {
   assert.equal(rows.length, 1);
 });
 
+integrationTest("agent registration is persistent, readable and idempotent", async () => {
+  assert.ok(database);
+  const registry = new DrizzleAgentIdentityRegistry(database.db, {
+    now: () => new Date(travelBotFixture.created_at),
+  });
+  const { created_at: createdAt, ...registration } = travelBotFixture;
+  void createdAt;
+  const context = {
+    correlationId: "corr_register_agent_001",
+    idempotencyKey: "idem_register_agent_001",
+  };
+
+  const first = await registry.register(registration, context);
+  const repeated = await registry.register(registration, context);
+  const read = await registry.get(travelBotFixture.agent_id);
+
+  assert.equal(first.created, true);
+  assert.equal(repeated.created, false);
+  assert.deepEqual(first.agent, travelBotFixture);
+  assert.deepEqual(repeated.agent, travelBotFixture);
+  assert.deepEqual(read, travelBotFixture);
+  await assert.rejects(
+    registry.register({ ...registration, display_name: "Different payload" }, context),
+    (error: unknown) => (
+      error instanceof Error
+      && "code" in error
+      && error.code === "idempotency_conflict"
+    ),
+  );
+});
+
 integrationTest("a failed transaction rolls back all writes", async () => {
   assert.ok(database);
 
@@ -236,9 +270,9 @@ integrationTest("a duplicate agent nonce is rejected as replay", async () => {
   const nonce = {
     agentId: agentRequestProofFixture.payload.agent_id,
     nonce: agentRequestProofFixture.payload.nonce,
-    mandateId: agentRequestProofFixture.payload.mandate_id,
-    checkoutId: agentRequestProofFixture.payload.checkout_id,
-    checkoutHash: agentRequestProofFixture.payload.checkout_hash,
+    mandateId: mandateFixture.terms.mandate_id,
+    checkoutId: checkoutTermsFixture.checkout_id,
+    checkoutHash: normalizedCheckoutFixture.checkout_hash,
     payloadHash: agentRequestProofFixture.payload_hash,
     correlationId: "corr_nonce_001",
     issuedAt: new Date(agentRequestProofFixture.payload.issued_at),
@@ -322,6 +356,7 @@ integrationTest("state and monetary checks reject invalid rows", async () => {
       principalId: "principal_invalid_state",
       displayName: "Invalid agent",
       status: "UNKNOWN_STATE",
+      buildFingerprint: "not-a-fingerprint",
       verificationKeyId: "key_invalid_state",
       verificationAlgorithm: "ES256",
       verificationPublicKey: "public_key_material_for_test_only",
@@ -351,6 +386,38 @@ integrationTest("state and monetary checks reject invalid rows", async () => {
       idempotencyKey: "idem_negative_amount_001",
       createdAt: new Date(checkoutTermsFixture.created_at),
       expiresAt: new Date(checkoutTermsFixture.expires_at),
+    }),
+    (error: unknown) => hasPostgresCode(error, "23514"),
+  );
+});
+
+integrationTest("agent table enforces build fingerprint and active ES256 integrity", async () => {
+  assert.ok(database);
+  const validAgentRow = {
+    agentId: "agent_integrity_test",
+    principalId: "principal_integrity_test",
+    displayName: "Integrity test agent",
+    status: "ACTIVE",
+    buildFingerprint: travelBotFixture.build_fingerprint,
+    verificationKeyId: "key_integrity_test",
+    verificationAlgorithm: "ES256",
+    verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
+    correlationId: "corr_agent_integrity_001",
+    idempotencyKey: "idem_agent_integrity_001",
+    createdAt: new Date(travelBotFixture.created_at),
+  };
+
+  await assert.rejects(
+    database.db.insert(agents).values({
+      ...validAgentRow,
+      buildFingerprint: "invalid",
+    }),
+    (error: unknown) => hasPostgresCode(error, "23514"),
+  );
+  await assert.rejects(
+    database.db.insert(agents).values({
+      ...validAgentRow,
+      verificationAlgorithm: "EdDSA",
     }),
     (error: unknown) => hasPostgresCode(error, "23514"),
   );

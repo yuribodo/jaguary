@@ -27,10 +27,16 @@ export const travelBotFixture = {
   principal_id: martaFixture.principal_id,
   display_name: "TravelBot",
   status: "ACTIVE",
+  build_fingerprint: "6b52b86b8a1d9c0280c94927d137b3211e3d79efae7cabe529bfba651f6f4324",
   verification_key: {
     key_id: "key_demo_travelbot_2026",
     algorithm: "ES256",
-    public_key: "demo_public_key_only_not_valid_for_production",
+    public_jwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "odBJf4KCPzKuNs7Vn8IeoafYmIpM2ZDeBHWDtCsbCtM",
+      y: "k2OdCBi4Pih91d_1N95GlUlwcr06_rsRNFahEA2owlY",
+    },
   },
   created_at: "2026-08-29T12:00:00.000Z",
 } satisfies AgentIdentity;
@@ -133,18 +139,20 @@ export const mandateFixture = {
 
 export const agentRequestProofFixture = {
   payload: {
+    method: "POST",
+    route: "/trust/v1/agent-requests/verify",
+    body_hash: canonicalCheckoutFixture.sha256,
     agent_id: travelBotFixture.agent_id,
-    mandate_id: mandateFixture.terms.mandate_id,
-    checkout_id: checkoutTermsFixture.checkout_id,
-    checkout_hash: canonicalCheckoutFixture.sha256,
+    key_id: travelBotFixture.verification_key.key_id,
+    build_fingerprint: travelBotFixture.build_fingerprint,
     nonce: "nonce_travelbot_001",
     issued_at: "2026-08-29T12:03:00.000Z",
     expires_at: "2026-08-29T12:08:00.000Z",
   },
-  payload_hash: "0c7b6ad02309bbb17b4624e6717e473b426f82a957cb9bb7effcdd7d6c5dff62",
+  payload_hash: "982107e0f9d7beed6b4f9b42d085e76110073961be65d959612b0bae4c1dd22c",
   algorithm: "ES256",
   key_id: travelBotFixture.verification_key.key_id,
-  signature: "ZGVtb19hZ2VudF9zaWduYXR1cmVfb25seQ",
+  signature: "eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleV9kZW1vX3RyYXZlbGJvdF8yMDI2In0.eyJhZ2VudF9pZCI6ImFnZW50X3RyYXZlbGJvdCIsImJvZHlfaGFzaCI6ImIwNTk3NzRiYThlZmViNzIwMGMxYWFlZmE2Nzg2YmYyOTNlNGM4ZDVmZWNlMjRhMTQ3NTg2YTFhMzMwZjljMDEiLCJidWlsZF9maW5nZXJwcmludCI6IjZiNTJiODZiOGExZDljMDI4MGM5NDkyN2QxMzdiMzIxMWUzZDc5ZWZhZTdjYWJlNTI5YmZiYTY1MWY2ZjQzMjQiLCJleHBpcmVzX2F0IjoiMjAyNi0wOC0yOVQxMjowODowMC4wMDBaIiwiaXNzdWVkX2F0IjoiMjAyNi0wOC0yOVQxMjowMzowMC4wMDBaIiwia2V5X2lkIjoia2V5X2RlbW9fdHJhdmVsYm90XzIwMjYiLCJtZXRob2QiOiJQT1NUIiwibm9uY2UiOiJub25jZV90cmF2ZWxib3RfMDAxIiwicm91dGUiOiIvdHJ1c3QvdjEvYWdlbnQtcmVxdWVzdHMvdmVyaWZ5In0.0NIanoQ8IBg3y7Q_gp-l4Dhw1XqrTpu1z1b8l5oi3srpRY2butcPk2nW77nt7AIBXgIFw04k5Z-0As5UoNT62g",
 } satisfies AgentRequestProof;
 
 export const normalizedAuthorizationFixture = {

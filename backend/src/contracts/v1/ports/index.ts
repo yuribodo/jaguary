@@ -3,6 +3,12 @@ import type { MerchantCapabilities, NormalizedCheckout, PurchaseIntent } from ".
 import type { Signature, SignatureAlgorithm } from "../common/primitives.js";
 import type { AuthorizedPayment, PaymentResult } from "../payments/schemas.js";
 import type { OrderReceipt } from "../receipts/schemas.js";
+import type {
+  AgentHttpRequest,
+  AgentIdentity,
+  AgentRegistration,
+  VerifiedAgentRequest,
+} from "../identity/schemas.js";
 
 export interface CommerceProtocolAdapter {
   discoverProfile(merchant: URL): Promise<MerchantCapabilities>;
@@ -28,4 +34,26 @@ export interface SignerPort {
 
 export interface ClockPort {
   now(): Date;
+}
+
+export interface AgentRegistrationContext {
+  correlationId: string;
+  idempotencyKey: string;
+}
+
+export interface AgentRegistrationResult {
+  agent: AgentIdentity;
+  created: boolean;
+}
+
+export interface AgentIdentityRegistryPort {
+  register(
+    registration: AgentRegistration,
+    context: AgentRegistrationContext,
+  ): Promise<AgentRegistrationResult>;
+  get(agentId: string): Promise<AgentIdentity | undefined>;
+}
+
+export interface AgentRequestVerifierPort {
+  verify(proof: unknown, request: AgentHttpRequest): Promise<VerifiedAgentRequest>;
 }

@@ -1,0 +1,1950 @@
+{
+  "id": "7c3eeca1-11fa-4ee2-a0de-6f84ff9213fa",
+  "prevId": "8c54f331-b308-4172-afca-71f1ac0167d7",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.agents": {
+      "name": "agents",
+      "schema": "",
+      "columns": {
+        "agent_id": {
+          "name": "agent_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "build_fingerprint": {
+          "name": "build_fingerprint",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification_key_id": {
+          "name": "verification_key_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification_algorithm": {
+          "name": "verification_algorithm",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification_public_key": {
+          "name": "verification_public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agents_principal_id_idx": {
+          "name": "agents_principal_id_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agents_status_idx": {
+          "name": "agents_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "agents_agent_principal_unique": {
+          "name": "agents_agent_principal_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "agent_id",
+            "principal_id"
+          ]
+        },
+        "agents_verification_key_id_unique": {
+          "name": "agents_verification_key_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "verification_key_id"
+          ]
+        },
+        "agents_idempotency_key_unique": {
+          "name": "agents_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "agents_agent_id_check": {
+          "name": "agents_agent_id_check",
+          "value": "\"agents\".\"agent_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "agents_principal_id_check": {
+          "name": "agents_principal_id_check",
+          "value": "\"agents\".\"principal_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "agents_status_check": {
+          "name": "agents_status_check",
+          "value": "\"agents\".\"status\" IN ('ACTIVE', 'SUSPENDED', 'REVOKED')"
+        },
+        "agents_build_fingerprint_check": {
+          "name": "agents_build_fingerprint_check",
+          "value": "\"agents\".\"build_fingerprint\" ~ '^[a-f0-9]{64}$'"
+        },
+        "agents_verification_key_id_check": {
+          "name": "agents_verification_key_id_check",
+          "value": "\"agents\".\"verification_key_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "agents_verification_algorithm_check": {
+          "name": "agents_verification_algorithm_check",
+          "value": "\"agents\".\"status\" <> 'ACTIVE' OR \"agents\".\"verification_algorithm\" = 'ES256'"
+        },
+        "agents_verification_public_key_check": {
+          "name": "agents_verification_public_key_check",
+          "value": "length(\"agents\".\"verification_public_key\") BETWEEN 16 AND 8192"
+        },
+        "agents_correlation_id_check": {
+          "name": "agents_correlation_id_check",
+          "value": "\"agents\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "agents_idempotency_key_check": {
+          "name": "agents_idempotency_key_check",
+          "value": "length(\"agents\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"agents\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.audit_events": {
+      "name": "audit_events",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_hash": {
+          "name": "previous_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "event_hash": {
+          "name": "event_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "audit_events_correlation_recorded_idx": {
+          "name": "audit_events_correlation_recorded_idx",
+          "columns": [
+            {
+              "expression": "correlation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_subject_recorded_idx": {
+          "name": "audit_events_subject_recorded_idx",
+          "columns": [
+            {
+              "expression": "subject_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "audit_events_event_hash_unique": {
+          "name": "audit_events_event_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "event_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "audit_events_event_id_check": {
+          "name": "audit_events_event_id_check",
+          "value": "\"audit_events\".\"event_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "audit_events_correlation_id_check": {
+          "name": "audit_events_correlation_id_check",
+          "value": "\"audit_events\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "audit_events_subject_id_check": {
+          "name": "audit_events_subject_id_check",
+          "value": "\"audit_events\".\"subject_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "audit_events_event_type_check": {
+          "name": "audit_events_event_type_check",
+          "value": "length(\"audit_events\".\"event_type\") BETWEEN 1 AND 128"
+        },
+        "audit_events_payload_hash_check": {
+          "name": "audit_events_payload_hash_check",
+          "value": "\"audit_events\".\"payload_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "audit_events_previous_hash_check": {
+          "name": "audit_events_previous_hash_check",
+          "value": "\"audit_events\".\"previous_hash\" IS NULL OR \"audit_events\".\"previous_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "audit_events_event_hash_check": {
+          "name": "audit_events_event_hash_check",
+          "value": "\"audit_events\".\"event_hash\" ~ '^[a-f0-9]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.authorizations": {
+      "name": "authorizations",
+      "schema": "",
+      "columns": {
+        "authorization_id": {
+          "name": "authorization_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_id": {
+          "name": "checkout_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_hash": {
+          "name": "checkout_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allowed_merchant_ids": {
+          "name": "allowed_merchant_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_amount": {
+          "name": "max_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_amount_currency": {
+          "name": "max_amount_currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_uses": {
+          "name": "max_uses",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_amount": {
+          "name": "reserved_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proof_type": {
+          "name": "proof_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proof_reference": {
+          "name": "proof_reference",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proof_hash": {
+          "name": "proof_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_at": {
+          "name": "reserved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "authorizations_mandate_status_idx": {
+          "name": "authorizations_mandate_status_idx",
+          "columns": [
+            {
+              "expression": "mandate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "authorizations_checkout_id_idx": {
+          "name": "authorizations_checkout_id_idx",
+          "columns": [
+            {
+              "expression": "checkout_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "authorizations_status_expires_idx": {
+          "name": "authorizations_status_expires_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "authorizations_mandate_identity_fk": {
+          "name": "authorizations_mandate_identity_fk",
+          "tableFrom": "authorizations",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "mandate_id",
+            "agent_id",
+            "principal_id"
+          ],
+          "columnsTo": [
+            "mandate_id",
+            "agent_id",
+            "principal_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "authorizations_checkout_hash_fk": {
+          "name": "authorizations_checkout_hash_fk",
+          "tableFrom": "authorizations",
+          "tableTo": "checkouts",
+          "columnsFrom": [
+            "checkout_id",
+            "checkout_hash"
+          ],
+          "columnsTo": [
+            "checkout_id",
+            "checkout_hash"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "authorizations_idempotency_key_unique": {
+          "name": "authorizations_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "authorizations_id_check": {
+          "name": "authorizations_id_check",
+          "value": "\"authorizations\".\"authorization_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "authorizations_allowed_merchants_check": {
+          "name": "authorizations_allowed_merchants_check",
+          "value": "cardinality(\"authorizations\".\"allowed_merchant_ids\") > 0 AND \"authorizations\".\"merchant_id\" = ANY(\"authorizations\".\"allowed_merchant_ids\")"
+        },
+        "authorizations_amount_check": {
+          "name": "authorizations_amount_check",
+          "value": "\"authorizations\".\"max_amount\" >= 0 AND \"authorizations\".\"max_amount\" <= 9007199254740991 AND \"authorizations\".\"reserved_amount\" >= 0 AND \"authorizations\".\"reserved_amount\" <= 9007199254740991 AND \"authorizations\".\"reserved_amount\" <= \"authorizations\".\"max_amount\""
+        },
+        "authorizations_currency_check": {
+          "name": "authorizations_currency_check",
+          "value": "\"authorizations\".\"currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG') AND \"authorizations\".\"max_amount_currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG') AND \"authorizations\".\"currency\" = \"authorizations\".\"max_amount_currency\""
+        },
+        "authorizations_max_uses_check": {
+          "name": "authorizations_max_uses_check",
+          "value": "\"authorizations\".\"max_uses\" > 0 AND \"authorizations\".\"max_uses\" <= 9007199254740991"
+        },
+        "authorizations_status_check": {
+          "name": "authorizations_status_check",
+          "value": "\"authorizations\".\"status\" IN ('RESERVED', 'PAYMENT_PENDING', 'CONSUMED', 'FAILED', 'CANCELLED')"
+        },
+        "authorizations_proof_type_check": {
+          "name": "authorizations_proof_type_check",
+          "value": "\"authorizations\".\"proof_type\" IN ('AP2', 'VISA_INSTRUCTION', 'ACP_ALLOWANCE')"
+        },
+        "authorizations_proof_reference_check": {
+          "name": "authorizations_proof_reference_check",
+          "value": "\"authorizations\".\"proof_reference\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "authorizations_proof_hash_check": {
+          "name": "authorizations_proof_hash_check",
+          "value": "\"authorizations\".\"proof_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "authorizations_checkout_hash_check": {
+          "name": "authorizations_checkout_hash_check",
+          "value": "\"authorizations\".\"checkout_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "authorizations_correlation_id_check": {
+          "name": "authorizations_correlation_id_check",
+          "value": "\"authorizations\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "authorizations_idempotency_key_check": {
+          "name": "authorizations_idempotency_key_check",
+          "value": "length(\"authorizations\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"authorizations\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "authorizations_validity_check": {
+          "name": "authorizations_validity_check",
+          "value": "\"authorizations\".\"reserved_at\" < \"authorizations\".\"expires_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.checkouts": {
+      "name": "checkouts",
+      "schema": "",
+      "columns": {
+        "checkout_id": {
+          "name": "checkout_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_url": {
+          "name": "merchant_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items": {
+          "name": "items",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_amount": {
+          "name": "total_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fulfillment": {
+          "name": "fulfillment",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "protocol_name": {
+          "name": "protocol_name",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "protocol_version": {
+          "name": "protocol_version",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_hash": {
+          "name": "checkout_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_signature_algorithm": {
+          "name": "merchant_signature_algorithm",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_signature_key_id": {
+          "name": "merchant_signature_key_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_signature_value": {
+          "name": "merchant_signature_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "checkouts_merchant_expires_idx": {
+          "name": "checkouts_merchant_expires_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "checkouts_hash_idx": {
+          "name": "checkouts_hash_idx",
+          "columns": [
+            {
+              "expression": "checkout_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "checkouts_id_hash_unique": {
+          "name": "checkouts_id_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "checkout_id",
+            "checkout_hash"
+          ]
+        },
+        "checkouts_idempotency_key_unique": {
+          "name": "checkouts_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "checkouts_id_check": {
+          "name": "checkouts_id_check",
+          "value": "\"checkouts\".\"checkout_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "checkouts_merchant_id_check": {
+          "name": "checkouts_merchant_id_check",
+          "value": "\"checkouts\".\"merchant_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "checkouts_items_check": {
+          "name": "checkouts_items_check",
+          "value": "jsonb_typeof(\"checkouts\".\"items\") = 'array' AND jsonb_array_length(\"checkouts\".\"items\") > 0"
+        },
+        "checkouts_amount_check": {
+          "name": "checkouts_amount_check",
+          "value": "\"checkouts\".\"total_amount\" >= 0 AND \"checkouts\".\"total_amount\" <= 9007199254740991"
+        },
+        "checkouts_currency_check": {
+          "name": "checkouts_currency_check",
+          "value": "\"checkouts\".\"currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG')"
+        },
+        "checkouts_fulfillment_check": {
+          "name": "checkouts_fulfillment_check",
+          "value": "jsonb_typeof(\"checkouts\".\"fulfillment\") = 'object'"
+        },
+        "checkouts_hash_check": {
+          "name": "checkouts_hash_check",
+          "value": "\"checkouts\".\"checkout_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "checkouts_validity_check": {
+          "name": "checkouts_validity_check",
+          "value": "\"checkouts\".\"created_at\" < \"checkouts\".\"expires_at\""
+        },
+        "checkouts_signature_algorithm_check": {
+          "name": "checkouts_signature_algorithm_check",
+          "value": "\"checkouts\".\"merchant_signature_algorithm\" IN ('ES256', 'EdDSA')"
+        },
+        "checkouts_signature_key_id_check": {
+          "name": "checkouts_signature_key_id_check",
+          "value": "\"checkouts\".\"merchant_signature_key_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "checkouts_signature_value_check": {
+          "name": "checkouts_signature_value_check",
+          "value": "length(\"checkouts\".\"merchant_signature_value\") BETWEEN 16 AND 4096"
+        },
+        "checkouts_correlation_id_check": {
+          "name": "checkouts_correlation_id_check",
+          "value": "\"checkouts\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "checkouts_idempotency_key_check": {
+          "name": "checkouts_idempotency_key_check",
+          "value": "length(\"checkouts\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"checkouts\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mandates": {
+      "name": "mandates",
+      "schema": "",
+      "columns": {
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allowed_merchant_ids": {
+          "name": "allowed_merchant_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_per_purchase_amount": {
+          "name": "max_per_purchase_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_per_purchase_currency": {
+          "name": "max_per_purchase_currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_aggregate_amount": {
+          "name": "max_aggregate_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_aggregate_currency": {
+          "name": "max_aggregate_currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_uses": {
+          "name": "max_uses",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms_hash": {
+          "name": "terms_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_signature_algorithm": {
+          "name": "principal_signature_algorithm",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_signature_key_id": {
+          "name": "principal_signature_key_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_signature_value": {
+          "name": "principal_signature_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activated_at": {
+          "name": "activated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "mandates_agent_status_idx": {
+          "name": "mandates_agent_status_idx",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mandates_principal_status_idx": {
+          "name": "mandates_principal_status_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mandates_expires_at_idx": {
+          "name": "mandates_expires_at_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mandates_agent_principal_fk": {
+          "name": "mandates_agent_principal_fk",
+          "tableFrom": "mandates",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id",
+            "principal_id"
+          ],
+          "columnsTo": [
+            "agent_id",
+            "principal_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mandates_credential_principal_fk": {
+          "name": "mandates_credential_principal_fk",
+          "tableFrom": "mandates",
+          "tableTo": "payment_credentials",
+          "columnsFrom": [
+            "credential_id",
+            "principal_id"
+          ],
+          "columnsTo": [
+            "credential_id",
+            "principal_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mandates_id_agent_principal_unique": {
+          "name": "mandates_id_agent_principal_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "mandate_id",
+            "agent_id",
+            "principal_id"
+          ]
+        },
+        "mandates_id_agent_unique": {
+          "name": "mandates_id_agent_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "mandate_id",
+            "agent_id"
+          ]
+        },
+        "mandates_idempotency_key_unique": {
+          "name": "mandates_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "mandates_id_check": {
+          "name": "mandates_id_check",
+          "value": "\"mandates\".\"mandate_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "mandates_allowed_merchants_check": {
+          "name": "mandates_allowed_merchants_check",
+          "value": "cardinality(\"mandates\".\"allowed_merchant_ids\") > 0"
+        },
+        "mandates_max_per_purchase_amount_check": {
+          "name": "mandates_max_per_purchase_amount_check",
+          "value": "\"mandates\".\"max_per_purchase_amount\" >= 0 AND \"mandates\".\"max_per_purchase_amount\" <= 9007199254740991"
+        },
+        "mandates_max_aggregate_amount_check": {
+          "name": "mandates_max_aggregate_amount_check",
+          "value": "\"mandates\".\"max_aggregate_amount\" >= 0 AND \"mandates\".\"max_aggregate_amount\" <= 9007199254740991"
+        },
+        "mandates_currency_check": {
+          "name": "mandates_currency_check",
+          "value": "\"mandates\".\"max_per_purchase_currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG') AND \"mandates\".\"max_aggregate_currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG') AND \"mandates\".\"max_per_purchase_currency\" = \"mandates\".\"max_aggregate_currency\""
+        },
+        "mandates_max_uses_check": {
+          "name": "mandates_max_uses_check",
+          "value": "\"mandates\".\"max_uses\" > 0 AND \"mandates\".\"max_uses\" <= 9007199254740991"
+        },
+        "mandates_validity_check": {
+          "name": "mandates_validity_check",
+          "value": "\"mandates\".\"valid_from\" < \"mandates\".\"expires_at\""
+        },
+        "mandates_status_check": {
+          "name": "mandates_status_check",
+          "value": "\"mandates\".\"status\" IN ('DRAFT', 'ACTIVE', 'REVOKED', 'EXPIRED', 'CONSUMED')"
+        },
+        "mandates_terms_hash_check": {
+          "name": "mandates_terms_hash_check",
+          "value": "\"mandates\".\"terms_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "mandates_signature_algorithm_check": {
+          "name": "mandates_signature_algorithm_check",
+          "value": "\"mandates\".\"principal_signature_algorithm\" IN ('ES256', 'EdDSA')"
+        },
+        "mandates_signature_key_id_check": {
+          "name": "mandates_signature_key_id_check",
+          "value": "\"mandates\".\"principal_signature_key_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "mandates_signature_value_check": {
+          "name": "mandates_signature_value_check",
+          "value": "length(\"mandates\".\"principal_signature_value\") BETWEEN 16 AND 4096"
+        },
+        "mandates_correlation_id_check": {
+          "name": "mandates_correlation_id_check",
+          "value": "\"mandates\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "mandates_idempotency_key_check": {
+          "name": "mandates_idempotency_key_check",
+          "value": "length(\"mandates\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"mandates\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.nonces": {
+      "name": "nonces",
+      "schema": "",
+      "columns": {
+        "agent_id": {
+          "name": "agent_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_id": {
+          "name": "checkout_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_hash": {
+          "name": "checkout_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "nonces_mandate_recorded_idx": {
+          "name": "nonces_mandate_recorded_idx",
+          "columns": [
+            {
+              "expression": "mandate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nonces_checkout_id_idx": {
+          "name": "nonces_checkout_id_idx",
+          "columns": [
+            {
+              "expression": "checkout_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "nonces_mandate_agent_fk": {
+          "name": "nonces_mandate_agent_fk",
+          "tableFrom": "nonces",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "mandate_id",
+            "agent_id"
+          ],
+          "columnsTo": [
+            "mandate_id",
+            "agent_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "nonces_checkout_hash_fk": {
+          "name": "nonces_checkout_hash_fk",
+          "tableFrom": "nonces",
+          "tableTo": "checkouts",
+          "columnsFrom": [
+            "checkout_id",
+            "checkout_hash"
+          ],
+          "columnsTo": [
+            "checkout_id",
+            "checkout_hash"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "nonces_agent_nonce_pk": {
+          "name": "nonces_agent_nonce_pk",
+          "columns": [
+            "agent_id",
+            "nonce"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "nonces_payload_hash_unique": {
+          "name": "nonces_payload_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "payload_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "nonces_nonce_check": {
+          "name": "nonces_nonce_check",
+          "value": "\"nonces\".\"nonce\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "nonces_payload_hash_check": {
+          "name": "nonces_payload_hash_check",
+          "value": "\"nonces\".\"payload_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "nonces_checkout_hash_check": {
+          "name": "nonces_checkout_hash_check",
+          "value": "\"nonces\".\"checkout_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "nonces_correlation_id_check": {
+          "name": "nonces_correlation_id_check",
+          "value": "\"nonces\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "nonces_validity_check": {
+          "name": "nonces_validity_check",
+          "value": "\"nonces\".\"issued_at\" < \"nonces\".\"expires_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.orders": {
+      "name": "orders",
+      "schema": "",
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "receipt_id": {
+          "name": "receipt_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_id": {
+          "name": "checkout_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authorization_id": {
+          "name": "authorization_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_id": {
+          "name": "payment_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "merchant_id": {
+          "name": "merchant_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items": {
+          "name": "items",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_amount": {
+          "name": "total_amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fulfillment": {
+          "name": "fulfillment",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "audit_event_id": {
+          "name": "audit_event_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orders_checkout_id_idx": {
+          "name": "orders_checkout_id_idx",
+          "columns": [
+            {
+              "expression": "checkout_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_authorization_id_idx": {
+          "name": "orders_authorization_id_idx",
+          "columns": [
+            {
+              "expression": "authorization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_merchant_issued_idx": {
+          "name": "orders_merchant_issued_idx",
+          "columns": [
+            {
+              "expression": "merchant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issued_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orders_checkout_id_checkouts_checkout_id_fk": {
+          "name": "orders_checkout_id_checkouts_checkout_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "checkouts",
+          "columnsFrom": [
+            "checkout_id"
+          ],
+          "columnsTo": [
+            "checkout_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_authorization_id_authorizations_authorization_id_fk": {
+          "name": "orders_authorization_id_authorizations_authorization_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "authorizations",
+          "columnsFrom": [
+            "authorization_id"
+          ],
+          "columnsTo": [
+            "authorization_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_payment_id_payments_payment_id_fk": {
+          "name": "orders_payment_id_payments_payment_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "payments",
+          "columnsFrom": [
+            "payment_id"
+          ],
+          "columnsTo": [
+            "payment_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_audit_event_id_audit_events_event_id_fk": {
+          "name": "orders_audit_event_id_audit_events_event_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "audit_events",
+          "columnsFrom": [
+            "audit_event_id"
+          ],
+          "columnsTo": [
+            "event_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orders_receipt_id_unique": {
+          "name": "orders_receipt_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "receipt_id"
+          ]
+        },
+        "orders_payment_id_unique": {
+          "name": "orders_payment_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "payment_id"
+          ]
+        },
+        "orders_audit_event_id_unique": {
+          "name": "orders_audit_event_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "audit_event_id"
+          ]
+        },
+        "orders_idempotency_key_unique": {
+          "name": "orders_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "orders_order_id_check": {
+          "name": "orders_order_id_check",
+          "value": "\"orders\".\"order_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "orders_receipt_id_check": {
+          "name": "orders_receipt_id_check",
+          "value": "\"orders\".\"receipt_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "orders_merchant_id_check": {
+          "name": "orders_merchant_id_check",
+          "value": "\"orders\".\"merchant_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "orders_status_check": {
+          "name": "orders_status_check",
+          "value": "\"orders\".\"status\" IN ('CONFIRMED', 'CANCELLED')"
+        },
+        "orders_items_check": {
+          "name": "orders_items_check",
+          "value": "jsonb_typeof(\"orders\".\"items\") = 'array' AND jsonb_array_length(\"orders\".\"items\") > 0"
+        },
+        "orders_amount_check": {
+          "name": "orders_amount_check",
+          "value": "\"orders\".\"total_amount\" >= 0 AND \"orders\".\"total_amount\" <= 9007199254740991"
+        },
+        "orders_currency_check": {
+          "name": "orders_currency_check",
+          "value": "\"orders\".\"currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG')"
+        },
+        "orders_fulfillment_check": {
+          "name": "orders_fulfillment_check",
+          "value": "jsonb_typeof(\"orders\".\"fulfillment\") = 'object'"
+        },
+        "orders_correlation_id_check": {
+          "name": "orders_correlation_id_check",
+          "value": "\"orders\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "orders_idempotency_key_check": {
+          "name": "orders_idempotency_key_check",
+          "value": "length(\"orders\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"orders\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.payment_credentials": {
+      "name": "payment_credentials",
+      "schema": "",
+      "columns": {
+        "credential_id": {
+          "name": "credential_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display": {
+          "name": "display",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "payment_credentials_principal_id_idx": {
+          "name": "payment_credentials_principal_id_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "payment_credentials_id_principal_unique": {
+          "name": "payment_credentials_id_principal_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "credential_id",
+            "principal_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "payment_credentials_id_check": {
+          "name": "payment_credentials_id_check",
+          "value": "\"payment_credentials\".\"credential_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "payment_credentials_principal_id_check": {
+          "name": "payment_credentials_principal_id_check",
+          "value": "\"payment_credentials\".\"principal_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "payment_credentials_display_check": {
+          "name": "payment_credentials_display_check",
+          "value": "length(\"payment_credentials\".\"display\") BETWEEN 1 AND 128"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.payments": {
+      "name": "payments",
+      "schema": "",
+      "columns": {
+        "payment_attempt_id": {
+          "name": "payment_attempt_id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "payment_id": {
+          "name": "payment_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorization_id": {
+          "name": "authorization_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_reference": {
+          "name": "provider_reference",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decline_code": {
+          "name": "decline_code",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "payments_authorization_created_idx": {
+          "name": "payments_authorization_created_idx",
+          "columns": [
+            {
+              "expression": "authorization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_status_updated_idx": {
+          "name": "payments_status_updated_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "payments_authorization_id_authorizations_authorization_id_fk": {
+          "name": "payments_authorization_id_authorizations_authorization_id_fk",
+          "tableFrom": "payments",
+          "tableTo": "authorizations",
+          "columnsFrom": [
+            "authorization_id"
+          ],
+          "columnsTo": [
+            "authorization_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "payments_credential_id_payment_credentials_credential_id_fk": {
+          "name": "payments_credential_id_payment_credentials_credential_id_fk",
+          "tableFrom": "payments",
+          "tableTo": "payment_credentials",
+          "columnsFrom": [
+            "credential_id"
+          ],
+          "columnsTo": [
+            "credential_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "payments_payment_id_unique": {
+          "name": "payments_payment_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "payment_id"
+          ]
+        },
+        "payments_idempotency_key_unique": {
+          "name": "payments_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "payments_attempt_id_check": {
+          "name": "payments_attempt_id_check",
+          "value": "\"payments\".\"payment_attempt_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "payments_payment_id_check": {
+          "name": "payments_payment_id_check",
+          "value": "\"payments\".\"payment_id\" IS NULL OR \"payments\".\"payment_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "payments_amount_check": {
+          "name": "payments_amount_check",
+          "value": "\"payments\".\"amount\" >= 0 AND \"payments\".\"amount\" <= 9007199254740991"
+        },
+        "payments_currency_check": {
+          "name": "payments_currency_check",
+          "value": "\"payments\".\"currency\" IN ('AED', 'AFN', 'ALL', 'AMD', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BOV', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHE', 'CHF', 'CHW', 'CLF', 'CLP', 'CNY', 'COP', 'COU', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MXV', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SGD', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SVC', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'USN', 'UYI', 'UYU', 'UYW', 'UZS', 'VED', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XAG', 'XAU', 'XBA', 'XBB', 'XBC', 'XBD', 'XCD', 'XDR', 'XOF', 'XPD', 'XPF', 'XPT', 'XSU', 'XTS', 'XUA', 'XXX', 'YER', 'ZAR', 'ZMW', 'ZWG')"
+        },
+        "payments_status_check": {
+          "name": "payments_status_check",
+          "value": "\"payments\".\"status\" IS NULL OR \"payments\".\"status\" IN ('APPROVED', 'DECLINED', 'TIMEOUT', 'UNKNOWN')"
+        },
+        "payments_result_shape_check": {
+          "name": "payments_result_shape_check",
+          "value": "\n    (\"payments\".\"status\" IS NULL AND \"payments\".\"payment_id\" IS NULL AND \"payments\".\"provider_reference\" IS NULL AND \"payments\".\"decline_code\" IS NULL AND \"payments\".\"occurred_at\" IS NULL)\n    OR (\"payments\".\"status\" = 'APPROVED' AND \"payments\".\"payment_id\" IS NOT NULL AND \"payments\".\"decline_code\" IS NULL AND \"payments\".\"occurred_at\" IS NOT NULL)\n    OR (\"payments\".\"status\" = 'DECLINED' AND \"payments\".\"decline_code\" IS NOT NULL AND \"payments\".\"provider_reference\" IS NULL AND \"payments\".\"occurred_at\" IS NOT NULL)\n    OR (\"payments\".\"status\" = 'TIMEOUT' AND \"payments\".\"payment_id\" IS NULL AND \"payments\".\"provider_reference\" IS NULL AND \"payments\".\"decline_code\" IS NULL AND \"payments\".\"occurred_at\" IS NOT NULL)\n    OR (\"payments\".\"status\" = 'UNKNOWN' AND \"payments\".\"provider_reference\" IS NULL AND \"payments\".\"decline_code\" IS NULL AND \"payments\".\"occurred_at\" IS NOT NULL)\n  "
+        },
+        "payments_correlation_id_check": {
+          "name": "payments_correlation_id_check",
+          "value": "\"payments\".\"correlation_id\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        },
+        "payments_idempotency_key_check": {
+          "name": "payments_idempotency_key_check",
+          "value": "length(\"payments\".\"idempotency_key\") BETWEEN 8 AND 128 AND \"payments\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
