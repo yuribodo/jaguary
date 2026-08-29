@@ -1,6 +1,6 @@
 # Backend MVP delivery plan
 
-GitHub tracking: [Backend MVP milestone](https://github.com/yuribodo/jaguary/milestone/1) · [tracking epic #1](https://github.com/yuribodo/jaguary/issues/1)
+GitHub tracking: [Backend MVP project](https://github.com/users/yuribodo/projects/2) · [Backend MVP milestone](https://github.com/yuribodo/jaguary/milestone/1) · [tracking epic #1](https://github.com/yuribodo/jaguary/issues/1)
 
 ## Outcome
 

@@ -36,6 +36,7 @@ pnpm check
 
 - [Visual discovery and Jaguary/Bound moodboards](docs/design/visual-directions.md)
 - [Backend MVP delivery plan](docs/backend-mvp-plan.md)
+- [GitHub Project — Jaguary Backend MVP](https://github.com/users/yuribodo/projects/2)
 - [Product journey and service blueprint](docs/diagrams/bound-product-experience.html)
 - [Protocol and payment model](docs/diagrams/bound-protocol-model.html)
 - [Technical architecture](docs/diagrams/bound-technical-architecture.html)
