@@ -40,6 +40,15 @@ export const moneySchema = z
 
 export type Money = z.infer<typeof moneySchema>;
 
+export const cabinClassSchema = z.enum([
+  "ECONOMY",
+  "PREMIUM_ECONOMY",
+  "BUSINESS",
+  "FIRST",
+]);
+
+export type CabinClass = z.infer<typeof cabinClassSchema>;
+
 export const utcRfc3339Schema = z
   .string()
   .datetime({ offset: false })

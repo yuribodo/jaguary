@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  cabinClassSchema,
   identifierSchema,
   moneySchema,
   sha256Schema,
@@ -30,15 +31,6 @@ export const mandateStatusTransitions: Readonly<Record<MandateStatus, readonly M
 export function canTransitionMandate(from: MandateStatus, to: MandateStatus): boolean {
   return mandateStatusTransitions[from].includes(to);
 }
-
-export const cabinClassSchema = z.enum([
-  "ECONOMY",
-  "PREMIUM_ECONOMY",
-  "BUSINESS",
-  "FIRST",
-]);
-
-export type CabinClass = z.infer<typeof cabinClassSchema>;
 
 export const flightRouteSchema = z
   .object({

@@ -42,7 +42,7 @@ test("Postman collection is valid JSON with executable current routes", async ()
   assert.ok(variables.correlationId);
   assert.ok(variables.idempotencyKey);
   assert.equal(variables.checkoutId, "checkout_vy_471_gru_cor");
-  assert.equal(variables.checkoutHash, "b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01");
+  assert.equal(variables.checkoutHash, "d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79afde052b77b0f071d");
   assert.ok(variables.orderId);
 
   const requests = flattenItems(collection.item ?? []);

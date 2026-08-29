@@ -34,8 +34,8 @@ export const travelBotFixture = {
     public_jwk: {
       kty: "EC",
       crv: "P-256",
-      x: "odBJf4KCPzKuNs7Vn8IeoafYmIpM2ZDeBHWDtCsbCtM",
-      y: "k2OdCBi4Pih91d_1N95GlUlwcr06_rsRNFahEA2owlY",
+      x: "P5N6t_B_UujhUx-YhWddvxSfqWqARy235FBR0d6JjQ0",
+      y: "CX6FU_MWJxx1zfvyPwiFSpdxodJXnlYwsnLR8qzvZ1Q",
     },
   },
   created_at: "2026-08-29T12:00:00.000Z",
@@ -66,6 +66,7 @@ const flightItem = {
 
 const flightFulfillment = {
   type: "FLIGHT",
+  cabin: "ECONOMY",
   origin: "GRU",
   destination: "COR",
   departure_at: "2026-09-15T10:00:00.000Z",
@@ -107,8 +108,8 @@ export const checkoutTermsFixture = {
 
 export const canonicalCheckoutFixture = {
   input: checkoutTermsFixture,
-  canonical: "{\"checkout_id\":\"checkout_vy_471_gru_cor\",\"created_at\":\"2026-08-29T12:02:00.000Z\",\"expires_at\":\"2026-08-29T12:17:00.000Z\",\"fulfillment\":{\"arrival_at\":\"2026-09-15T13:05:00.000Z\",\"departure_at\":\"2026-09-15T10:00:00.000Z\",\"destination\":\"COR\",\"origin\":\"GRU\",\"type\":\"FLIGHT\"},\"items\":[{\"item_id\":\"flight_vy_471_gru_cor\",\"name\":\"VuelaYa flight GRU to COR\",\"quantity\":1,\"total\":{\"amount\":13700,\"currency\":\"USD\"},\"unit_price\":{\"amount\":13700,\"currency\":\"USD\"}}],\"merchant_id\":\"merchant_vuelaya\",\"merchant_url\":\"https://demo.vuelaya.example\",\"protocol\":{\"name\":\"UCP\",\"version\":\"2026-08-25\"},\"total\":{\"amount\":13700,\"currency\":\"USD\"}}",
-  sha256: "b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01",
+  canonical: "{\"checkout_id\":\"checkout_vy_471_gru_cor\",\"created_at\":\"2026-08-29T12:02:00.000Z\",\"expires_at\":\"2026-08-29T12:17:00.000Z\",\"fulfillment\":{\"arrival_at\":\"2026-09-15T13:05:00.000Z\",\"cabin\":\"ECONOMY\",\"departure_at\":\"2026-09-15T10:00:00.000Z\",\"destination\":\"COR\",\"origin\":\"GRU\",\"type\":\"FLIGHT\"},\"items\":[{\"item_id\":\"flight_vy_471_gru_cor\",\"name\":\"VuelaYa flight GRU to COR\",\"quantity\":1,\"total\":{\"amount\":13700,\"currency\":\"USD\"},\"unit_price\":{\"amount\":13700,\"currency\":\"USD\"}}],\"merchant_id\":\"merchant_vuelaya\",\"merchant_url\":\"https://demo.vuelaya.example\",\"protocol\":{\"name\":\"UCP\",\"version\":\"2026-08-25\"},\"total\":{\"amount\":13700,\"currency\":\"USD\"}}",
+  sha256: "d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79afde052b77b0f071d",
 } as const;
 
 export const normalizedCheckoutFixture = {
@@ -158,10 +159,10 @@ export const agentRequestProofFixture = {
     issued_at: "2026-08-29T12:03:00.000Z",
     expires_at: "2026-08-29T12:08:00.000Z",
   },
-  payload_hash: "982107e0f9d7beed6b4f9b42d085e76110073961be65d959612b0bae4c1dd22c",
+  payload_hash: "543096b36fa4cee02d4ca121c6b061c8485b1a4aa9650e0ba7765d6ad9b81f9b",
   algorithm: "ES256",
   key_id: travelBotFixture.verification_key.key_id,
-  signature: "eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleV9kZW1vX3RyYXZlbGJvdF8yMDI2In0.eyJhZ2VudF9pZCI6ImFnZW50X3RyYXZlbGJvdCIsImJvZHlfaGFzaCI6ImIwNTk3NzRiYThlZmViNzIwMGMxYWFlZmE2Nzg2YmYyOTNlNGM4ZDVmZWNlMjRhMTQ3NTg2YTFhMzMwZjljMDEiLCJidWlsZF9maW5nZXJwcmludCI6IjZiNTJiODZiOGExZDljMDI4MGM5NDkyN2QxMzdiMzIxMWUzZDc5ZWZhZTdjYWJlNTI5YmZiYTY1MWY2ZjQzMjQiLCJleHBpcmVzX2F0IjoiMjAyNi0wOC0yOVQxMjowODowMC4wMDBaIiwiaXNzdWVkX2F0IjoiMjAyNi0wOC0yOVQxMjowMzowMC4wMDBaIiwia2V5X2lkIjoia2V5X2RlbW9fdHJhdmVsYm90XzIwMjYiLCJtZXRob2QiOiJQT1NUIiwibm9uY2UiOiJub25jZV90cmF2ZWxib3RfMDAxIiwicm91dGUiOiIvdHJ1c3QvdjEvYWdlbnQtcmVxdWVzdHMvdmVyaWZ5In0.0NIanoQ8IBg3y7Q_gp-l4Dhw1XqrTpu1z1b8l5oi3srpRY2butcPk2nW77nt7AIBXgIFw04k5Z-0As5UoNT62g",
+  signature: "eyJhbGciOiJFUzI1NiIsImtpZCI6ImtleV9kZW1vX3RyYXZlbGJvdF8yMDI2In0.eyJhZ2VudF9pZCI6ImFnZW50X3RyYXZlbGJvdCIsImJvZHlfaGFzaCI6ImQyZjM4NTZiN2JhYzA1MzFiNzFhYzZmZjllMmUyZmQ3Zjk3MGQzOGQzZmNlZjc5YWZkZTA1MmI3N2IwZjA3MWQiLCJidWlsZF9maW5nZXJwcmludCI6IjZiNTJiODZiOGExZDljMDI4MGM5NDkyN2QxMzdiMzIxMWUzZDc5ZWZhZTdjYWJlNTI5YmZiYTY1MWY2ZjQzMjQiLCJleHBpcmVzX2F0IjoiMjAyNi0wOC0yOVQxMjowODowMC4wMDBaIiwiaXNzdWVkX2F0IjoiMjAyNi0wOC0yOVQxMjowMzowMC4wMDBaIiwia2V5X2lkIjoia2V5X2RlbW9fdHJhdmVsYm90XzIwMjYiLCJtZXRob2QiOiJQT1NUIiwibm9uY2UiOiJub25jZV90cmF2ZWxib3RfMDAxIiwicm91dGUiOiIvdHJ1c3QvdjEvYWdlbnQtcmVxdWVzdHMvdmVyaWZ5In0.FcAQdUVmdcXHKNc4WRMa7_zgt3z27k41g0Piknp6PVqlGF_LeEA9ll0swHrSoNTATrs5rdaLpkMQe4tf2vDbEQ",
 } satisfies AgentRequestProof;
 
 export const normalizedAuthorizationFixture = {

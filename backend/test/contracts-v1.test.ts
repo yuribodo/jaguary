@@ -11,6 +11,7 @@ import {
   apiErrorEnvelopeSchema,
   approvedPaymentResultSchema,
   authorizationDecisionSchema,
+  authorizationUsageSchema,
   authorizationStatusSchema,
   authorizedCheckoutSchema,
   authorizedPaymentSchema,
@@ -35,12 +36,14 @@ import {
   moneySchema,
   normalizedAuthorizationSchema,
   normalizedCheckoutSchema,
+  nonceStatusSchema,
   offerCandidateSchema,
   orderStatusSchema,
   orderReceiptSchema,
   paymentCredentialReferenceSchema,
   paymentResultSchema,
   paymentResultStatusSchema,
+  policyEvaluationSchema,
   principalIdentitySchema,
   proofTypeSchema,
   purchaseIntentSchema,
@@ -250,6 +253,41 @@ test("decision and reason enums are complete and decision invariants hold", () =
     authorization_id: "authorization_1",
     policy_version: "v1",
     evidence_hash: evidenceHash,
+  }));
+});
+
+test("pure policy evaluation and state inputs are shared v1 contracts", () => {
+  const evidenceInputs = {
+    agent_id: travelBotFixture.agent_id,
+    agent_request_nonce: agentRequestProofFixture.payload.nonce,
+    mandate_id: mandateFixture.terms.mandate_id,
+    mandate_terms_hash: mandateFixture.terms_hash,
+    authorization_proof_hash: normalizedAuthorizationFixture.proof_hash,
+    checkout_id: normalizedCheckoutFixture.terms.checkout_id,
+    checkout_hash: normalizedCheckoutFixture.checkout_hash,
+    evaluated_at: "2026-08-29T12:04:00.000Z",
+    aggregate_spend: { amount: 0, currency: "USD" },
+    uses: 0,
+    nonce_status: "UNUSED",
+    human_approval_required: false,
+  };
+
+  assert.deepEqual(authorizationUsageSchema.parse({
+    aggregate_spend: { amount: 0, currency: "USD" },
+    uses: 0,
+  }), { aggregate_spend: { amount: 0, currency: "USD" }, uses: 0 });
+  assert.equal(nonceStatusSchema.parse("UNUSED"), "UNUSED");
+  assert.doesNotThrow(() => policyEvaluationSchema.parse({
+    decision: "ALLOW",
+    reasons: [],
+    policy_version: "bound.verify.v1",
+    evidence_inputs: evidenceInputs,
+  }));
+  assert.throws(() => policyEvaluationSchema.parse({
+    decision: "DENY",
+    reasons: [],
+    policy_version: "bound.verify.v1",
+    evidence_inputs: evidenceInputs,
   }));
 });
 
