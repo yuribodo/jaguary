@@ -1,0 +1,144 @@
+import { z } from "zod";
+
+import { moneySchema, identifierSchema, sha256Schema, utcRfc3339Schema } from "../common/primitives.js";
+import { normalizedCheckoutSchema } from "../commerce/schemas.js";
+
+export const reasonCodeSchema = z.enum([
+  "invalid_agent_signature",
+  "agent_not_active",
+  "mandate_not_active",
+  "mandate_revoked",
+  "mandate_expired",
+  "agent_not_authorized",
+  "merchant_not_authorized",
+  "checkout_integrity_failure",
+  "scope_mismatch",
+  "currency_mismatch",
+  "amount_limit_exceeded",
+  "aggregate_limit_exceeded",
+  "usage_limit_exceeded",
+  "replay_detected",
+  "human_approval_required",
+]);
+
+export type ReasonCode = z.infer<typeof reasonCodeSchema>;
+
+export const decisionSchema = z.enum(["ALLOW", "DENY", "ESCALATE"]);
+
+export type Decision = z.infer<typeof decisionSchema>;
+
+export const authorizationDecisionSchema = z
+  .object({
+    decision: decisionSchema,
+    reasons: z.array(reasonCodeSchema),
+    authorization_id: identifierSchema.optional(),
+    policy_version: z.string().min(1).max(64),
+    evidence_hash: sha256Schema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.decision === "ALLOW") !== (value.authorization_id !== undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "authorization_id must be present only for ALLOW decisions",
+        path: ["authorization_id"],
+      });
+    }
+    if (value.decision !== "ALLOW" && value.reasons.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "DENY and ESCALATE decisions require at least one reason",
+        path: ["reasons"],
+      });
+    }
+  });
+
+export type AuthorizationDecision = z.infer<typeof authorizationDecisionSchema>;
+
+export const proofTypeSchema = z.enum(["AP2", "VISA_INSTRUCTION", "ACP_ALLOWANCE"]);
+
+export const normalizedAuthorizationSchema = z
+  .object({
+    principal_id: identifierSchema,
+    agent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    allowed_merchant_ids: z.array(identifierSchema).min(1),
+    checkout_hash: sha256Schema,
+    max_amount: moneySchema,
+    expires_at: utcRfc3339Schema,
+    max_uses: z.number().int().positive(),
+    proof_type: proofTypeSchema,
+    proof_reference: identifierSchema,
+    proof_hash: sha256Schema,
+  })
+  .strict();
+
+export type NormalizedAuthorization = z.infer<typeof normalizedAuthorizationSchema>;
+
+export const authorizationStatusSchema = z.enum([
+  "RESERVED",
+  "PAYMENT_PENDING",
+  "CONSUMED",
+  "FAILED",
+  "CANCELLED",
+]);
+
+export type AuthorizationStatus = z.infer<typeof authorizationStatusSchema>;
+
+export const authorizationStatusTransitions: Readonly<Record<AuthorizationStatus, readonly AuthorizationStatus[]>> = {
+  RESERVED: ["PAYMENT_PENDING", "CANCELLED"],
+  PAYMENT_PENDING: ["CONSUMED", "FAILED"],
+  CONSUMED: [],
+  FAILED: [],
+  CANCELLED: [],
+};
+
+export function canTransitionAuthorization(
+  from: AuthorizationStatus,
+  to: AuthorizationStatus,
+): boolean {
+  return authorizationStatusTransitions[from].includes(to);
+}
+
+export const reservedAuthorizationSchema = z
+  .object({
+    authorization_id: identifierSchema,
+    mandate_id: identifierSchema,
+    checkout_id: identifierSchema,
+    checkout_hash: sha256Schema,
+    principal_id: identifierSchema,
+    agent_id: identifierSchema,
+    merchant_id: identifierSchema,
+    reserved_amount: moneySchema,
+    status: z.literal("RESERVED"),
+    reserved_at: utcRfc3339Schema,
+    expires_at: utcRfc3339Schema,
+  })
+  .strict();
+
+export type ReservedAuthorization = z.infer<typeof reservedAuthorizationSchema>;
+
+export const authorizedCheckoutSchema = z
+  .object({
+    checkout: normalizedCheckoutSchema,
+    authorization: reservedAuthorizationSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const { terms } = value.checkout;
+    const { authorization } = value;
+    const bindings: Array<[unknown, unknown, string]> = [
+      [terms.checkout_id, authorization.checkout_id, "checkout_id"],
+      [value.checkout.checkout_hash, authorization.checkout_hash, "checkout_hash"],
+      [terms.merchant_id, authorization.merchant_id, "merchant_id"],
+      [terms.total.amount, authorization.reserved_amount.amount, "amount"],
+      [terms.total.currency, authorization.reserved_amount.currency, "currency"],
+    ];
+    for (const [checkoutValue, authorizationValue, field] of bindings) {
+      if (checkoutValue !== authorizationValue) {
+        context.addIssue({ code: "custom", message: `${field} binding mismatch` });
+      }
+    }
+  });
+
+export type AuthorizedCheckout = z.infer<typeof authorizedCheckoutSchema>;
