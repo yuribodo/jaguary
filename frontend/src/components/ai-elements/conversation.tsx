@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -10,15 +11,19 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
-export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
-    className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="smooth"
-    resize="smooth"
-    role="log"
-    {...props}
-  />
-);
+export const Conversation = ({ className, ...props }: ConversationProps) => {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <StickToBottom
+      className={cn("relative flex-1 overflow-y-hidden", className)}
+      initial={reduceMotion ? "instant" : { damping: 0.78, mass: 0.9, stiffness: 0.09 }}
+      resize={reduceMotion ? "instant" : { damping: 0.82, mass: 0.8, stiffness: 0.11 }}
+      role="log"
+      {...props}
+    />
+  );
+};
 
 export type ConversationContentProps = ComponentProps<
   typeof StickToBottom.Content
@@ -76,27 +81,42 @@ export const ConversationScrollButton = ({
   ...props
 }: ConversationScrollButtonProps) => {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const reduceMotion = useReducedMotion();
 
   const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
+    scrollToBottom(
+      reduceMotion
+        ? "instant"
+        : { animation: { damping: 0.8, mass: 0.85, stiffness: 0.1 } },
+    );
+  }, [reduceMotion, scrollToBottom]);
 
   return (
-    !isAtBottom && (
-      <Button
-        className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
-          className
-        )}
-        onClick={handleScrollToBottom}
-        size="icon"
-        type="button"
-        variant="outline"
-        {...props}
-      >
-        <ArrowDownIcon className="size-4" />
-      </Button>
-    )
+    <AnimatePresence>
+      {!isAtBottom ? (
+        <motion.div
+          animate={{ opacity: 1, transform: "translate(-50%, 0px)" }}
+          className="absolute bottom-4 left-1/2 z-10"
+          exit={{ opacity: 0, transform: "translate(-50%, 4px)" }}
+          initial={{
+            opacity: 0,
+            transform: reduceMotion ? "translate(-50%, 0px)" : "translate(-50%, 6px)",
+          }}
+          transition={{ duration: reduceMotion ? 0.1 : 0.18, ease: [0.23, 1, 0.32, 1] }}
+        >
+          <Button
+            className={cn("rounded-full bg-background shadow-md hover:bg-muted", className)}
+            onClick={handleScrollToBottom}
+            size="icon"
+            type="button"
+            variant="outline"
+            {...props}
+          >
+            <ArrowDownIcon className="size-4" />
+          </Button>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 };
 
