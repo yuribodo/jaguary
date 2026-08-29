@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import {
+  authorizationStatusSchema,
   identifierSchema,
   moneySchema,
+  paymentResultStatusSchema,
   reasonCodeSchema,
   sha256Schema,
   utcRfc3339Schema,
@@ -27,6 +29,33 @@ const verifyDecisionSchema = z.object({
   decided_at: utcRfc3339Schema,
   payment_executor_called: z.literal(false),
 }).strict();
+
+const paymentResultRecordedSchema = z.object({
+  payment_attempt_id: identifierSchema,
+  authorization_id: identifierSchema,
+  provider_idempotency_key: z.uuid(),
+  result_status: paymentResultStatusSchema,
+  from_status: z.literal("PAYMENT_PENDING"),
+  to_status: authorizationStatusSchema,
+  payment_id: identifierSchema.optional(),
+  provider_reference: identifierSchema.optional(),
+  decline_code: identifierSchema.optional(),
+  amount: moneySchema,
+  occurred_at: utcRfc3339Schema,
+  recorded_at: utcRfc3339Schema,
+}).strict().superRefine((payload, context) => {
+  const expectedStatus = payload.result_status === "APPROVED"
+    ? "CONSUMED"
+    : payload.result_status === "DECLINED"
+      ? "FAILED"
+      : "PAYMENT_PENDING";
+  if (payload.to_status !== expectedStatus) {
+    context.addIssue({
+      code: "custom",
+      message: `${payload.result_status} must transition to ${expectedStatus}`,
+    });
+  }
+});
 
 export const ledgerPayloadSchemas = {
   "agent.registered": z.object({
@@ -87,6 +116,25 @@ export const ledgerPayloadSchemas = {
     (payload) => payload.decision === "ESCALATE",
     "An escalation event must contain an ESCALATE decision",
   ),
+  "payment.claimed": z.object({
+    payment_attempt_id: identifierSchema,
+    authorization_id: identifierSchema,
+    provider_idempotency_key: z.uuid(),
+    from_status: z.literal("RESERVED"),
+    to_status: z.literal("PAYMENT_PENDING"),
+    amount: moneySchema,
+    claimed_at: utcRfc3339Schema,
+  }).strict(),
+  "payment.result_recorded": paymentResultRecordedSchema,
+  "order.confirmed": z.object({
+    order_id: identifierSchema,
+    checkout_id: identifierSchema,
+    authorization_id: identifierSchema,
+    payment_id: identifierSchema,
+    merchant_id: identifierSchema,
+    total: moneySchema,
+    confirmed_at: utcRfc3339Schema,
+  }).strict(),
 } as const;
 
 export type LedgerEventType = keyof typeof ledgerPayloadSchemas;

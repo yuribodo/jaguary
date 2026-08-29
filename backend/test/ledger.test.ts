@@ -89,4 +89,14 @@ test("event payload allowlists reject proof, signature and credential fields", (
     signature: "reusable-signature",
     credential_id: "credential_secret",
   } as never));
+  assert.throws(() => sanitizeLedgerPayload("payment.claimed", {
+    payment_attempt_id: "payment_attempt_ledger_001",
+    authorization_id: "authorization_ledger_001",
+    provider_idempotency_key: "123e4567-e89b-42d3-a456-426614174000",
+    from_status: "RESERVED",
+    to_status: "PAYMENT_PENDING",
+    amount: { amount: 13700, currency: "USD" },
+    claimed_at: "2026-08-29T12:00:00.000Z",
+    vaulted_token: "forbidden-provider-material",
+  } as never));
 });

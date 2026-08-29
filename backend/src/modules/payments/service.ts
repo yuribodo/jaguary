@@ -1,9 +1,13 @@
+import { z } from "zod";
+
 import {
   paymentResultSchema,
   type AuthorizedPayment,
   type PaymentExecutor,
   type PaymentResult,
 } from "../../contracts/v1/index.js";
+
+const providerIdempotencyKeySchema = z.uuid();
 
 export type PaymentClaim =
   | {
@@ -22,6 +26,24 @@ export interface PaymentClaimStore {
   persistResult(paymentAttemptId: string, result: PaymentResult): Promise<PaymentResult>;
 }
 
+export interface PaymentReconciliationAttempt {
+  payment_attempt_id: string;
+  idempotency_key: string;
+}
+
+/**
+ * Provider-agnostic seam for a later status lookup or signed notification.
+ * Loading never creates a new logical attempt or provider key.
+ */
+export interface PaymentReconciliationStore {
+  loadPendingAttempt(authorizationId: string): Promise<PaymentReconciliationAttempt>;
+  persistReconciledResult(
+    authorizationId: string,
+    providerIdempotencyKey: string,
+    result: PaymentResult,
+  ): Promise<PaymentResult>;
+}
+
 export class PaymentService {
   constructor(
     private readonly store: PaymentClaimStore,
@@ -32,8 +54,9 @@ export class PaymentService {
     const claim = await this.store.claim(authorizationId, correlationId);
     if (claim.kind === "COMPLETED") return claim.result;
 
+    const providerIdempotencyKey = providerIdempotencyKeySchema.parse(claim.idempotency_key);
     const result = paymentResultSchema.parse(
-      await this.executor.pay(claim.payment, claim.idempotency_key),
+      await this.executor.pay(claim.payment, providerIdempotencyKey),
     );
     const authorization = claim.payment.authorization;
     if (

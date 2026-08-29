@@ -10,7 +10,6 @@ import {
   normalizedCheckoutSchema,
   offerCandidateFixture,
   offerCandidateSchema,
-  orderReceiptSchema,
   purchaseIntentFixture,
   reservedAuthorizationFixture,
   sha256CanonicalJson,
@@ -59,7 +58,7 @@ test("VuelaYa publishes the pinned Checkout + AP2 profile and deterministic offe
   });
 });
 
-test("completion requires ReservedAuthorization and returns one idempotent order receipt", async (t) => {
+test("public completion fails closed without a durable approved payment order", async (t) => {
   const app = await buildApp({ logger: false });
   t.after(async () => app.close());
 
@@ -95,33 +94,14 @@ test("completion requires ReservedAuthorization and returns one idempotent order
     "ucp-capabilities": AP2_CAPABILITIES,
     "x-correlation-id": "corr_completion_authorized_001",
   };
-  const first = await app.inject({
+  const blocked = await app.inject({
     method: "POST",
     url: `/ucp/v1/checkout/${checkout.terms.checkout_id}/complete`,
     headers: completionHeaders,
     payload: completionRequest,
   });
-  assert.equal(first.statusCode, 201);
-  const firstReceipt = orderReceiptSchema.parse(first.json());
-  assert.equal(firstReceipt.checkout_id, checkout.terms.checkout_id);
-  assert.equal(firstReceipt.authorization_id, reservedAuthorizationFixture.authorization_id);
-  assert.equal(firstReceipt.evidence.correlation_id, "corr_completion_authorized_001");
-
-  const repeated = await app.inject({
-    method: "POST",
-    url: `/ucp/v1/checkout/${checkout.terms.checkout_id}/complete`,
-    headers: completionHeaders,
-    payload: completionRequest,
-  });
-  assert.equal(repeated.statusCode, 200);
-  assert.deepEqual(repeated.json(), firstReceipt);
-
-  const readOrder = await app.inject({
-    method: "GET",
-    url: `/ucp/v1/orders/${firstReceipt.order_id}`,
-  });
-  assert.equal(readOrder.statusCode, 200);
-  assert.deepEqual(readOrder.json(), firstReceipt);
+  assert.equal(blocked.statusCode, 409);
+  assert.equal(blocked.json().error.code, "invalid_request");
 });
 
 test("a valid PurchaseIntent creates and reads the merchant-authoritative signed checkout", async (t) => {

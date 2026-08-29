@@ -13,6 +13,7 @@ import {
   timestamp,
   unique,
   uniqueIndex,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -351,13 +352,14 @@ export const payments = pgTable("payments", {
   providerReference: varchar("provider_reference", { length: 128 }),
   declineCode: varchar("decline_code", { length: 128 }),
   correlationId: varchar("correlation_id", { length: 128 }).notNull(),
-  idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  providerIdempotencyKey: uuid("provider_idempotency_key").notNull(),
   occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "date" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
 }, (table) => [
   unique("payments_payment_id_unique").on(table.paymentId),
-  unique("payments_idempotency_key_unique").on(table.idempotencyKey),
+  unique("payments_authorization_id_unique").on(table.authorizationId),
+  unique("payments_provider_idempotency_key_unique").on(table.providerIdempotencyKey),
   check("payments_attempt_id_check", identifierCheck(table.paymentAttemptId)),
   check("payments_payment_id_check", sql`${table.paymentId} IS NULL OR ${identifierCheck(table.paymentId)}`),
   check("payments_amount_check", moneyCheck(table.amount)),
@@ -371,7 +373,6 @@ export const payments = pgTable("payments", {
     OR (${table.status} = 'UNKNOWN' AND ${table.providerReference} IS NULL AND ${table.declineCode} IS NULL AND ${table.occurredAt} IS NOT NULL)
   `),
   check("payments_correlation_id_check", identifierCheck(table.correlationId)),
-  check("payments_idempotency_key_check", sql`length(${table.idempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.idempotencyKey)}`),
   index("payments_authorization_created_idx").on(table.authorizationId, table.createdAt),
   index("payments_status_updated_idx").on(table.status, table.updatedAt),
 ]);
@@ -420,6 +421,8 @@ export const orders = pgTable("orders", {
 }, (table) => [
   unique("orders_receipt_id_unique").on(table.receiptId),
   unique("orders_payment_id_unique").on(table.paymentId),
+  unique("orders_checkout_id_unique").on(table.checkoutId),
+  unique("orders_authorization_id_unique").on(table.authorizationId),
   unique("orders_audit_event_id_unique").on(table.auditEventId),
   unique("orders_idempotency_key_unique").on(table.idempotencyKey),
   check("orders_order_id_check", identifierCheck(table.orderId)),
