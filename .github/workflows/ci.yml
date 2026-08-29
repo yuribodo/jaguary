@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: bound_test
+          POSTGRES_USER: bound_test
+          POSTGRES_PASSWORD: bound_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bound_test -d bound_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://bound_test:bound_test_ci@localhost:5432/bound_test
+      TEST_DATABASE_URL: postgresql://bound_test:bound_test_ci@localhost:5432/bound_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
