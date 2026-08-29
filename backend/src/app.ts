@@ -6,6 +6,7 @@ import {
   type AgentIdentityRegistryPort,
   type AgentRequestVerifierPort,
   type ClockPort,
+  type PaymentExecutor,
   type SignerPort,
 } from "./contracts/v1/index.js";
 import { createDatabase, type DatabaseConnection } from "./db/database.js";
@@ -19,6 +20,13 @@ import {
   PostgresAuditEventRepository,
 } from "./modules/ledger/index.js";
 import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
+import {
+  FakePaymentExecutor,
+  PostgresPaymentClaimStore,
+  PaymentService,
+  paymentRoutes,
+  type PaymentHandler,
+} from "./modules/payments/index.js";
 import {
   PostgresAuthorizationReservationStore,
   VerifyOrchestrator,
@@ -41,6 +49,8 @@ export interface BuildAppOptions {
   agentVerifier?: AgentRequestVerifierPort;
   logger?: FastifyServerOptions["logger"];
   signer?: SignerPort;
+  paymentExecutor?: PaymentExecutor;
+  paymentService?: PaymentHandler;
   verifyOrchestrator?: VerifyHandler;
   humanApprovalRequired?: (input: VerifyRequestBody) => boolean;
 }
@@ -173,6 +183,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
   }
   if (ledger !== undefined) {
     await app.register(auditRoutes, { ledger });
+  }
+  const paymentExecutor = options.paymentExecutor ?? new FakePaymentExecutor({
+    outcome: "APPROVED",
+    occurredAt: clock.now().toISOString(),
+  });
+  const paymentService = options.paymentService
+    ?? (database === undefined
+      ? undefined
+      : new PaymentService(new PostgresPaymentClaimStore(database, clock), paymentExecutor));
+  if (paymentService !== undefined) {
+    await app.register(paymentRoutes, { service: paymentService });
   }
 
   return app;
