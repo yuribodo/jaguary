@@ -183,6 +183,168 @@ function canReplacePendingResult(stored: PaymentResult, incoming: PaymentResult)
       || !("payment_id" in incoming) || stored.payment_id === incoming.payment_id);
 }
 
+async function loadPaymentForUpdate(
+  database: DatabaseClient,
+  paymentAttemptId: string,
+): Promise<PaymentRow> {
+  const payment = (await database
+    .select()
+    .from(payments)
+    .where(eq(payments.paymentAttemptId, paymentAttemptId))
+    .limit(1)
+    .for("update"))[0];
+  if (payment === undefined) throw new Error("Payment attempt does not exist");
+  return payment;
+}
+
+function existingResultOrUndefined(
+  payment: PaymentRow,
+  result: PaymentResult,
+): PaymentResult | undefined {
+  assertResultBindings(payment, result);
+  const stored = paymentResultFromRow(payment);
+  if (stored === undefined) return undefined;
+  if (canonicalizeJson(stored) === canonicalizeJson(result)) return stored;
+  if (canReplacePendingResult(stored, result)) return undefined;
+  throw new Error("Payment result conflicts with the result already persisted");
+}
+
+async function loadPendingAuthorizationForUpdate(
+  database: DatabaseClient,
+  authorizationId: string,
+): Promise<AuthorizationRow> {
+  const authorization = (await database
+    .select()
+    .from(authorizations)
+    .where(eq(authorizations.authorizationId, authorizationId))
+    .limit(1)
+    .for("update"))[0];
+  if (authorization === undefined || authorization.status !== "PAYMENT_PENDING") {
+    throw new Error("Payment result cannot transition a non-pending authorization");
+  }
+  return authorization;
+}
+
+async function updatePaymentResult(
+  database: DatabaseClient,
+  paymentAttemptId: string,
+  result: PaymentResult,
+  now: Date,
+): Promise<PaymentRow> {
+  const updated = (await database
+    .update(payments)
+    .set(resultUpdate(result, now))
+    .where(eq(payments.paymentAttemptId, paymentAttemptId))
+    .returning())[0];
+  if (updated === undefined) throw new Error("Payment result update returned no row");
+  return updated;
+}
+
+async function transitionAuthorizationForResult(
+  database: DatabaseClient,
+  authorization: AuthorizationRow,
+  nextStatus: ReturnType<typeof authorizationStatusFor>,
+  now: Date,
+): Promise<void> {
+  if (nextStatus === "PAYMENT_PENDING") return;
+  if (!canTransitionAuthorization("PAYMENT_PENDING", nextStatus)) {
+    throw new Error("Payment state machine rejected the terminal transition");
+  }
+  const transitioned = (await database
+    .update(authorizations)
+    .set({ status: nextStatus, updatedAt: now })
+    .where(and(
+      eq(authorizations.authorizationId, authorization.authorizationId),
+      eq(authorizations.status, "PAYMENT_PENDING"),
+    ))
+    .returning({ authorizationId: authorizations.authorizationId }))[0];
+  if (transitioned === undefined) throw new Error("Authorization terminal transition lost its claim");
+}
+
+async function appendPaymentResultEvent(
+  ledger: AuditLedgerPort,
+  database: DatabaseClient,
+  payment: PaymentRow,
+  result: PaymentResult,
+  nextStatus: ReturnType<typeof authorizationStatusFor>,
+  now: Date,
+): Promise<void> {
+  await ledger.append(database, {
+    correlationId: payment.correlationId,
+    eventType: "payment.result_recorded",
+    subjectId: payment.authorizationId,
+    payload: {
+      payment_attempt_id: payment.paymentAttemptId,
+      authorization_id: payment.authorizationId,
+      provider_idempotency_key: payment.providerIdempotencyKey,
+      result_status: result.status,
+      from_status: "PAYMENT_PENDING",
+      to_status: nextStatus,
+      ...("payment_id" in result && result.payment_id !== undefined
+        ? { payment_id: result.payment_id }
+        : {}),
+      ...("provider_reference" in result && result.provider_reference !== undefined
+        ? { provider_reference: result.provider_reference }
+        : {}),
+      ...("decline_code" in result ? { decline_code: result.decline_code } : {}),
+      amount: result.amount,
+      occurred_at: result.occurred_at,
+      recorded_at: now.toISOString(),
+    },
+    recordedAt: now,
+  });
+}
+
+async function createApprovedOrder(
+  ledger: AuditLedgerPort,
+  database: DatabaseClient,
+  payment: PaymentRow,
+  authorization: AuthorizationRow,
+  result: Extract<PaymentResult, { status: "APPROVED" }>,
+  now: Date,
+): Promise<void> {
+  const checkout = (await database
+    .select()
+    .from(checkouts)
+    .where(eq(checkouts.checkoutId, authorization.checkoutId))
+    .limit(1))[0];
+  if (checkout === undefined) throw new Error("Approved payment checkout does not exist");
+  const orderId = stableIdentifier("order", authorization.authorizationId);
+  const orderEvent = await ledger.append(database, {
+    correlationId: payment.correlationId,
+    eventType: "order.confirmed",
+    subjectId: orderId,
+    payload: {
+      order_id: orderId,
+      checkout_id: checkout.checkoutId,
+      authorization_id: authorization.authorizationId,
+      payment_id: result.payment_id,
+      merchant_id: checkout.merchantId,
+      total: { amount: checkout.totalAmount, currency: checkout.currency },
+      confirmed_at: now.toISOString(),
+    },
+    recordedAt: now,
+  });
+  await database.insert(orders).values({
+    orderId,
+    receiptId: stableIdentifier("receipt", authorization.authorizationId),
+    checkoutId: checkout.checkoutId,
+    authorizationId: authorization.authorizationId,
+    paymentId: result.payment_id,
+    merchantId: checkout.merchantId,
+    status: "CONFIRMED",
+    items: checkout.items,
+    totalAmount: checkout.totalAmount,
+    currency: checkout.currency,
+    fulfillment: checkout.fulfillment,
+    auditEventId: orderEvent.eventId,
+    correlationId: payment.correlationId,
+    idempotencyKey: payment.providerIdempotencyKey,
+    issuedAt: now,
+    updatedAt: now,
+  });
+}
+
 export class PostgresPaymentClaimStore implements PaymentClaimStore, PaymentReconciliationStore {
   readonly #ledger: AuditLedgerPort;
 
@@ -331,127 +493,44 @@ export class PostgresPaymentClaimStore implements PaymentClaimStore, PaymentReco
   async persistResult(paymentAttemptId: string, result: PaymentResult): Promise<PaymentResult> {
     const parsed = paymentResultSchema.parse(result);
     return this.database.transaction(async (transaction) => {
-      const payment = (await transaction
-        .select()
-        .from(payments)
-        .where(eq(payments.paymentAttemptId, paymentAttemptId))
-        .limit(1)
-        .for("update"))[0];
-      if (payment === undefined) throw new Error("Payment attempt does not exist");
-      assertResultBindings(payment, parsed);
-
-      const stored = paymentResultFromRow(payment);
-      if (stored !== undefined) {
-        if (canonicalizeJson(stored) === canonicalizeJson(parsed)) return stored;
-        if (!canReplacePendingResult(stored, parsed)) {
-          throw new Error("Payment result conflicts with the result already persisted");
-        }
-      }
-
-      const authorization = (await transaction
-        .select()
-        .from(authorizations)
-        .where(eq(authorizations.authorizationId, payment.authorizationId))
-        .limit(1)
-        .for("update"))[0];
-      if (authorization === undefined || authorization.status !== "PAYMENT_PENDING") {
-        throw new Error("Payment result cannot transition a non-pending authorization");
-      }
-
+      const payment = await loadPaymentForUpdate(transaction, paymentAttemptId);
+      const stored = existingResultOrUndefined(payment, parsed);
+      if (stored !== undefined) return stored;
+      const authorization = await loadPendingAuthorizationForUpdate(
+        transaction,
+        payment.authorizationId,
+      );
       const nextAuthorizationStatus = authorizationStatusFor(parsed);
-      if (
-        nextAuthorizationStatus !== "PAYMENT_PENDING"
-        && !canTransitionAuthorization("PAYMENT_PENDING", nextAuthorizationStatus)
-      ) {
-        throw new Error("Payment state machine rejected the terminal transition");
-      }
-
       const now = this.clock.now();
-      const updatedPayment = (await transaction
-        .update(payments)
-        .set(resultUpdate(parsed, now))
-        .where(eq(payments.paymentAttemptId, paymentAttemptId))
-        .returning())[0];
-      if (updatedPayment === undefined) throw new Error("Payment result update returned no row");
-
-      if (nextAuthorizationStatus !== "PAYMENT_PENDING") {
-        const transitioned = (await transaction
-          .update(authorizations)
-          .set({ status: nextAuthorizationStatus, updatedAt: now })
-          .where(and(
-            eq(authorizations.authorizationId, authorization.authorizationId),
-            eq(authorizations.status, "PAYMENT_PENDING"),
-          ))
-          .returning({ authorizationId: authorizations.authorizationId }))[0];
-        if (transitioned === undefined) throw new Error("Authorization terminal transition lost its claim");
-      }
-
-      await this.#ledger.append(transaction, {
-        correlationId: payment.correlationId,
-        eventType: "payment.result_recorded",
-        subjectId: payment.authorizationId,
-        payload: {
-          payment_attempt_id: payment.paymentAttemptId,
-          authorization_id: payment.authorizationId,
-          provider_idempotency_key: payment.providerIdempotencyKey,
-          result_status: parsed.status,
-          from_status: "PAYMENT_PENDING",
-          to_status: nextAuthorizationStatus,
-          ...("payment_id" in parsed && parsed.payment_id !== undefined
-            ? { payment_id: parsed.payment_id }
-            : {}),
-          ...("provider_reference" in parsed && parsed.provider_reference !== undefined
-            ? { provider_reference: parsed.provider_reference }
-            : {}),
-          ...("decline_code" in parsed ? { decline_code: parsed.decline_code } : {}),
-          amount: parsed.amount,
-          occurred_at: parsed.occurred_at,
-          recorded_at: now.toISOString(),
-        },
-        recordedAt: now,
-      });
-
+      const updatedPayment = await updatePaymentResult(
+        transaction,
+        paymentAttemptId,
+        parsed,
+        now,
+      );
+      await transitionAuthorizationForResult(
+        transaction,
+        authorization,
+        nextAuthorizationStatus,
+        now,
+      );
+      await appendPaymentResultEvent(
+        this.#ledger,
+        transaction,
+        payment,
+        parsed,
+        nextAuthorizationStatus,
+        now,
+      );
       if (parsed.status === "APPROVED") {
-        const checkout = (await transaction
-          .select()
-          .from(checkouts)
-          .where(eq(checkouts.checkoutId, authorization.checkoutId))
-          .limit(1))[0];
-        if (checkout === undefined) throw new Error("Approved payment checkout does not exist");
-        const orderId = stableIdentifier("order", authorization.authorizationId);
-        const orderEvent = await this.#ledger.append(transaction, {
-          correlationId: payment.correlationId,
-          eventType: "order.confirmed",
-          subjectId: orderId,
-          payload: {
-            order_id: orderId,
-            checkout_id: checkout.checkoutId,
-            authorization_id: authorization.authorizationId,
-            payment_id: parsed.payment_id,
-            merchant_id: checkout.merchantId,
-            total: { amount: checkout.totalAmount, currency: checkout.currency },
-            confirmed_at: now.toISOString(),
-          },
-          recordedAt: now,
-        });
-        await transaction.insert(orders).values({
-          orderId,
-          receiptId: stableIdentifier("receipt", authorization.authorizationId),
-          checkoutId: checkout.checkoutId,
-          authorizationId: authorization.authorizationId,
-          paymentId: parsed.payment_id,
-          merchantId: checkout.merchantId,
-          status: "CONFIRMED",
-          items: checkout.items,
-          totalAmount: checkout.totalAmount,
-          currency: checkout.currency,
-          fulfillment: checkout.fulfillment,
-          auditEventId: orderEvent.eventId,
-          correlationId: payment.correlationId,
-          idempotencyKey: payment.providerIdempotencyKey,
-          issuedAt: now,
-          updatedAt: now,
-        });
+        await createApprovedOrder(
+          this.#ledger,
+          transaction,
+          payment,
+          authorization,
+          parsed,
+          now,
+        );
       }
 
       return paymentResultFromRow(updatedPayment)!;

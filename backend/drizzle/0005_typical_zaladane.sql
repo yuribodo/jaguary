@@ -1,7 +1,9 @@
 ALTER TABLE "payments" DROP CONSTRAINT "payments_idempotency_key_unique";--> statement-breakpoint
 ALTER TABLE "payments" DROP CONSTRAINT "payments_idempotency_key_check";--> statement-breakpoint
 ALTER TABLE "payments" ADD COLUMN "provider_idempotency_key" uuid;--> statement-breakpoint
-UPDATE "payments" SET "provider_idempotency_key" = gen_random_uuid();--> statement-breakpoint
+UPDATE "payments"
+SET "provider_idempotency_key" = gen_random_uuid()
+WHERE "provider_idempotency_key" IS NULL;--> statement-breakpoint
 ALTER TABLE "payments" ALTER COLUMN "provider_idempotency_key" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "payments" DROP COLUMN "idempotency_key";--> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_checkout_id_unique" UNIQUE("checkout_id");--> statement-breakpoint

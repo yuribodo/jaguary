@@ -8,6 +8,7 @@ import {
   reasonCodeSchema,
   sha256Schema,
   utcRfc3339Schema,
+  type PaymentResultStatus,
 } from "../../contracts/v1/index.js";
 
 const mandateTransitionSchema = z.object({
@@ -30,6 +31,14 @@ const verifyDecisionSchema = z.object({
   payment_executor_called: z.literal(false),
 }).strict();
 
+function authorizationStatusForResult(
+  status: PaymentResultStatus,
+): "CONSUMED" | "FAILED" | "PAYMENT_PENDING" {
+  if (status === "APPROVED") return "CONSUMED";
+  if (status === "DECLINED") return "FAILED";
+  return "PAYMENT_PENDING";
+}
+
 const paymentResultRecordedSchema = z.object({
   payment_attempt_id: identifierSchema,
   authorization_id: identifierSchema,
@@ -44,11 +53,7 @@ const paymentResultRecordedSchema = z.object({
   occurred_at: utcRfc3339Schema,
   recorded_at: utcRfc3339Schema,
 }).strict().superRefine((payload, context) => {
-  const expectedStatus = payload.result_status === "APPROVED"
-    ? "CONSUMED"
-    : payload.result_status === "DECLINED"
-      ? "FAILED"
-      : "PAYMENT_PENDING";
+  const expectedStatus = authorizationStatusForResult(payload.result_status);
   if (payload.to_status !== expectedStatus) {
     context.addIssue({
       code: "custom",
