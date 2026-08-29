@@ -220,7 +220,7 @@ VuelaYa is the deterministic P0 merchant for principal Marta and agent TravelBot
 - deterministic offer discovery, checkout creation/read, authorized completion and order receipt read;
 - merchant-authored `CheckoutTerms`, RFC 8785/JCS canonicalization, SHA-256 and a detached ES256 signature.
 
-This is not a claim of full UCP conformance. The public body at `/.well-known/ucp` intentionally validates against the frozen local `MerchantCapabilities` contract rather than reproducing the complete upstream business-profile schema. Its `Link` response header advertises the implemented local endpoints. The signed fixture retains `https://demo.vuelaya.example` as its stable merchant identity so the BE-01 checkout hash remains unchanged; all executable API calls use `http://localhost:3001`.
+This is not a claim of full UCP conformance. The public body at `/.well-known/ucp` intentionally validates against the frozen local `MerchantCapabilities` contract rather than reproducing the complete upstream business-profile schema. Its `Link` response header advertises the implemented local endpoints. The signed fixture retains `https://demo.vuelaya.example` as its stable merchant identity; all executable API calls use `http://localhost:3001`.
 
 ### Routes
 
@@ -267,13 +267,21 @@ curl -i -X POST http://localhost:3001/ucp/v1/checkout \
   }'
 ```
 
-The authoritative terms hash is `b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01`. Use the Postman collection for the complete request because it captures the runtime checkout signature and submits it with the sanitized `ReservedAuthorization` fixture before reading the resulting order.
+The authoritative terms hash is `d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79afde052b77b0f071d`. Use the Postman collection for the complete request because it captures the runtime checkout signature and submits it with the sanitized `ReservedAuthorization` fixture before reading the resulting order.
 
 ### Integrity, state and limitations
 
-- Checkout terms are validated with the strict v1 schema before canonicalization. Object-property order does not affect the RFC 8785/JCS hash; changing price, currency, route, item, merchant or expiry does.
+- Checkout terms are validated with the strict v1 schema before canonicalization. Object-property order does not affect the RFC 8785/JCS hash; changing price, currency, route, cabin, item, merchant or expiry does.
 - The signer is available only through `SignerPort`. A P-256 keypair is generated in memory at process startup; no private key is exported, logged, stored or versioned. Restarting the process discards both the key and all in-memory merchant state.
 - The default application clock is the fixed demo instant `2026-08-29T12:04:01.000Z`, keeping the P0 fixture reproducible. Tests inject later clocks to prove offer, checkout and authorization expiry behavior. A production adapter must use an injected system clock and durable storage.
 - Completion requires a schema-valid `RESERVED` authorization bound to authorization ID, checkout ID/hash, merchant, amount and currency. A bare `ALLOW` declaration is rejected. One receipt is stored per checkout and authorization, so retries return the same object.
 - `payment_id` in the merchant receipt is a sanitized logical reference derived from the reserved authorization; VuelaYa never resolves a credential, invokes `PaymentExecutor`, calls Yuno or executes payment. Payment execution and durable authorization state remain downstream workstreams.
 - No PostgreSQL, external website, browser automation, mandate lifecycle, Bound Verify rules, Yuno integration or LLM is part of this module.
+
+## Pure Bound Verify policy (BE-06)
+
+`modules/verify/evaluate()` is the pre-reservation policy seam. It receives v1 agent, mandate, normalized authorization and checkout contracts plus explicit signature results, evaluation time, aggregate usage, nonce state and human-approval requirement. It performs no I/O and never reads the system clock.
+
+Rules run in a fixed order: agent proof/state, mandate proof/state/binding, principal/agent binding, merchant, checkout integrity/signature, route/cabin scope, amount/currency, validity, aggregate usage and nonce/replay. Missing, malformed and unknown inputs return `DENY`; a valid request returns `ALLOW`, while an otherwise valid request marked for approval returns `ESCALATE human_approval_required`.
+
+The result is the shared v1 `PolicyEvaluation`, containing stable reasons, `bound.verify.v1` and deterministic evidence inputs. It intentionally has no `authorization_id` or final `evidence_hash`: `POST /verify`, transactional reservation, replay insertion and final response construction belong to BE-07.

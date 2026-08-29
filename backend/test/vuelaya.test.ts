@@ -51,6 +51,7 @@ test("VuelaYa publishes the pinned Checkout + AP2 profile and deterministic offe
   assert.deepEqual(offers[0]?.total, { amount: 13700, currency: "USD" });
   assert.deepEqual(offers[0]?.fulfillment, {
     type: "FLIGHT",
+    cabin: "ECONOMY",
     origin: "GRU",
     destination: "COR",
     departure_at: "2026-09-15T10:00:00.000Z",
@@ -141,7 +142,7 @@ test("a valid PurchaseIntent creates and reads the merchant-authoritative signed
   assert.equal(createResponse.headers["x-correlation-id"], "corr_checkout_create_001");
 
   const checkout = normalizedCheckoutSchema.parse(createResponse.json());
-  assert.equal(checkout.checkout_hash, "b059774ba8efeb7200c1aaefa6786bf293e4c8d5fece24a147586a1a330f9c01");
+  assert.equal(checkout.checkout_hash, "d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79afde052b77b0f071d");
   assert.deepEqual(checkout.terms.total, { amount: 13700, currency: "USD" });
   assert.deepEqual(checkout.terms.items[0]?.total, { amount: 13700, currency: "USD" });
 

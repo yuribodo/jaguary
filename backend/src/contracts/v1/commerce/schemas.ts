@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  cabinClassSchema,
   identifierSchema,
   moneySchema,
   sha256Schema,
@@ -23,6 +24,7 @@ export type CommerceItem = z.infer<typeof commerceItemSchema>;
 export const flightFulfillmentSchema = z
   .object({
     type: z.literal("FLIGHT"),
+    cabin: cabinClassSchema,
     origin: z.string().regex(/^[A-Z]{3}$/),
     destination: z.string().regex(/^[A-Z]{3}$/),
     departure_at: utcRfc3339Schema,

@@ -58,6 +58,65 @@ export const authorizationDecisionSchema = z
 
 export type AuthorizationDecision = z.infer<typeof authorizationDecisionSchema>;
 
+export const authorizationUsageSchema = z
+  .object({
+    aggregate_spend: moneySchema,
+    uses: z.number().int().safe().nonnegative(),
+  })
+  .strict();
+
+export type AuthorizationUsage = z.infer<typeof authorizationUsageSchema>;
+
+export const nonceStatusSchema = z.enum(["UNUSED", "USED"]);
+
+export type NonceStatus = z.infer<typeof nonceStatusSchema>;
+
+export const policyEvidenceInputsSchema = z
+  .object({
+    agent_id: identifierSchema.nullable(),
+    agent_request_nonce: identifierSchema.nullable(),
+    mandate_id: identifierSchema.nullable(),
+    mandate_terms_hash: sha256Schema.nullable(),
+    authorization_proof_hash: sha256Schema.nullable(),
+    checkout_id: identifierSchema.nullable(),
+    checkout_hash: sha256Schema.nullable(),
+    evaluated_at: utcRfc3339Schema.nullable(),
+    aggregate_spend: moneySchema.nullable(),
+    uses: z.number().int().safe().nonnegative().nullable(),
+    nonce_status: nonceStatusSchema.nullable(),
+    human_approval_required: z.boolean().nullable(),
+  })
+  .strict();
+
+export type PolicyEvidenceInputs = z.infer<typeof policyEvidenceInputsSchema>;
+
+export const policyEvaluationSchema = z
+  .object({
+    decision: decisionSchema,
+    reasons: z.array(reasonCodeSchema),
+    policy_version: z.string().min(1).max(64),
+    evidence_inputs: policyEvidenceInputsSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.decision === "ALLOW" && value.reasons.length !== 0) {
+      context.addIssue({
+        code: "custom",
+        message: "ALLOW decisions cannot contain reasons",
+        path: ["reasons"],
+      });
+    }
+    if (value.decision !== "ALLOW" && value.reasons.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "DENY and ESCALATE decisions require at least one reason",
+        path: ["reasons"],
+      });
+    }
+  });
+
+export type PolicyEvaluation = z.infer<typeof policyEvaluationSchema>;
+
 export const proofTypeSchema = z.enum(["AP2", "VISA_INSTRUCTION", "ACP_ALLOWANCE"]);
 
 export const normalizedAuthorizationSchema = z
