@@ -40,6 +40,21 @@ import { vuelaYaRoutes } from "./modules/vuelaya/routes.js";
 import { EphemeralEs256Signer } from "./modules/vuelaya/signer.js";
 import { healthRoutes } from "./routes/health.js";
 import { rootRoutes } from "./routes/root.js";
+import {
+  ApplicationTravelBotTools,
+  NoopLlmTelemetry,
+  OpenAIAgentsRuntime,
+  PostgresTravelBotRepository,
+  StateGuardedAgentToolExecutor,
+  TravelBotService,
+  UnavailableAgentRuntime,
+  travelBotRoutes,
+  type AgentProofFactoryPort,
+  type ApprovalStateProtectorPort,
+  type LlmTelemetryPort,
+  type TravelBotEventSource,
+} from "./modules/travelbot/index.js";
+import { listVuelaYaOffers } from "./modules/vuelaya/catalog.js";
 
 export interface BuildAppOptions {
   corsOrigin?: string;
@@ -54,6 +69,17 @@ export interface BuildAppOptions {
   paymentService?: PaymentHandler;
   verifyOrchestrator?: VerifyHandler;
   humanApprovalRequired?: (input: VerifyRequestBody) => boolean;
+  travelBotService?: TravelBotService;
+  travelBotEvents?: TravelBotEventSource;
+  openAI?: {
+    apiKey: string;
+    model: string;
+    requestTimeoutMs: number;
+  };
+  travelBotProofFactory?: AgentProofFactoryPort;
+  travelBotCredentialId?: string;
+  travelBotApprovalStateProtector?: ApprovalStateProtectorPort;
+  llmTelemetry?: LlmTelemetryPort;
 }
 
 const redactedLogPaths = [
@@ -74,6 +100,11 @@ const redactedLogPaths = [
   "*.token",
   "*.pan",
   "*.cvv",
+  "OPENAI_API_KEY",
+  "LANGFUSE_SECRET_KEY",
+  "TRAVELBOT_AGENT_PRIVATE_JWK",
+  "TRAVELBOT_APPROVAL_ENCRYPTION_KEY",
+  "*.sdk_run_state",
 ];
 
 function loggerOptions(logger: BuildAppOptions["logger"]): FastifyServerOptions["logger"] {
@@ -96,6 +127,18 @@ export async function buildApp(options: BuildAppOptions = {}) {
     logger: loggerOptions(options.logger),
     genReqId: generateCorrelationId,
   });
+  const telemetryWithShutdown = options.llmTelemetry as (LlmTelemetryPort & {
+    shutdown?: () => Promise<void>;
+  }) | undefined;
+  if (telemetryWithShutdown?.shutdown !== undefined) {
+    app.addHook("onClose", async () => {
+      try {
+        await telemetryWithShutdown.shutdown!();
+      } catch {
+        // Telemetry shutdown is best-effort and cannot affect API state.
+      }
+    });
+  }
 
   const clock = options.clock ?? deterministicDemoClock;
   const database = options.database
@@ -201,6 +244,65 @@ export async function buildApp(options: BuildAppOptions = {}) {
       : new PaymentService(new PostgresPaymentClaimStore(database, clock, ledger), paymentExecutor));
   if (paymentService !== undefined) {
     await app.register(paymentRoutes, { service: paymentService });
+  }
+  let travelBotService = options.travelBotService;
+  let travelBotEvents = options.travelBotEvents;
+  if (travelBotService === undefined && database !== undefined) {
+    const telemetry = options.llmTelemetry ?? new NoopLlmTelemetry();
+    const model = options.openAI?.model ?? "unavailable";
+    const repository = new PostgresTravelBotRepository(database, model);
+    travelBotEvents = repository;
+    if (
+      options.openAI !== undefined
+      && options.travelBotProofFactory !== undefined
+      && options.travelBotCredentialId !== undefined
+      && mandateService !== undefined
+      && verifyOrchestrator !== undefined
+      && paymentService !== undefined
+      && receiptStore !== undefined
+      && ledger !== undefined
+    ) {
+      const tools = new ApplicationTravelBotTools({
+        merchant,
+        mandates: mandateService,
+        verify: verifyOrchestrator,
+        payments: paymentService,
+        receipts: receiptStore,
+        proofFactory: options.travelBotProofFactory,
+        clock,
+        credentialId: options.travelBotCredentialId,
+        audit: ledger,
+      });
+      travelBotService = new TravelBotService({
+        repository,
+        runtime: new OpenAIAgentsRuntime({
+          model: options.openAI.model,
+          apiKey: options.openAI.apiKey,
+          timeoutMs: options.openAI.requestTimeoutMs,
+          telemetry,
+          toolExecutor: new StateGuardedAgentToolExecutor(repository, tools, clock),
+        }),
+        tools,
+        clock,
+        model: options.openAI.model,
+        approvalStateProtector: options.travelBotApprovalStateProtector,
+        telemetry,
+      });
+    } else {
+      travelBotService = new TravelBotService({
+        repository,
+        runtime: new UnavailableAgentRuntime(),
+        tools: { findOffers: async () => listVuelaYaOffers() },
+        clock,
+        model,
+      });
+    }
+  }
+  if (travelBotService !== undefined) {
+    await app.register(travelBotRoutes, {
+      service: travelBotService,
+      ...(travelBotEvents === undefined ? {} : { events: travelBotEvents }),
+    });
   }
 
   return app;

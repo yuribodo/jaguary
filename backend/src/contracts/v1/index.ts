@@ -9,3 +9,4 @@ export * from "./mandates/schemas.js";
 export * from "./payments/schemas.js";
 export * from "./ports/index.js";
 export * from "./receipts/schemas.js";
+export * from "./travelbot/schemas.js";
