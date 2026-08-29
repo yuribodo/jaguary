@@ -329,6 +329,46 @@ async function createVerifyScenario(
 type VerifyScenario = Awaited<ReturnType<typeof createVerifyScenario>>;
 type VerifyRequestInput = Parameters<VerifyScenario["sendVerify"]>[0];
 
+async function createPaymentScenario(
+  t: { after(callback: () => Promise<void>): void },
+) {
+  assert.ok(testDatabaseUrl);
+  assert.ok(database);
+  await seedAuthorizationGraph();
+  const executor = new FakePaymentExecutor({
+    outcome: "APPROVED",
+    occurredAt: "2026-08-29T12:04:02.000Z",
+  });
+  const app = await buildApp({
+    databaseUrl: testDatabaseUrl,
+    logger: false,
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+    paymentExecutor: executor,
+  });
+  t.after(async () => app.close());
+
+  async function sendPay(
+    idempotencyKey: string,
+    authorizationId = reservedAuthorizationFixture.authorization_id,
+    correlationId?: string,
+  ) {
+    return app.inject({
+      method: "POST",
+      url: `/authorizations/${authorizationId}/pay`,
+      headers: {
+        "idempotency-key": idempotencyKey,
+        ...(correlationId === undefined ? {} : { "x-correlation-id": correlationId }),
+      },
+      payload: {},
+    });
+  }
+
+  return {
+    executor,
+    sendPay,
+  };
+}
+
 async function sendConcurrentVerifies(
   scenario: VerifyScenario,
   inputs: readonly [VerifyRequestInput, VerifyRequestInput],
@@ -1517,35 +1557,18 @@ integrationTest("expired RESERVED and CANCELLED release capacity while PAYMENT_P
 });
 
 integrationTest("a RESERVED authorization starts one persisted payment attempt", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(database);
-  await seedAuthorizationGraph();
-  const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
-    occurredAt: "2026-08-29T12:04:02.000Z",
-  });
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
-    paymentExecutor: executor,
-  });
-  t.after(async () => app.close());
-
-  const response = await app.inject({
-    method: "POST",
-    url: `/authorizations/${reservedAuthorizationFixture.authorization_id}/pay`,
-    headers: {
-      "idempotency-key": "idem_pay_reserved_001",
-      "x-correlation-id": "corr_pay_reserved_001",
-    },
-    payload: {},
-  });
+  const scenario = await createPaymentScenario(t);
+  const response = await scenario.sendPay(
+    "idem_pay_reserved_001",
+    reservedAuthorizationFixture.authorization_id,
+    "corr_pay_reserved_001",
+  );
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers["x-correlation-id"], "corr_pay_reserved_001");
-  assert.equal(executor.callCount, 1);
-  assert.deepEqual(executor.calls, [{
+  assert.equal(scenario.executor.callCount, 1);
+  assert.deepEqual(scenario.executor.calls, [{
     authorization_id: reservedAuthorizationFixture.authorization_id,
     idempotency_key: reservedAuthorizationFixture.authorization_id,
   }]);
@@ -1563,102 +1586,39 @@ integrationTest("a RESERVED authorization starts one persisted payment attempt",
 });
 
 integrationTest("two sequential pay calls reuse one persisted result without executing twice", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(database);
-  await seedAuthorizationGraph();
-  const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
-    occurredAt: "2026-08-29T12:04:02.000Z",
-  });
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
-    paymentExecutor: executor,
-  });
-  t.after(async () => app.close());
-  const url = `/authorizations/${reservedAuthorizationFixture.authorization_id}/pay`;
+  const scenario = await createPaymentScenario(t);
 
-  const first = await app.inject({
-    method: "POST",
-    url,
-    headers: { "idempotency-key": "idem_pay_sequential_001" },
-    payload: {},
-  });
-  const repeated = await app.inject({
-    method: "POST",
-    url,
-    headers: { "idempotency-key": "idem_pay_sequential_002" },
-    payload: {},
-  });
+  const first = await scenario.sendPay("idem_pay_sequential_001");
+  const repeated = await scenario.sendPay("idem_pay_sequential_002");
 
   assert.equal(first.statusCode, 200);
   assert.equal(repeated.statusCode, 200);
   assert.deepEqual(repeated.json(), first.json());
-  assert.equal(executor.callCount, 1);
+  assert.equal(scenario.executor.callCount, 1);
   assert.equal((await database.db.select().from(payments)).length, 1);
 });
 
 integrationTest("concurrent pay calls execute at most once", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(database);
-  await seedAuthorizationGraph();
-  const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
-    occurredAt: "2026-08-29T12:04:02.000Z",
-  });
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
-    paymentExecutor: executor,
-  });
-  t.after(async () => app.close());
-  const url = `/authorizations/${reservedAuthorizationFixture.authorization_id}/pay`;
+  const scenario = await createPaymentScenario(t);
 
   const responses = await Promise.all([
-    app.inject({
-      method: "POST",
-      url,
-      headers: { "idempotency-key": "idem_pay_concurrent_001" },
-      payload: {},
-    }),
-    app.inject({
-      method: "POST",
-      url,
-      headers: { "idempotency-key": "idem_pay_concurrent_002" },
-      payload: {},
-    }),
+    scenario.sendPay("idem_pay_concurrent_001"),
+    scenario.sendPay("idem_pay_concurrent_002"),
   ]);
 
   assert.equal(responses.some(({ statusCode }) => statusCode === 200), true);
   assert.equal(responses.every(({ statusCode }) => statusCode === 200 || statusCode === 409), true);
-  assert.equal(executor.callCount, 1);
+  assert.equal(scenario.executor.callCount, 1);
   assert.equal((await database.db.select().from(payments)).length, 1);
 });
 
 integrationTest("missing and non-RESERVED authorizations never reach the executor", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(database);
-  await seedAuthorizationGraph();
-  const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
-    occurredAt: "2026-08-29T12:04:02.000Z",
-  });
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
-    paymentExecutor: executor,
-  });
-  t.after(async () => app.close());
+  const scenario = await createPaymentScenario(t);
 
-  const missing = await app.inject({
-    method: "POST",
-    url: "/authorizations/authorization_missing/pay",
-    headers: { "idempotency-key": "idem_pay_missing_001" },
-    payload: {},
-  });
+  const missing = await scenario.sendPay("idem_pay_missing_001", "authorization_missing");
   assert.equal(missing.statusCode, 404);
 
   for (const status of ["PAYMENT_PENDING", "CONSUMED", "FAILED", "CANCELLED"] as const) {
@@ -1666,47 +1626,24 @@ integrationTest("missing and non-RESERVED authorizations never reach the executo
       .update(authorizations)
       .set({ status })
       .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
-    const response = await app.inject({
-      method: "POST",
-      url: `/authorizations/${reservedAuthorizationFixture.authorization_id}/pay`,
-      headers: { "idempotency-key": `idem_pay_invalid_${status.toLowerCase()}` },
-      payload: {},
-    });
+    const response = await scenario.sendPay(`idem_pay_invalid_${status.toLowerCase()}`);
     assert.equal(response.statusCode, 409, status);
   }
-  assert.equal(executor.callCount, 0);
+  assert.equal(scenario.executor.callCount, 0);
   assert.equal((await database.db.select().from(payments)).length, 0);
 });
 
 integrationTest("incompatible merchant, checkout and credential bindings fail closed", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(administrationPool);
   assert.ok(database);
-  await seedAuthorizationGraph();
-  const executor = new FakePaymentExecutor({
-    outcome: "APPROVED",
-    occurredAt: "2026-08-29T12:04:02.000Z",
-  });
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
-    paymentExecutor: executor,
-  });
-  t.after(async () => app.close());
-  const url = `/authorizations/${reservedAuthorizationFixture.authorization_id}/pay`;
+  const scenario = await createPaymentScenario(t);
   let sequence = 0;
   async function expectClosed(): Promise<void> {
     sequence += 1;
-    const response = await app.inject({
-      method: "POST",
-      url,
-      headers: { "idempotency-key": `idem_pay_binding_${sequence}` },
-      payload: {},
-    });
+    const response = await scenario.sendPay(`idem_pay_binding_${sequence}`);
     assert.equal(response.statusCode, 422);
     assert.equal(response.json().error.code, "checkout_integrity_failure");
-    assert.equal(executor.callCount, 0);
+    assert.equal(scenario.executor.callCount, 0);
     assert.equal((await database!.db.select().from(payments)).length, 0);
   }
 
