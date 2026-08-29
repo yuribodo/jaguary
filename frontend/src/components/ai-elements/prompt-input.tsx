@@ -7,6 +7,7 @@ import type {
   KeyboardEvent,
 } from "react";
 import type { ChatStatus, FileUIPart } from "ai";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   CornerDownLeftIcon,
   SquareIcon,
@@ -57,7 +58,7 @@ export function PromptInput({
       onSubmit={handleSubmit}
       {...props}
     >
-      <InputGroup className="h-auto overflow-hidden rounded-2xl bg-card shadow-sm">
+      <InputGroup className="h-auto overflow-hidden rounded-lg border-input bg-card shadow-[0_4px_18px_rgb(0_0_0/0.18)] focus-within:border-ring">
         {children}
       </InputGroup>
     </form>
@@ -159,6 +160,7 @@ export function PromptInputSubmit({
   status,
   ...props
 }: PromptInputSubmitProps) {
+  const reduceMotion = useReducedMotion();
   const pending = status === "submitted" || status === "streaming";
   let icon = <CornerDownLeftIcon className="size-4" />;
   if (status === "submitted") icon = <Spinner />;
@@ -174,7 +176,26 @@ export function PromptInputSubmit({
       variant="default"
       {...props}
     >
-      {children ?? icon}
+      <AnimatePresence initial={false} mode="wait">
+        <motion.span
+          animate={{ filter: "blur(0px)", opacity: 1, transform: "scale(1)" }}
+          className="grid place-items-center"
+          exit={{
+            filter: reduceMotion ? "blur(0px)" : "blur(2px)",
+            opacity: 0,
+            transform: reduceMotion ? "scale(1)" : "scale(0.9)",
+          }}
+          initial={{
+            filter: reduceMotion ? "blur(0px)" : "blur(2px)",
+            opacity: 0,
+            transform: reduceMotion ? "scale(1)" : "scale(0.9)",
+          }}
+          key={status ?? "ready"}
+          transition={{ duration: reduceMotion ? 0.08 : 0.14, ease: [0.23, 1, 0.32, 1] }}
+        >
+          {children ?? icon}
+        </motion.span>
+      </AnimatePresence>
     </InputGroupButton>
   );
 }
