@@ -16,6 +16,7 @@ import {
 import {
   VerifyOrchestrator,
   type AuthorizationReservationPort,
+  type VerifyOrchestratorOptions,
   type VerifyRequest,
 } from "../src/modules/verify/index.js";
 
@@ -59,9 +60,11 @@ class InMemoryReservationStore implements AuthorizationReservationPort {
   }
 }
 
-test("a valid Bound Verify request becomes one payable reservation", async () => {
-  const store = new InMemoryReservationStore();
-  const orchestrator = new VerifyOrchestrator({
+function createOrchestrator(
+  store: InMemoryReservationStore,
+  overrides: Partial<VerifyOrchestratorOptions> = {},
+): VerifyOrchestrator {
+  return new VerifyOrchestrator({
     agentRegistry: { get: async () => travelBotFixture },
     agentVerifier: { verify: async () => verifiedRequest },
     mandateLoader: { getMandate: async () => mandateFixture },
@@ -70,7 +73,13 @@ test("a valid Bound Verify request becomes one payable reservation", async () =>
     reservationStore: store,
     clock: { now: () => new Date(now) },
     humanApprovalRequired: () => false,
+    ...overrides,
   });
+}
+
+test("a valid Bound Verify request becomes one payable reservation", async () => {
+  const store = new InMemoryReservationStore();
+  const orchestrator = createOrchestrator(store);
 
   const result = await orchestrator.verify(
     request,
@@ -86,19 +95,12 @@ test("a valid Bound Verify request becomes one payable reservation", async () =>
 
 test("an invalid agent signature is a deterministic DENY and creates no reservation", async () => {
   const store = new InMemoryReservationStore();
-  const orchestrator = new VerifyOrchestrator({
-    agentRegistry: { get: async () => travelBotFixture },
+  const orchestrator = createOrchestrator(store, {
     agentVerifier: {
       verify: async () => {
         throw new PublicApiError(401, "invalid_agent_signature", "invalid proof");
       },
     },
-    mandateLoader: { getMandate: async () => mandateFixture },
-    mandateSignatureVerifier: { verify: async () => true },
-    checkoutVerifier: { verify: async () => true },
-    reservationStore: store,
-    clock: { now: () => new Date(now) },
-    humanApprovalRequired: () => false,
   });
 
   const result = await orchestrator.verify(
@@ -115,14 +117,7 @@ test("an invalid agent signature is a deterministic DENY and creates no reservat
 
 test("human approval produces stable ESCALATE evidence without a payable reservation", async () => {
   const store = new InMemoryReservationStore();
-  const orchestrator = new VerifyOrchestrator({
-    agentRegistry: { get: async () => travelBotFixture },
-    agentVerifier: { verify: async () => verifiedRequest },
-    mandateLoader: { getMandate: async () => mandateFixture },
-    mandateSignatureVerifier: { verify: async () => true },
-    checkoutVerifier: { verify: async () => true },
-    reservationStore: store,
-    clock: { now: () => new Date(now) },
+  const orchestrator = createOrchestrator(store, {
     humanApprovalRequired: () => true,
   });
 
@@ -147,19 +142,12 @@ test("human approval produces stable ESCALATE evidence without a payable reserva
 
 test("a missing mandate fails closed as DENY instead of leaking a repository error", async () => {
   const store = new InMemoryReservationStore();
-  const orchestrator = new VerifyOrchestrator({
-    agentRegistry: { get: async () => travelBotFixture },
-    agentVerifier: { verify: async () => verifiedRequest },
+  const orchestrator = createOrchestrator(store, {
     mandateLoader: {
       getMandate: async () => {
         throw new PublicApiError(404, "not_found", "Mandate not found");
       },
     },
-    mandateSignatureVerifier: { verify: async () => true },
-    checkoutVerifier: { verify: async () => true },
-    reservationStore: store,
-    clock: { now: () => new Date(now) },
-    humanApprovalRequired: () => false,
   });
 
   const result = await orchestrator.verify(

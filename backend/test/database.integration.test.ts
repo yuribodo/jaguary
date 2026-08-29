@@ -320,8 +320,35 @@ async function createVerifyScenario(
   };
 }
 
+type VerifyScenario = Awaited<ReturnType<typeof createVerifyScenario>>;
+type VerifyRequestInput = Parameters<VerifyScenario["sendVerify"]>[0];
+
+async function sendConcurrentVerifies(
+  scenario: VerifyScenario,
+  inputs: readonly [VerifyRequestInput, VerifyRequestInput],
+) {
+  const responses = await Promise.all(inputs.map((input) => scenario.sendVerify(input)));
+  return responses.map((response) => authorizationDecisionSchema.parse(response.json()));
+}
+
+async function assertReplayDenied(
+  scenario: VerifyScenario,
+  firstInput: VerifyRequestInput,
+  replayInput: VerifyRequestInput,
+): Promise<void> {
+  const first = authorizationDecisionSchema.parse((await scenario.sendVerify(firstInput)).json());
+  const replay = authorizationDecisionSchema.parse((await scenario.sendVerify(replayInput)).json());
+
+  assert.equal(first.decision, "ALLOW");
+  assert.equal(replay.decision, "DENY");
+  assert.equal(replay.reasons.includes("replay_detected"), true);
+  assert.ok(database);
+  assert.equal((await database.db.select().from(authorizations)).length, 1);
+  assert.equal((await database.db.select().from(nonces)).length, 1);
+}
+
 async function seedPriorAuthorization(
-  scenario: Awaited<ReturnType<typeof createVerifyScenario>>,
+  scenario: VerifyScenario,
   input: {
     suffix: string;
     status: AuthorizationStatus;
@@ -1206,95 +1233,11 @@ integrationTest("mandate mutation retries fail closed on conflicts and expired o
 });
 
 integrationTest("a valid Bound Verify request atomically creates one RESERVED authorization", async (t) => {
-  assert.ok(testDatabaseUrl);
   assert.ok(database);
-  const agentSigner = await createTestAgentSigner();
-  const authoritySigner = new EphemeralEs256Signer();
-  const now = new Date("2026-08-29T12:04:01.000Z");
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    signer: authoritySigner,
-    clock: { now: () => now },
-  });
-  t.after(async () => app.close());
-
-  const registration = await app.inject({
-    method: "POST",
-    url: "/trust/v1/agents",
-    headers: { "idempotency-key": "idem_verify_agent_register_001" },
-    payload: {
-      agent_id: agentSigner.agent.agent_id,
-      principal_id: agentSigner.agent.principal_id,
-      display_name: agentSigner.agent.display_name,
-      status: agentSigner.agent.status,
-      build_fingerprint: agentSigner.agent.build_fingerprint,
-      verification_key: agentSigner.agent.verification_key,
-    },
-  });
-  assert.equal(registration.statusCode, 201);
-  await database.db.insert(paymentCredentials).values({
-    credentialId: "credential_verify_atomic_001",
-    principalId: agentSigner.agent.principal_id,
-    display: "Visa •••• 4242",
-  });
-
-  const mandateId = "mandate_verify_atomic_001";
-  const draft = await app.inject({
-    method: "POST",
-    url: "/v1/mandates",
-    headers: { "idempotency-key": "idem_verify_mandate_create_001" },
-    payload: {
-      ...mandateDraftRequest(mandateId),
-      principal_id: agentSigner.agent.principal_id,
-      agent_id: agentSigner.agent.agent_id,
-      credential_id: "credential_verify_atomic_001",
-    },
-  });
-  assert.equal(draft.statusCode, 201);
-  const activated = await app.inject({
-    method: "POST",
-    url: `/v1/mandates/${mandateId}/activate`,
-    headers: { "idempotency-key": "idem_verify_mandate_activate_001" },
-    payload: {},
-  });
-  assert.equal(activated.statusCode, 200);
-
-  const checkoutResponse = await app.inject({
-    method: "POST",
-    url: "/ucp/v1/checkout",
-    headers: {
-      "idempotency-key": "idem_verify_checkout_create_001",
-      "ucp-capabilities": "dev.ucp.shopping.checkout,dev.ucp.common.payment.ap2_mandate",
-    },
-    payload: { ...purchaseIntentFixture, agent_id: agentSigner.agent.agent_id },
-  });
-  assert.equal(checkoutResponse.statusCode, 201);
-  const checkout = normalizedCheckoutSchema.parse(checkoutResponse.json());
-  const requestBody = {
-    authorization: {
-      ...normalizedAuthorizationFixture,
-      principal_id: agentSigner.agent.principal_id,
-      agent_id: agentSigner.agent.agent_id,
-      mandate_id: mandateId,
-      checkout_hash: checkout.checkout_hash,
-      proof_reference: "proof_verify_atomic_001",
-      proof_hash: sha256CanonicalJson({ mandate_id: mandateId, checkout_hash: checkout.checkout_hash }),
-    },
-    checkout,
-  };
-  const proof = await agentSigner.sign(requestBody, {
-    route: "/verify",
+  const scenario = await createVerifyScenario(t);
+  const response = await scenario.sendVerify({
     nonce: "nonce_verify_atomic_001",
-  });
-  const response = await app.inject({
-    method: "POST",
-    url: "/verify",
-    headers: {
-      "idempotency-key": "idem_verify_atomic_commit_001",
-      "x-correlation-id": "corr_verify_atomic_commit_001",
-    },
-    payload: { request_body: requestBody, proof },
+    idempotencyKey: "idem_verify_atomic_commit_001",
   });
 
   assert.equal(response.statusCode, 200);
@@ -1317,20 +1260,16 @@ integrationTest("two concurrent verifies for max_uses=1 create at most one reser
   assert.ok(database);
   const scenario = await createVerifyScenario(t);
 
-  const [first, second] = await Promise.all([
-    scenario.sendVerify({
+  const decisions = await sendConcurrentVerifies(scenario, [
+    {
       nonce: "nonce_verify_concurrent_001",
       idempotencyKey: "idem_verify_concurrent_001",
-    }),
-    scenario.sendVerify({
+    },
+    {
       nonce: "nonce_verify_concurrent_002",
       idempotencyKey: "idem_verify_concurrent_002",
-    }),
+    },
   ]);
-  const decisions = [
-    authorizationDecisionSchema.parse(first.json()),
-    authorizationDecisionSchema.parse(second.json()),
-  ];
 
   assert.deepEqual(decisions.map(({ decision }) => decision).sort(), ["ALLOW", "DENY"]);
   assert.equal(
@@ -1346,20 +1285,16 @@ integrationTest("two concurrent requests with the same nonce return ALLOW and re
   assert.ok(database);
   const scenario = await createVerifyScenario(t, { maxUses: 2, maxAggregateAmount: 30000 });
 
-  const [first, second] = await Promise.all([
-    scenario.sendVerify({
+  const decisions = await sendConcurrentVerifies(scenario, [
+    {
       nonce: "nonce_verify_concurrent_replay",
       idempotencyKey: "idem_verify_concurrent_replay_001",
-    }),
-    scenario.sendVerify({
+    },
+    {
       nonce: "nonce_verify_concurrent_replay",
       idempotencyKey: "idem_verify_concurrent_replay_002",
-    }),
+    },
   ]);
-  const decisions = [
-    authorizationDecisionSchema.parse(first.json()),
-    authorizationDecisionSchema.parse(second.json()),
-  ];
 
   assert.deepEqual(decisions.map(({ decision }) => decision).sort(), ["ALLOW", "DENY"]);
   assert.equal(decisions.some(({ reasons }) => reasons.includes("replay_detected")), true);
@@ -1386,43 +1321,27 @@ integrationTest("a replayed agent nonce returns replay_detected without another 
   assert.ok(database);
   const scenario = await createVerifyScenario(t, { maxUses: 2, maxAggregateAmount: 30000 });
   const firstProof = await scenario.createProof(scenario.requestBody, "nonce_verify_replay_001");
-  const first = await scenario.sendVerify({
-    proof: firstProof,
-    idempotencyKey: "idem_verify_replay_first_001",
-  });
-  assert.equal(authorizationDecisionSchema.parse(first.json()).decision, "ALLOW");
-
-  const replay = await scenario.sendVerify({
-    proof: firstProof,
-    idempotencyKey: "idem_verify_replay_second_001",
-  });
-  const decision = authorizationDecisionSchema.parse(replay.json());
-
-  assert.equal(decision.decision, "DENY");
-  assert.equal(decision.reasons.includes("replay_detected"), true);
-  assert.equal((await database.db.select().from(authorizations)).length, 1);
-  assert.equal((await database.db.select().from(nonces)).length, 1);
+  await assertReplayDenied(
+    scenario,
+    { proof: firstProof, idempotencyKey: "idem_verify_replay_first_001" },
+    { proof: firstProof, idempotencyKey: "idem_verify_replay_second_001" },
+  );
 });
 
 integrationTest("the same checkout request with a fresh nonce cannot create another authorization", async (t) => {
   assert.ok(database);
   const scenario = await createVerifyScenario(t, { maxUses: 2, maxAggregateAmount: 30000 });
-  const first = await scenario.sendVerify({
-    nonce: "nonce_verify_checkout_replay_001",
-    idempotencyKey: "idem_verify_checkout_replay_001",
-  });
-  assert.equal(authorizationDecisionSchema.parse(first.json()).decision, "ALLOW");
-
-  const replay = await scenario.sendVerify({
-    nonce: "nonce_verify_checkout_replay_002",
-    idempotencyKey: "idem_verify_checkout_replay_002",
-  });
-  const decision = authorizationDecisionSchema.parse(replay.json());
-
-  assert.equal(decision.decision, "DENY");
-  assert.equal(decision.reasons.includes("replay_detected"), true);
-  assert.equal((await database.db.select().from(authorizations)).length, 1);
-  assert.equal((await database.db.select().from(nonces)).length, 1);
+  await assertReplayDenied(
+    scenario,
+    {
+      nonce: "nonce_verify_checkout_replay_001",
+      idempotencyKey: "idem_verify_checkout_replay_001",
+    },
+    {
+      nonce: "nonce_verify_checkout_replay_002",
+      idempotencyKey: "idem_verify_checkout_replay_002",
+    },
+  );
 });
 
 integrationTest("a revocation committed before reservation prevents authorization", async (t) => {

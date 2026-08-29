@@ -5,7 +5,8 @@ UPDATE "authorizations"
 SET
   "request_hash" = encode(sha256(convert_to('legacy:' || "authorization_id", 'UTF8')), 'hex'),
   "policy_version" = 'bound.verify.legacy',
-  "evidence_hash" = "proof_hash";--> statement-breakpoint
+  "evidence_hash" = "proof_hash"
+WHERE "request_hash" IS NULL OR "policy_version" IS NULL OR "evidence_hash" IS NULL;--> statement-breakpoint
 ALTER TABLE "authorizations" ALTER COLUMN "request_hash" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "authorizations" ALTER COLUMN "policy_version" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "authorizations" ALTER COLUMN "evidence_hash" SET NOT NULL;--> statement-breakpoint

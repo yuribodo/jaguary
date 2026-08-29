@@ -41,7 +41,7 @@ export const verifyRoutes: FastifyPluginAsync<VerifyRoutesOptions> = async (app,
     }
     const idempotencyKey = request.headers["idempotency-key"];
     if (typeof idempotencyKey !== "string") {
-      throw new Error("HTTP conventions did not validate Idempotency-Key");
+      throw new TypeError("HTTP conventions did not validate Idempotency-Key");
     }
     return options.orchestrator.verify(parsed.data, idempotencyKey, request.id);
   });
