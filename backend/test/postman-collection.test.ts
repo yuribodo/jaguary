@@ -65,6 +65,7 @@ test("Postman collection is valid JSON with executable current routes", async ()
       "Complete authorized checkout",
       "Read VuelaYa order",
       "Checkout rejects client total",
+      "Bound Verify rejects invalid proof",
       "Unknown route returns error envelope",
       "Mutable request rejects missing Idempotency-Key",
       "Mutable request rejects invalid Idempotency-Key",

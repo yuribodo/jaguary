@@ -285,3 +285,25 @@ The authoritative terms hash is `d2f3856b7bac0531b71ac6ff9e2e2fd7f970d38d3fcef79
 Rules run in a fixed order: agent proof/state, mandate proof/state/binding, principal/agent binding, merchant, checkout integrity/signature, route/cabin scope, amount/currency, validity, aggregate usage and nonce/replay. Missing, malformed and unknown inputs return `DENY`; a valid request returns `ALLOW`, while an otherwise valid request marked for approval returns `ESCALATE human_approval_required`.
 
 The result is the shared v1 `PolicyEvaluation`, containing stable reasons, `bound.verify.v1` and deterministic evidence inputs. It intentionally has no `authorization_id` or final `evidence_hash`: `POST /verify`, transactional reservation, replay insertion and final response construction belong to BE-07.
+
+## Atomic Bound Verify reservation (BE-07)
+
+`POST /verify` uses the existing signed-request envelope. `request_body` is strict and contains the shared v1 `NormalizedAuthorization` and merchant-authored `NormalizedCheckout`; `proof` is the shared v1 `AgentRequestProof` and must bind `POST`, `/verify` and the canonical request body.
+
+```json
+{
+  "request_body": {
+    "authorization": { "...": "NormalizedAuthorization" },
+    "checkout": { "...": "NormalizedCheckout" }
+  },
+  "proof": { "...": "AgentRequestProof" }
+}
+```
+
+Identity, agent signature, active signed mandate, authoritative VuelaYa checkout, checkout signature, normalized authorization, aggregate usage and nonce state are loaded before the pure `evaluate()` call. `DENY` and `ESCALATE` return the v1 `AuthorizationDecision` without writing a checkout, nonce or payable authorization.
+
+An `ALLOW` candidate enters one short PostgreSQL transaction. Replay/idempotency advisory locks are acquired in deterministic order, the mandate row is locked with `SELECT ... FOR UPDATE`, and the transaction reloads agent/mandate state, cancels stale reservations, recomputes aggregate usage, rechecks nonce/checkout replay and calls the same pure `evaluate()` function again. Only the final transactional `ALLOW` inserts the signed checkout, nonce, `RESERVED` authorization and `authorization.reserved` audit event. Any failure rolls all four writes back, and `authorization_id` is returned only after commit.
+
+Capacity includes every unexpired `RESERVED` authorization plus all `PAYMENT_PENDING` and `CONSUMED` authorizations. A `RESERVED` authorization expires at the earliest of checkout, normalized authorization and mandate expiry. On the next locked verification for that mandate, an expired `RESERVED` row transitions atomically to `CANCELLED`, emits `authorization.cancelled` with reason `reservation_expired`, and releases capacity. Explicitly `CANCELLED` and terminal `FAILED` rows do not count. `PAYMENT_PENDING` is never auto-cancelled or released because its external payment result may be unknown.
+
+An exact retry with the same `Idempotency-Key`, signed proof and request body returns the committed decision and original `authorization_id`. Reusing a key with different content returns `idempotency_conflict`. Reusing a nonce or an already reserved checkout/request under another key returns `DENY replay_detected` and creates nothing. `policy_version` is `bound.verify.v1`; `evidence_hash` is the SHA-256 of the RFC 8785/JCS canonical `PolicyEvaluation`, so identical evidence inputs produce the same hash.
