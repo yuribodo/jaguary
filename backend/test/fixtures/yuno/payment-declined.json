@@ -1,0 +1,20 @@
+{
+  "id": "44444444-4444-4444-8444-444444444444",
+  "account_id": "550e8400-e29b-41d4-a716-446655440000",
+  "merchant_order_id": "bound:authorization_vy_471_001",
+  "status": "DECLINED",
+  "sub_status": "DECLINED",
+  "amount": {
+    "value": 137,
+    "currency": "USD"
+  },
+  "updated_at": "2026-08-29T12:04:02.000Z",
+  "transactions": [
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "type": "PURCHASE",
+      "status": "DECLINED",
+      "response_code": "INSUFFICIENT_FUNDS"
+    }
+  ]
+}
