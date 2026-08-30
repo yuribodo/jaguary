@@ -25,6 +25,7 @@ import {
   PlaneIcon,
   PlusIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   ShieldCheckIcon,
   WifiOffIcon,
 } from "lucide-react";
@@ -747,6 +748,12 @@ function AppSidebar({
                 <SidebarMenuButton render={<Link href="/lojas-conectadas" />} tooltip="Lojas conectadas">
                   <HandshakeIcon />
                   <span>Lojas conectadas</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton render={<Link href="/trilha-de-auditoria" />} tooltip="Trilha de auditoria">
+                  <ScrollTextIcon />
+                  <span>Trilha de auditoria</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

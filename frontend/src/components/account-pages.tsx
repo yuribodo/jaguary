@@ -3,8 +3,10 @@
 import Link from "next/link";
 import Cards from "react-19-credit-card";
 import { useMemo, useState } from "react";
-import { CheckIcon, ExternalLinkIcon, LockKeyholeIcon, PlaneIcon, ReceiptTextIcon, ShieldCheckIcon } from "lucide-react";
+import { CheckIcon, CircleAlertIcon, ExternalLinkIcon, FileCheck2Icon, LinkIcon, LockKeyholeIcon, PlaneIcon, ReceiptTextIcon, SearchIcon, ShieldCheckIcon } from "lucide-react";
 import { AccountPageShell } from "@/components/account-page-shell";
+import { BoundApiError, boundApi } from "@/lib/bound-api";
+import type { AuditTimeline } from "@/lib/contracts";
 
 type WalletCard = { id: string; brand: "mastercard" | "visa"; lastFour: string; expiry: string; reference: string; limit: number; used: number; usage: string };
 const walletCards: WalletCard[] = [
@@ -40,6 +42,35 @@ export function PurchasesPage() {
   ];
   const total = purchases.reduce((sum, purchase) => sum + purchase.amount, 0);
   return <AccountPageShell activePage="purchases"><PageIntro eyebrow="Conta / histórico" title="Compras" description="Passagens concluídas com a VuelaYa. Cada recibo permanece separado dos mandatos e dos checkouts que o antecederam." /><section className="mt-8"><div className="mb-5 flex items-baseline justify-between"><div><p className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">Período selecionado</p><h2 className="mt-1 text-2xl [font-family:var(--font-serif)]">Agosto de 2026</h2></div><p className="text-sm text-muted-foreground"><strong className="text-foreground">{brl.format(total)}</strong> em 4 compras</p></div><div className="grid gap-4">{purchases.map((purchase) => <article className="grid gap-4 rounded-xl border bg-card p-5 shadow-xs sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" key={purchase.receipt}><span className="grid size-11 place-items-center rounded-full border bg-background text-[#334de8]"><PlaneIcon className="size-5" /></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><h3 className="text-lg [font-family:var(--font-serif)]">{purchase.route}</h3><span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/8 px-2 py-0.5 font-mono text-[10px] text-emerald-900"><CheckIcon className="size-3" /> CONCLUÍDA</span></div><p className="mt-1 text-sm text-muted-foreground">VuelaYa · {purchase.date} · {purchase.card}</p><code className="mt-2 block text-[11px] text-muted-foreground">Recibo {purchase.receipt}</code></div><strong className="text-lg sm:text-right">{brl.format(purchase.amount)}</strong></article>)}</div></section><p className="mt-5 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><ReceiptTextIcon className="mt-0.5 size-3.5 shrink-0" />Histórico fictício para demonstração visual. Não representa transações reais.</p></AccountPageShell>;
+}
+
+function shortHash(value: string) {
+  return `${value.slice(0, 12)}…${value.slice(-10)}`;
+}
+
+export function AuditTrailPage() {
+  const [correlationId, setCorrelationId] = useState("");
+  const [timeline, setTimeline] = useState<AuditTimeline>();
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+
+  async function loadTimeline() {
+    const value = correlationId.trim();
+    if (!value) return;
+    setLoading(true);
+    setError(undefined);
+    setTimeline(undefined);
+    try {
+      const result = await boundApi.getAuditTimeline(value);
+      setTimeline(result.data);
+    } catch (reason) {
+      setError(reason instanceof BoundApiError ? reason.message : "Não foi possível carregar a trilha de auditoria.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <AccountPageShell activePage="audit"><PageIntro eyebrow="Conta / evidência" title="Trilha de auditoria" description="Consulte a sequência imutável de evidências de uma decisão de compra pelo correlation ID. A mesma leitura pode ser compartilhada com a pessoa, a loja e o auditor." /><section className="mt-8 rounded-xl border bg-card p-5 shadow-xs"><label className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase" htmlFor="correlation-id">Correlation ID da compra</label><div className="mt-3 flex flex-col gap-3 sm:flex-row"><input className="h-11 min-w-0 flex-1 rounded-lg border bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" id="correlation-id" onChange={(event) => setCorrelationId(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadTimeline(); }} placeholder="corr_…" value={correlationId} /><button className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/85 disabled:opacity-50" disabled={!correlationId.trim() || loading} onClick={() => void loadTimeline()} type="button"><SearchIcon className="size-4" />{loading ? "Consultando…" : "Consultar trilha"}</button></div><p className="mt-3 text-xs leading-5 text-muted-foreground">O identificador vem do recibo ou da conversa. A consulta mostra somente payloads sanitizados, sem credenciais ou tokens.</p></section>{error ? <section className="mt-6 flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm" role="alert"><CircleAlertIcon className="size-5 shrink-0 text-destructive" /><div><strong>Trilha indisponível</strong><p className="mt-1 text-muted-foreground">{error}</p></div></section> : null}{timeline ? <section className="mt-6"><div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4"><div><p className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">Linha validada</p><h2 className="mt-1 text-2xl [font-family:var(--font-serif)]">{timeline.events.length} eventos auditáveis</h2></div><span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/8 px-2.5 py-1 font-mono text-[10px] text-emerald-900"><ShieldCheckIcon className="size-3" /> CADEIA ÍNTEGRA</span></div><ol className="mt-6 grid gap-4">{timeline.events.map((event, index) => <li className="relative rounded-xl border bg-card p-5 shadow-xs" key={event.event_id}><div className="absolute top-5 left-0 h-7 w-1 rounded-r bg-[#334de8]" /><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">Evento {String(index + 1).padStart(2, "0")}</p><h3 className="mt-1 font-medium">{event.event_type}</h3><p className="mt-1 text-xs text-muted-foreground">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(event.recorded_at))}</p></div><span className="rounded-full bg-secondary px-2 py-1 font-mono text-[10px]">{event.subject_id}</span></div><dl className="mt-5 grid gap-3 border-t pt-4 text-xs sm:grid-cols-2"><div><dt className="text-muted-foreground">Hash do payload</dt><dd className="mt-1 break-all font-mono" title={event.payload_hash}>{shortHash(event.payload_hash)}</dd></div><div><dt className="text-muted-foreground">Hash anterior</dt><dd className="mt-1 break-all font-mono" title={event.previous_hash ?? "Início da cadeia"}>{event.previous_hash ? shortHash(event.previous_hash) : "Início da cadeia"}</dd></div><div className="sm:col-span-2"><dt className="text-muted-foreground">Hash do evento</dt><dd className="mt-1 break-all font-mono" title={event.event_hash}>{shortHash(event.event_hash)}</dd></div></dl>{event.payload ? <details className="mt-4 rounded-lg bg-muted/60 p-3"><summary className="flex cursor-pointer items-center gap-2 text-xs font-medium"><FileCheck2Icon className="size-3.5" />Payload sanitizado</summary><pre className="mt-3 overflow-x-auto text-[11px] leading-5">{JSON.stringify(event.payload, null, 2)}</pre></details> : null}</li>)}</ol><p className="mt-5 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LinkIcon className="mt-0.5 size-3.5 shrink-0" />Cada evento referencia o hash anterior. A API valida a cadeia antes de entregá-la, tornando alterações detectáveis.</p></section> : null}</AccountPageShell>;
 }
 
 export function ConnectedMerchantsPage() {

@@ -7,6 +7,7 @@ import {
   CreditCardIcon,
   HandshakeIcon,
   HistoryIcon,
+  ScrollTextIcon,
 } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -27,12 +28,13 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-type AccountPage = "payment-methods" | "purchases" | "merchants";
+type AccountPage = "payment-methods" | "purchases" | "merchants" | "audit";
 
 const pages = [
   { key: "payment-methods", href: "/metodos-de-pagamento", label: "M\u00e9todos de pagamento", icon: CreditCardIcon },
   { key: "purchases", href: "/compras", label: "Compras", icon: HistoryIcon },
   { key: "merchants", href: "/lojas-conectadas", label: "Lojas conectadas", icon: HandshakeIcon },
+  { key: "audit", href: "/trilha-de-auditoria", label: "Trilha de auditoria", icon: ScrollTextIcon },
 ] as const;
 
 export function AccountPageShell({

@@ -1,5 +1,6 @@
 import type {
   AgentIdentity,
+  AuditTimeline,
   CreateMandateDraftInput,
   Mandate,
   MerchantCapabilities,
@@ -127,6 +128,10 @@ export const boundApi = {
 
   listOffers(signal?: AbortSignal) {
     return request<OfferCandidate[]>("/merchant/flights", { signal });
+  },
+
+  getAuditTimeline(correlationId: string, signal?: AbortSignal) {
+    return request<AuditTimeline>(`/audit/${encodeURIComponent(correlationId)}`, { signal });
   },
 
   createCheckout(

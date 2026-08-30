@@ -3,6 +3,23 @@ export type Money = {
   currency: string;
 };
 
+export type AuditTimelineEvent = {
+  event_id: string;
+  correlation_id: string;
+  event_type: string;
+  subject_id: string;
+  payload: Record<string, unknown> | null;
+  payload_hash: string;
+  previous_hash: string | null;
+  event_hash: string;
+  recorded_at: string;
+};
+
+export type AuditTimeline = {
+  correlation_id: string;
+  events: AuditTimelineEvent[];
+};
+
 export type AgentIdentity = {
   agent_id: string;
   principal_id: string;
