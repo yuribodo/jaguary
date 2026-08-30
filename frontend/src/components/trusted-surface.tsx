@@ -20,6 +20,7 @@ import {
   ShieldCheckIcon,
   WifiOffIcon,
 } from "lucide-react";
+import Link from "next/link";
 
 import {
   Confirmation,
@@ -299,7 +300,9 @@ function AppSidebar({
       <SidebarHeader className="gap-3 border-b border-sidebar-border p-3">
         <div className="flex h-10 items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
           <strong className="text-[1.65rem] font-normal leading-none [font-family:var(--font-serif)] group-data-[collapsible=icon]:hidden">
-            Bound
+            <Link className="rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/">
+              Bound
+            </Link>
           </strong>
           <SidebarTrigger
             aria-label="Recolher barra lateral"
