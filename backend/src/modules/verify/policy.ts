@@ -2,16 +2,19 @@ import { z } from "zod";
 
 import {
   agentIdentitySchema,
+  agentTrustSnapshotSchema,
   mandateSchema,
   moneySchema,
   normalizedAuthorizationSchema,
   normalizedCheckoutSchema,
   nonceStatusSchema,
   policyEvaluationSchema,
+  reasonCodeSchema,
   sha256CanonicalJson,
   utcRfc3339Schema,
   verifiedAgentRequestSchema,
   type AgentIdentity,
+  type AgentTrustSnapshot,
   type AuthorizationUsage,
   type Mandate,
   type NormalizedAuthorization,
@@ -24,7 +27,7 @@ import {
   type VerifiedAgentRequest,
 } from "../../contracts/v1/index.js";
 
-export const VERIFY_POLICY_VERSION = "bound.verify.v1";
+export const VERIFY_POLICY_VERSION = "bound.verify.v2";
 
 export interface VerifyPolicyInput {
   agent: AgentIdentity;
@@ -38,6 +41,8 @@ export interface VerifyPolicyInput {
   now: UtcRfc3339;
   usage: AuthorizationUsage;
   nonce_status: NonceStatus;
+  agent_trust?: AgentTrustSnapshot;
+  agent_eligibility_reason?: ReasonCode;
 }
 
 export type VerifyEvidenceInputs = PolicyEvidenceInputs;
@@ -56,6 +61,8 @@ const policyInputKeys = new Set<keyof VerifyPolicyInput>([
   "now",
   "usage",
   "nonce_status",
+  "agent_trust",
+  "agent_eligibility_reason",
 ]);
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -85,6 +92,8 @@ interface ParsedPolicyInput {
   aggregateSpend: AuthorizationUsage["aggregate_spend"] | undefined;
   uses: number | undefined;
   nonceStatus: NonceStatus | undefined;
+  agentTrust: AgentTrustSnapshot | undefined;
+  agentEligibilityReason: ReasonCode | undefined;
 }
 
 type AddReason = (reason: ReasonCode) => void;
@@ -106,6 +115,8 @@ function parsePolicyInput(input: unknown): ParsedPolicyInput {
     aggregateSpend: parseValue(moneySchema, usage.aggregate_spend),
     uses: parseValue(nonnegativeSafeIntegerSchema, usage.uses),
     nonceStatus: parseValue(nonceStatusSchema, raw.nonce_status),
+    agentTrust: parseValue(agentTrustSnapshotSchema, raw.agent_trust),
+    agentEligibilityReason: parseValue(reasonCodeSchema, raw.agent_eligibility_reason),
   };
 }
 
@@ -133,6 +144,7 @@ function evaluateAgent(input: ParsedPolicyInput, addReason: AddReason): void {
     return;
   }
   if (input.agent.status !== "ACTIVE") addReason("agent_not_active");
+  if (input.agentEligibilityReason !== undefined) addReason(input.agentEligibilityReason);
 }
 
 function activeMandateIsInvalid(input: ParsedPolicyInput): boolean {
@@ -349,6 +361,7 @@ function evidenceFor(input: ParsedPolicyInput): VerifyEvidenceInputs {
     uses: input.uses ?? null,
     nonce_status: input.nonceStatus ?? null,
     human_approval_required: input.humanApprovalRequired ?? null,
+    trust_snapshot: input.agentTrust ?? null,
   };
 }
 

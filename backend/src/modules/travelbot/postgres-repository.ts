@@ -8,6 +8,7 @@ import {
   sha256CanonicalJson,
   travelBotStateSchema,
   travelIntentSchema,
+  type AgentEligibilityPort,
 } from "../../contracts/v1/index.js";
 import type { DatabaseClient, DatabaseConnection, TransactionClient } from "../../db/database.js";
 import {
@@ -104,9 +105,14 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
   constructor(
     private readonly database: DatabaseConnection,
     private readonly model: string,
+    private readonly eligibility?: AgentEligibilityPort,
   ) {}
 
   async create(command: CreateConversationCommand, now: Date): Promise<TravelBotConversation> {
+    if (this.eligibility !== undefined) {
+      const decision = await this.eligibility.evaluate(command.agent_id, command.principal_id, now);
+      if (!decision.eligible) throw new PublicApiError(403, decision.reason ?? "agent_not_active", "TravelBot agent is not eligible");
+    }
     const requestHash = sha256CanonicalJson({
       principal_id: command.principal_id,
       agent_id: command.agent_id,
@@ -122,15 +128,11 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
         }
         return conversationFrom(transaction, replay);
       }
-      const agent = (await transaction
-        .select({ status: agents.status })
-        .from(agents)
-        .where(and(
-          eq(agents.agentId, command.agent_id),
-          eq(agents.principalId, command.principal_id),
+      if (this.eligibility === undefined) {
+        const agent = (await transaction.select({ status: agents.status }).from(agents).where(and(
+          eq(agents.agentId, command.agent_id), eq(agents.principalId, command.principal_id),
         )))[0];
-      if (agent === undefined || agent.status !== "ACTIVE") {
-        throw new PublicApiError(400, "invalid_request", "TravelBot agent is unknown or inactive");
+        if (agent === undefined || agent.status !== "ACTIVE") throw new PublicApiError(400, "invalid_request", "TravelBot agent is unknown or inactive");
       }
       const conversationId = randomUUID();
       const intent = emptyTravelIntent();

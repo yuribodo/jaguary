@@ -1,12 +1,23 @@
 import { z } from "zod";
 
 import {
+  agentAssuranceClaimSchema,
   identifierSchema,
   moneySchema,
   reasonCodeSchema,
   sha256Schema,
   utcRfc3339Schema,
 } from "../../contracts/v1/index.js";
+
+const attestationEvidenceBase = {
+  attestation_id: identifierSchema,
+  agent_id: identifierSchema,
+  principal_id: identifierSchema,
+  provider: z.enum(["fake", "didit"]),
+  binding_hash: sha256Schema,
+  evidence_hash: sha256Schema,
+  occurred_at: utcRfc3339Schema,
+};
 
 const mandateTransitionSchema = z.object({
   mandate_id: identifierSchema,
@@ -54,6 +65,13 @@ export const ledgerPayloadSchemas = {
     key_id: identifierSchema,
     registered_at: utcRfc3339Schema,
   }).strict(),
+  "agent.attestation_started": z.object({ ...attestationEvidenceBase, status: z.literal("PENDING") }).strict(),
+  "agent.attestation_verified": z.object({ ...attestationEvidenceBase, status: z.literal("VERIFIED"), assurance_claims: z.array(agentAssuranceClaimSchema).min(1), expires_at: utcRfc3339Schema }).strict(),
+  "agent.attestation_rejected": z.object({ ...attestationEvidenceBase, status: z.literal("REJECTED"), failure_code: z.string().min(1).max(64) }).strict(),
+  "agent.attestation_expired": z.object({ ...attestationEvidenceBase, status: z.literal("EXPIRED") }).strict(),
+  "agent.attestation_revoked": z.object({ ...attestationEvidenceBase, status: z.literal("REVOKED") }).strict(),
+  "agent.passport_issued": z.object({ passport_id: identifierSchema, attestation_id: identifierSchema, agent_id: identifierSchema, binding_hash: sha256Schema, evidence_hash: sha256Schema, expires_at: utcRfc3339Schema, occurred_at: utcRfc3339Schema }).strict(),
+  "agent.passport_invalidated": z.object({ passport_id: identifierSchema, attestation_id: identifierSchema, agent_id: identifierSchema, reason: z.enum(["attestation_expired", "attestation_revoked", "binding_changed", "agent_not_active"]), occurred_at: utcRfc3339Schema }).strict(),
   "mandate.created": z.object({
     mandate_id: identifierSchema,
     principal_id: identifierSchema,

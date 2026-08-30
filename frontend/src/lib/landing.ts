@@ -28,7 +28,7 @@ export const RAIL_STATIONS = [
     index: "04",
     label: "Checkout",
     verb: "Fixes",
-    copy: "VuelaYa publishes merchant-authored terms. Bound does not invent the price.",
+    copy: "VuelaYa publishes merchant-authored terms. Jaguary does not invent the price.",
     pending: false,
   },
   {

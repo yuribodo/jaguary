@@ -195,7 +195,7 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Bound conversations</SheetTitle>
+            <SheetTitle>Jaguary conversations</SheetTitle>
             <SheetDescription>
               Conversation history and agent identity.
             </SheetDescription>

@@ -1,4 +1,5 @@
 export * from "./authorization/schemas.js";
+export * from "./auth/schemas.js";
 export * from "./commerce/schemas.js";
 export * from "./common/canonicalization.js";
 export * from "./common/primitives.js";
@@ -10,3 +11,4 @@ export * from "./payments/schemas.js";
 export * from "./ports/index.js";
 export * from "./receipts/schemas.js";
 export * from "./travelbot/schemas.js";
+export * from "./trust/schemas.js";

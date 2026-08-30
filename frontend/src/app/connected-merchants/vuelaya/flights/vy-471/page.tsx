@@ -82,9 +82,9 @@ export default function VuelaYaFlightPage() {
               <div className="flex justify-between gap-4"><dt className="text-[#667080]">Protocol</dt><dd>UCP + AP2</dd></div>
             </dl>
             <Link className="mt-6 flex w-full items-center justify-center rounded-full bg-[#334de8] px-5 py-3 text-sm font-medium text-white hover:bg-[#263cc4]" href="/demo">
-              Return to Bound to approve
+              Return to Jaguary to approve
             </Link>
-            <p className="mt-3 text-center text-[10px] leading-4 text-[#667080]">Payment can only happen on Bound after explicit approval.</p>
+            <p className="mt-3 text-center text-[10px] leading-4 text-[#667080]">Payment can only happen on Jaguary after explicit approval.</p>
           </aside>
         </div>
       </section>

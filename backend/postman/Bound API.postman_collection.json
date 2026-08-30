@@ -252,6 +252,128 @@
       ]
     },
     {
+      "name": "Principal authentication and KYA",
+      "item": [
+        {
+          "name": "Create Marta demo session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:3000", "type": "text" },
+              { "key": "Idempotency-Key", "value": "idem_postman_demo_login_001", "type": "text" }
+            ],
+            "url": { "raw": "{{baseUrl}}/auth/v1/demo/session", "host": ["{{baseUrl}}"], "path": ["auth", "v1", "demo", "session"] },
+            "description": "Development-only Marta login. Postman retains the HttpOnly cookie in its cookie jar; no browser-storage token is needed."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Demo authentication is explicit\", function () {",
+            "  pm.response.to.have.status(201);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.authenticated).to.equal(true);",
+            "  pm.expect(body.demo).to.equal(true);",
+            "  pm.collectionVariables.set(\"csrfToken\", body.csrf_token);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Read principal session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/v1/session", "host": ["{{baseUrl}}"], "path": ["auth", "v1", "session"] },
+            "description": "Bootstraps the sanitized backend session from the HttpOnly cookie."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Session is sanitized\", function () {",
+            "  pm.response.to.have.status(200);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.principal.principal_id).to.equal(\"principal_marta\");",
+            "  pm.expect(JSON.stringify(body)).not.to.include(\"marta@example.com\");",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Start TravelBot attestation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:3000", "type": "text" },
+              { "key": "X-CSRF-Token", "value": "{{csrfToken}}", "type": "text" },
+              { "key": "Idempotency-Key", "value": "idem_postman_kya_start_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "corr_postman_kya_start_001", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"consent\":true}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{baseUrl}}/trust/v1/agents/agent_travelbot/attestation-sessions", "host": ["{{baseUrl}}"], "path": ["trust", "v1", "agents", "agent_travelbot", "attestation-sessions"] },
+            "description": "Starts owner-bound KYA. LOCAL mode uses the deterministic fake and rotates the session after verification."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Local KYA verifies without PII\", function () {",
+            "  pm.response.to.have.status(201);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.status).to.equal(\"VERIFIED\");",
+            "  pm.expect(JSON.stringify(body)).not.to.include(\"principal_marta\");",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Read TravelBot assurance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/trust/v1/agents/agent_travelbot/assurance", "host": ["{{baseUrl}}"], "path": ["trust", "v1", "agents", "agent_travelbot", "assurance"] },
+            "description": "Returns only normalized assurance status and claims."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Assurance is eligible\", function () {",
+            "  pm.response.to.have.status(200);",
+            "  pm.expect(pm.response.json().eligibility.eligible).to.equal(true);",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Issue Bound Agent Passport",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/trust/v1/agents/agent_travelbot/passport", "host": ["{{baseUrl}}"], "path": ["trust", "v1", "agents", "agent_travelbot", "passport"] },
+            "description": "Issues a short-lived signed, privacy-safe passport after a current bound attestation."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Passport contains no email\", function () {",
+            "  pm.response.to.have.status(200);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.passport).to.be.a(\"string\");",
+            "  pm.expect(JSON.stringify(body)).not.to.include(\"marta@example.com\");",
+            "});"
+          ] } }]
+        },
+        {
+          "name": "Read Bound Passport JWKS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/trust/v1/passports/.well-known/jwks.json", "host": ["{{baseUrl}}"], "path": ["trust", "v1", "passports", ".well-known", "jwks.json"] },
+            "description": "Publishes the current public ES256 verification key only."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"JWKS exposes one public key\", function () {",
+            "  pm.response.to.have.status(200);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.keys).to.have.length(1);",
+            "  pm.expect(body.keys[0]).not.to.have.property(\"d\");",
+            "});"
+          ] } }]
+        }
+      ]
+    },
+    {
       "name": "Mandate lifecycle",
       "item": [
         {
@@ -428,7 +550,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["merchant", "flights"]
             },
-            "description": "Lists the deterministic GRU to COR offer for USD 137."
+            "description": "Lists the currently observed sanitized flight offers. A credential-free backend may return an empty list."
           },
           "response": [],
           "event": [
@@ -437,14 +559,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Flight offer is deterministic\", function () {",
+                  "pm.test(\"Flight offer list is sanitized\", function () {",
                   "  pm.response.to.have.status(200);",
                   "  const offers = pm.response.json();",
-                  "  pm.expect(offers).to.have.lengthOf(1);",
-                  "  pm.expect(offers[0].offer_id).to.equal(\"offer_vy_471_gru_cor\");",
-                  "  pm.expect(offers[0].total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
-                  "  pm.expect(offers[0].fulfillment.origin).to.equal(\"GRU\");",
-                  "  pm.expect(offers[0].fulfillment.destination).to.equal(\"COR\");",
+                  "  pm.expect(offers).to.be.an(\"array\");",
+                  "  pm.expect(offers.length).to.be.at.most(5);",
+                  "  pm.expect(JSON.stringify(offers)).not.to.include(\"api_key\");",
                   "});"
                 ]
               }
@@ -482,7 +602,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout"]
             },
-            "description": "Sends only PurchaseIntent. VuelaYa recalculates and signs the authoritative checkout."
+            "description": "Credential-free mode fails closed because no live provider offer is available. Signed checkout success is covered by deterministic integration tests."
           },
           "response": [],
           "event": [
@@ -491,14 +611,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Checkout has frozen canonical hash and merchant signature\", function () {",
-                  "  pm.response.to.have.status(201);",
-                  "  const checkout = pm.response.json();",
-                  "  pm.expect(checkout.checkout_hash).to.equal(pm.collectionVariables.get(\"checkoutHash\"));",
-                  "  pm.expect(checkout.terms.total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
-                  "  pm.expect(checkout.merchant_signature.algorithm).to.equal(\"ES256\");",
-                  "  pm.collectionVariables.set(\"checkoutId\", checkout.terms.checkout_id);",
-                  "  pm.collectionVariables.set(\"checkoutJson\", JSON.stringify(checkout));",
+                  "pm.test(\"Checkout fails closed without a current offer\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -515,7 +630,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout", "{{checkoutId}}"]
             },
-            "description": "Reads the server-side checkout by stable identifier."
+            "description": "Credential-free mode has no persisted checkout for the deterministic fixture identifier."
           },
           "response": [],
           "event": [
@@ -524,9 +639,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Stored checkout is readable\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().terms.checkout_id).to.equal(pm.collectionVariables.get(\"checkoutId\"));",
+                  "pm.test(\"Missing checkout fails closed\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -569,7 +684,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout", "{{checkoutId}}", "complete"]
             },
-            "description": "Completion fails closed unless PostgreSQL contains the matching authorization and approved payment."
+            "description": "Completion fails closed before authority/payment lookup when no valid credential-free checkout exists."
           },
           "response": [],
           "event": [
@@ -578,9 +693,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Completion fails closed without persisted authority and payment\", function () {",
-                  "  pm.response.to.have.status(404);",
-                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                  "pm.test(\"Completion fails closed without a valid checkout\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
                   "});"
                 ]
               }

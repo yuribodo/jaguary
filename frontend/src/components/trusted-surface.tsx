@@ -730,16 +730,16 @@ function ApprovalCard({
 const auditEventContent: Record<string, { title: string; detail: string }> = {
   "mandate.created": { title: "Authority recorded", detail: "The one-time spending terms were stored." },
   "mandate.activated": { title: "Authority activated", detail: "Marta's signed mandate became valid." },
-  "authorization.reserved": { title: "Purchase allowed", detail: "Bound verified the flight, merchant, and amount." },
+  "authorization.reserved": { title: "Purchase allowed", detail: "Jaguary verified the flight, merchant, and amount." },
   "payment.attempt_started": { title: "Payment initiated", detail: "The approved amount was sent for processing." },
   "payment.approved": { title: "Payment approved", detail: "The provider returned a successful result." },
-  "order.confirmed": { title: "Order and receipt issued", detail: "VuelaYa confirmed the purchase and Bound saved the record." },
+  "order.confirmed": { title: "Order and receipt issued", detail: "VuelaYa confirmed the purchase and Jaguary saved the record." },
 };
 
 function auditLabel(event: AuditTimelineEvent) {
   return auditEventContent[event.event_type] ?? {
     title: event.event_type.split(".").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" · "),
-    detail: "Recorded in the Bound audit ledger.",
+    detail: "Recorded in the Jaguary audit ledger.",
   };
 }
 
@@ -812,7 +812,7 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
   return (
     <article className="overflow-hidden rounded-[10px] border border-[#d4d9d6] bg-[#fffefb] lg:-mx-6 xl:-mx-8" aria-label="Purchase confirmed">
       <header className="flex min-h-10 items-center justify-between gap-3 bg-[#202326] px-4 py-2 text-[#f8f5ed] sm:px-6">
-        <span className="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">Bound purchase receipt</span>
+        <span className="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">Jaguary purchase receipt</span>
         <span className="inline-flex items-center gap-2 font-mono text-[8px] font-semibold tracking-[0.12em] text-[#8de0b7] uppercase"><CheckCheckIcon className="size-3.5" />Paid · Recorded</span>
       </header>
 
@@ -876,7 +876,7 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
 
         <section className="relative -mx-4 border-b border-[#d9dcda] bg-[#f3f7f4] px-4 py-5 sm:-mx-6 sm:px-6" aria-labelledby="audit-trail-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div><p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-emerald-800 uppercase">Bound audit</p><h3 className="mt-1 text-base font-semibold" id="audit-trail-title">Authorization path</h3></div>
+            <div><p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-emerald-800 uppercase">Jaguary audit</p><h3 className="mt-1 text-base font-semibold" id="audit-trail-title">Authorization path</h3></div>
             {currentEvidence.timeline ? <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-emerald-800"><FingerprintIcon className="size-3.5" />{events.length} checks · Chain validated</span> : null}
           </div>
 
@@ -1008,7 +1008,7 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
       <div className="min-w-0 flex-1">
-        <strong className="block text-xs">{error.offline ? "Bound API unavailable" : "Could not complete"}</strong>
+        <strong className="block text-xs">{error.offline ? "Jaguary API unavailable" : "Could not complete"}</strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
@@ -1320,7 +1320,7 @@ export function TrustedSurface() {
 
                 {loadState === "error" && !conversation ? (
                   <ChatPresenceItem key="conversation-load-error">
-                    <ErrorNotice error={error ?? new BoundApiError({ message: "The Bound API did not respond.", offline: true })} onRetry={() => void createConversation()} />
+                    <ErrorNotice error={error ?? new BoundApiError({ message: "The Jaguary API did not respond.", offline: true })} onRetry={() => void createConversation()} />
                   </ChatPresenceItem>
                 ) : null}
 
@@ -1407,7 +1407,7 @@ export function TrustedSurface() {
                     onChange={(event) => setComposerValue(event.currentTarget.value)}
                     placeholder={
                       loadState === "loading"
-                        ? "Waiting for Bound…"
+                        ? "Waiting for Jaguary…"
                         : loadState === "error" && !conversation
                           ? "Connect the API to begin…"
                           : speech.listening

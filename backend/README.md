@@ -106,6 +106,14 @@ The claim transaction writes `payment.attempt_started` together with `PAYMENT_PE
 
 No real Yuno request, webhook or public reconciliation endpoint is present. Internal reconciliation reuses the existing payment attempt and provider idempotency key; it does not create another attempt or invoke the executor again.
 
+## Principal login, KYA and Agent Passport (BE-14)
+
+The backend now owns opaque principal sessions, Google OIDC Authorization Code + PKCE, development-only Marta demo login, provider-neutral agent assurance, a real Didit adapter and short-lived Bound Agent Passports. The complete threat model, provider setup, modes, privacy boundary, real-validation checklist and terminal-evidence purge procedure are documented in [BE-14 principal auth and KYA](../docs/be-14-principal-auth-kya.md).
+
+Authentication routes are `/auth/v1/login/:provider/start`, callback, session and logout; demo adds `/auth/v1/demo/session`. Trust routes create/reconcile attestation sessions, expose sanitized assurance and passports, receive provider webhooks, verify passports and publish JWKS. KYA initiation requires the authenticated owner, Origin, session-bound CSRF, `Idempotency-Key` and `X-Correlation-Id`. Only the signed webhook route is exempt from the global client idempotency header and deduplicates by its authenticated provider event ID.
+
+`KYA_MODE=LOCAL` and `KYA_PROVIDER=fake` are credential-free and make no external request. Any external mode fails startup unless all Didit settings are present and its API origin is the official HTTPS origin. Verify and purchase paths consume the persisted trust snapshot and never call a provider.
+
 ## TravelBot chat (BE-13)
 
 TravelBot is a backend-only OpenAI Agents SDK runtime behind `AgentRuntimePort`. PostgreSQL owns the sanitized messages, normalized intent, deterministic state, model-run correlation, tool executions, approvals and replayable SSE events. OpenAI response/session IDs are metadata only. The browser never receives `OPENAI_API_KEY` and never calls OpenAI.

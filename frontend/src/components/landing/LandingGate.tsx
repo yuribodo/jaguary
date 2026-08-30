@@ -122,7 +122,7 @@ export function LandingGate() {
             <div>
               <p className="text-sm text-[var(--muted-ink)]">How it works</p>
               <h2 className="mt-2 max-w-[12ch] text-[1.05rem] tracking-[-0.03em] text-[var(--graphite)] md:text-[1.15rem]">
-                Bound reads the letter. Payment does not start.
+                Jaguary reads the letter. Payment does not start.
               </h2>
             </div>
             <ol className="flex gap-4 font-mono text-[0.68rem] tracking-[0.16em] uppercase">

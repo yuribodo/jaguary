@@ -11,6 +11,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:test": "tsx src/db/migrate.ts --test",
     "db:demo:reset": "tsx src/db/reset-demo.ts",
+    "db:kya:purge": "tsx src/db/purge-kya.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/**/*.test.ts",

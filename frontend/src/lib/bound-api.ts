@@ -85,6 +85,7 @@ async function request<T>(
   try {
     response = await fetch(`${apiUrl}${path}`, {
       cache: "no-store",
+      credentials: "include",
       ...init,
       signal: requestController.signal,
       headers: {
@@ -99,13 +100,13 @@ async function request<T>(
       && requestController.signal.reason.name === "TimeoutError"
     ) {
       throw new BoundApiError({
-        message: "The Bound API took more than 10 seconds to respond. Check that the backend is running and try again.",
+        message: "The Jaguary API took more than 10 seconds to respond. Check that the backend is running and try again.",
         code: "api_timeout",
         offline: true,
       });
     }
     throw new BoundApiError({
-      message: "Could not reach the Bound API.",
+      message: "Could not reach the Jaguary API.",
       code: "api_offline",
       offline: true,
     });
@@ -127,6 +128,10 @@ async function request<T>(
     });
   }
 
+  if (response.status === 204) {
+    return { data: undefined as T, correlationId: headerCorrelationId };
+  }
+
   if (body === undefined) {
     throw new BoundApiError({
       message: "The API returned an invalid JSON body.",
@@ -140,6 +145,42 @@ async function request<T>(
 }
 
 export const boundApi = {
+  getPrincipalSession(signal?: AbortSignal) {
+    return request<PrincipalSessionView>("/auth/v1/session", { signal });
+  },
+
+  createDemoPrincipalSession(requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AuthenticatedPrincipalSession>("/auth/v1/demo/session", {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey },
+    });
+  },
+
+  logoutPrincipal(csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<never>("/auth/v1/logout", {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey, "X-CSRF-Token": csrfToken },
+    });
+  },
+
+  startAgentAttestation(agentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AttestationSession>(`/trust/v1/agents/${encodeURIComponent(agentId)}/attestation-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ consent: true }),
+    });
+  },
+
+  getAgentAssurance(agentId: string, signal?: AbortSignal) {
+    return request<AgentAssurance>(`/trust/v1/agents/${encodeURIComponent(agentId)}/assurance`, { signal });
+  },
+
+  refreshAgentAttestation(agentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AgentAssurance>(`/trust/v1/agents/${encodeURIComponent(agentId)}/attestations/refresh`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+    });
+  },
   health(signal?: AbortSignal) {
     return request<{ status: string }>("/health", { signal });
   },
@@ -270,4 +311,28 @@ export const boundApi = {
       body: "{}",
     });
   },
+};
+
+export type AuthenticatedPrincipalSession = {
+  authenticated: true;
+  principal: { principal_id: string; display_name: string };
+  assurance: "DEMO" | "OIDC";
+  demo: boolean;
+  csrf_token: string;
+  expires_at: string;
+};
+export type PrincipalSessionView = { authenticated: false } | AuthenticatedPrincipalSession;
+export type AttestationStatus = "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "REVOKED" | "ERROR";
+export type AttestationSession = { attestation_id: string | null; status: AttestationStatus | null; expires_at: string | null; hosted_verification_url: string | null };
+export type AgentAssurance = {
+  agent_id: string;
+  operational_status: "ACTIVE" | "SUSPENDED" | "REVOKED";
+  attestation_id: string | null;
+  attestation_status: AttestationStatus | null;
+  provider: "fake" | "didit";
+  assurance_claims: Array<"OPERATOR_IDENTITY" | "ORGANIZATION_OWNERSHIP" | "AGENT_OPERATOR_BINDING" | "BUILD_PROVENANCE">;
+  assurance_level: "LOCAL_CRYPTOGRAPHIC" | "EXTERNAL_OPERATOR_IDENTITY";
+  issued_at: string | null;
+  expires_at: string | null;
+  eligibility: { eligible: boolean; reason?: string };
 };

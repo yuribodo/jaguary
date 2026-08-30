@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   BotIcon,
   CreditCardIcon,
+  FingerprintIcon,
   HandshakeIcon,
   HistoryIcon,
+  LoaderCircleIcon,
+  LogOutIcon,
   PlusIcon,
   ShieldCheckIcon,
 } from "lucide-react";
@@ -28,14 +33,16 @@ import {
   conversationStateLabels,
   conversationTitle,
 } from "@/lib/conversation-history";
+import { boundApi, createRequestIdentity, type PrincipalSessionView } from "@/lib/bound-api";
 import type { TravelBotConversation } from "@/lib/contracts";
 
-export type AccountPage = "payment-methods" | "purchases" | "merchants";
+export type AccountPage = "payment-methods" | "purchases" | "merchants" | "trust";
 
 const accountPages = [
   { key: "payment-methods", href: "/payment-methods", label: "Payment methods", icon: CreditCardIcon },
   { key: "purchases", href: "/purchases", label: "Purchases", icon: HistoryIcon },
   { key: "merchants", href: "/connected-merchants", label: "Connected merchants", icon: HandshakeIcon },
+  { key: "trust", href: "/trust", label: "Identity & trust", icon: FingerprintIcon },
 ] as const;
 
 export function AppSidebar({
@@ -55,6 +62,43 @@ export function AppSidebar({
   onSelectConversation: (conversationId: string) => void;
   recentMessage?: string;
 }) {
+  const router = useRouter();
+  const [principalSession, setPrincipalSession] = useState<PrincipalSessionView>();
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState<string>();
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void boundApi.getPrincipalSession(controller.signal).then(({ data }) => {
+      setPrincipalSession(data);
+    }).catch(() => {
+      // The account pages already handle session failures. Keep the sidebar usable.
+    });
+
+    return () => controller.abort();
+  }, []);
+
+  async function logout() {
+    if (!principalSession?.authenticated || logoutBusy) return;
+
+    setLogoutBusy(true);
+    setLogoutError(undefined);
+    try {
+      await boundApi.logoutPrincipal(principalSession.csrf_token, createRequestIdentity("logout_sidebar"));
+      setPrincipalSession({ authenticated: false });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLogoutError("Could not log out. Please try again.");
+      setLogoutBusy(false);
+    }
+  }
+
+  const principalName = principalSession?.authenticated
+    ? principalSession.principal.display_name
+    : "Marta";
+
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className="border-b p-3">
@@ -63,7 +107,7 @@ export function AppSidebar({
             <span className="grid size-7 place-items-center rounded-md bg-foreground text-background">
               <ShieldCheckIcon className="size-3.5" />
             </span>
-            <strong className="text-sm">Bound</strong>
+            <strong className="text-sm">Jaguary</strong>
           </Link>
         </div>
         <Button
@@ -133,12 +177,26 @@ export function AppSidebar({
 
       <SidebarFooter className="border-t p-3">
         <div className="flex items-center gap-2.5 rounded-md p-1">
-          <span className="grid size-8 place-items-center rounded-full border bg-background text-xs font-semibold">M</span>
+          <span className="grid size-8 place-items-center rounded-full border bg-background text-xs font-semibold">
+            {principalName.charAt(0).toUpperCase()}
+          </span>
           <div className="min-w-0">
-            <strong className="block truncate text-xs">Marta</strong>
+            <strong className="block truncate text-xs">{principalName}</strong>
             <span className="block truncate text-[10px] text-muted-foreground">Mandate principal</span>
           </div>
         </div>
+        {principalSession?.authenticated && (
+          <Button
+            className="mt-1 min-h-11 w-full justify-start text-muted-foreground hover:text-foreground"
+            disabled={logoutBusy}
+            onClick={() => void logout()}
+            variant="ghost"
+          >
+            {logoutBusy ? <LoaderCircleIcon className="animate-spin" /> : <LogOutIcon />}
+            {logoutBusy ? "Logging out…" : "Log out"}
+          </Button>
+        )}
+        {logoutError && <p className="px-2 text-xs text-destructive" role="alert">{logoutError}</p>}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
