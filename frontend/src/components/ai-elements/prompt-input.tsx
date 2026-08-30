@@ -106,7 +106,7 @@ export function PromptInputTextarea({
   return (
     <InputGroupTextarea
       className={cn(
-        "field-sizing-content max-h-48 min-h-16 px-4 pt-3 text-sm",
+        "field-sizing-content max-h-48 min-h-16 px-4 pt-3 text-base sm:text-sm",
         className,
       )}
       name="message"

@@ -36,6 +36,7 @@ const toolResultSchema = z.object({
 
 const groundedAirportAliases = {
   GRU: ["Guarulhos", "São Paulo/Guarulhos International Airport"],
+  GIG: ["Rio de Janeiro", "Galeão", "Galeao", "Tom Jobim International Airport"],
   COR: ["Córdoba", "Cordoba", "Pajas Blancas"],
   PVH: ["Porto Velho"],
   JPR: ["Ji-Paraná", "Ji Parana"],

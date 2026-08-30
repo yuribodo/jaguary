@@ -45,13 +45,12 @@ import { boundApi, createRequestIdentity } from "@/lib/bound-api";
 import type { TravelBotConversation, TravelWatch } from "@/lib/contracts";
 import { cn } from "@/lib/utils";
 
-export type AccountPage = "dashboard" | "agents" | "opportunities" | "approvals" | "payment-methods" | "purchases" | "merchants" | "audit" | "trust";
+export type AccountPage = "dashboard" | "agents" | "opportunities" | "payment-methods" | "purchases" | "merchants" | "audit" | "trust";
 
 const accountPages = [
   { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
   { key: "agents", href: "/connected-agents", label: "Connected agents", icon: BotIcon },
   { key: "opportunities", href: "/opportunities", label: "Opportunities", icon: HandshakeIcon },
-  { key: "approvals", href: "/approval-center", label: "Approval Center", icon: ScrollTextIcon },
   { key: "payment-methods", href: "/payment-methods", label: "Payment methods", icon: CreditCardIcon },
   { key: "purchases", href: "/purchases", label: "Purchases", icon: HistoryIcon },
   { key: "audit", href: "/trilha-de-auditoria", label: "Audit trail", icon: ScrollTextIcon },

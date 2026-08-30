@@ -316,6 +316,10 @@ export const boundApi = {
     return request<OrderReceipt>(`/receipts/${receiptId}`, { signal });
   },
 
+  listReceipts(signal?: AbortSignal) {
+    return request<OrderReceipt[]>("/receipts", { signal });
+  },
+
   getAuditTimeline(correlationId: string, signal?: AbortSignal) {
     return request<AuditTimeline>(`/audit/${correlationId}`, { signal });
   },
