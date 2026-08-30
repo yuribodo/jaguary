@@ -1,9 +1,9 @@
 export type DemoWalletCard = { id: string; brand: "mastercard" | "visa"; lastFour: string; expiry: string; reference: string; limit: number; used: number; usage: string };
 
 export const walletCards: DemoWalletCard[] = [
-  { id: "mastercard-0446", brand: "mastercard", lastFour: "0446", expiry: "01/31", reference: "cred_demo_marta_mastercard", limit: 8000, used: 1860, usage: "Mandate-authorized purchases" },
-  { id: "mastercard-5364", brand: "mastercard", lastFour: "5364", expiry: "05/29", reference: "cred_demo_marta_mastercard_2", limit: 5000, used: 920, usage: "Mandate-authorized purchases" },
-  { id: "visa-1855", brand: "visa", lastFour: "1855", expiry: "12/30", reference: "cred_demo_marta_visa", limit: 6500, used: 0, usage: "Mandate-authorized purchases" },
+  { id: "mastercard-0446", brand: "mastercard", lastFour: "0446", expiry: "01/31", reference: "cred_demo_mastercard_0446", limit: 8000, used: 1860, usage: "Mandate-authorized purchases" },
+  { id: "mastercard-5364", brand: "mastercard", lastFour: "5364", expiry: "05/29", reference: "cred_demo_mastercard_5364", limit: 5000, used: 920, usage: "Mandate-authorized purchases" },
+  { id: "visa-1855", brand: "visa", lastFour: "1855", expiry: "12/30", reference: "cred_demo_visa_1855", limit: 6500, used: 0, usage: "Mandate-authorized purchases" },
 ];
 
 export const demoPurchases = [

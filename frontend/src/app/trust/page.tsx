@@ -19,7 +19,7 @@ const AGENT_ID = "agent_travelbot";
 
 const statusContent: Record<string, { badge: string; title: string; description: string }> = {
   PENDING: { badge: "PENDING", title: "Identity verification in progress", description: "Didit is reviewing the submitted evidence. This page updates automatically when the decision arrives." },
-  VERIFIED: { badge: "VERIFIED", title: "Operator identity verified", description: "Marta can operate TravelBot with verified identity." },
+  VERIFIED: { badge: "VERIFIED", title: "Operator identity verified", description: "The principal can operate TravelBot with verified identity." },
   REJECTED: { badge: "REJECTED", title: "Identity could not be verified", description: "The provider could not approve the submitted evidence. Start a new verification to try again." },
   EXPIRED: { badge: "EXPIRED", title: "Identity verification expired", description: "A new identity check is required before TravelBot can operate with verified authority." },
   REVOKED: { badge: "REVOKED", title: "Identity verification revoked", description: "This assurance is no longer valid. Start a new verification to restore access." },
@@ -198,11 +198,14 @@ export default function TrustPage() {
 
   const verified = assurance?.attestation_status === "VERIFIED";
   const pending = assurance?.attestation_status === "PENDING";
-  const content = assurance?.attestation_status ? statusContent[assurance.attestation_status] : {
+  const status = assurance?.attestation_status ? statusContent[assurance.attestation_status] : {
     badge: "ACTION REQUIRED",
     title: "Verify the operator identity",
     description: "Complete a provider-hosted identity check before TravelBot operates with verified authority.",
   };
+  const content = verified
+    ? { ...status, description: `${session.principal.display_name} can operate TravelBot with verified identity.` }
+    : status;
 
   return (
     <AccountPageShell activePage="trust">

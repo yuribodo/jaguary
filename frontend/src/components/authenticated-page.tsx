@@ -1,23 +1,41 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { RefreshCwIcon, ShieldCheckIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { boundApi } from "@/lib/bound-api";
+import { boundApi, type AuthenticatedPrincipalSession } from "@/lib/bound-api";
 
 type AuthState = "checking" | "authenticated" | "redirecting" | "error";
+
+const AuthenticatedPrincipalSessionContext = createContext<AuthenticatedPrincipalSession | null>(null);
+
+export function useAuthenticatedPrincipalSession() {
+  const session = useContext(AuthenticatedPrincipalSessionContext);
+  if (!session) {
+    throw new Error("useAuthenticatedPrincipalSession must be used within AuthenticatedPage");
+  }
+  return session;
+}
 
 export function AuthenticatedPage({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [state, setState] = useState<AuthState>("checking");
+  const [session, setSession] = useState<AuthenticatedPrincipalSession>();
 
   useEffect(() => {
     const controller = new AbortController();
 
     void boundApi.getPrincipalSession(controller.signal).then(({ data }) => {
       if (data.authenticated) {
+        setSession(data);
         setState("authenticated");
         return;
       }
@@ -31,7 +49,13 @@ export function AuthenticatedPage({ children }: { children: ReactNode }) {
     return () => controller.abort();
   }, [router]);
 
-  if (state === "authenticated") return children;
+  if (state === "authenticated" && session) {
+    return (
+      <AuthenticatedPrincipalSessionContext.Provider value={session}>
+        {children}
+      </AuthenticatedPrincipalSessionContext.Provider>
+    );
+  }
 
   return (
     <main className="grid min-h-dvh place-items-center bg-panel px-6 text-foreground">

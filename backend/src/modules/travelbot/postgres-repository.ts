@@ -181,6 +181,24 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
     return row === undefined ? undefined : conversationFrom(this.database.db, row);
   }
 
+  async discard(conversationId: string, principalId: string): Promise<"DELETED" | "IN_PROGRESS" | "NOT_FOUND"> {
+    return this.database.transaction(async (transaction) => {
+      await lockConversation(transaction, conversationId);
+      const row = await getConversationRow(transaction, conversationId);
+      if (row === undefined || row.principalId !== principalId) return "NOT_FOUND";
+      if (row.activeRunId !== null) return "IN_PROGRESS";
+
+      await transaction.delete(travelApprovals).where(eq(travelApprovals.conversationId, conversationId));
+      await transaction.delete(travelToolExecutions).where(eq(travelToolExecutions.conversationId, conversationId));
+      await transaction.delete(travelSseEvents).where(eq(travelSseEvents.conversationId, conversationId));
+      await transaction.delete(travelIntentSnapshots).where(eq(travelIntentSnapshots.conversationId, conversationId));
+      await transaction.delete(travelModelRuns).where(eq(travelModelRuns.conversationId, conversationId));
+      await transaction.delete(travelMessages).where(eq(travelMessages.conversationId, conversationId));
+      await transaction.delete(travelConversations).where(eq(travelConversations.conversationId, conversationId));
+      return "DELETED";
+    });
+  }
+
   async claimTurn(command: PostMessageCommand, now: Date) {
     const contentHash = sha256CanonicalJson(command.content);
     return this.database.transaction(async (transaction) => {

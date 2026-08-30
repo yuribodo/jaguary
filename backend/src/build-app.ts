@@ -474,6 +474,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await app.register(travelBotRoutes, {
       service: travelBotService,
       ...(travelBotEvents === undefined ? {} : { events: travelBotEvents }),
+      ...(configuredAuth === undefined ? {} : {
+        auth: configuredAuth.service,
+        allowedOrigin: configuredAuth.allowedOrigin,
+      }),
     });
   }
 

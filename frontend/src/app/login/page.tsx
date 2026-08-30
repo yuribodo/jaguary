@@ -7,6 +7,8 @@ import { ArrowRightIcon, LockKeyholeIcon, LogOutIcon, RefreshCwIcon, ShieldCheck
 import { Button } from "@/components/ui/button";
 import { apiUrl, boundApi, createRequestIdentity, type PrincipalSessionView } from "@/lib/bound-api";
 
+const demoAuthEnabled = process.env.NEXT_PUBLIC_AUTH_MODE === "demo";
+
 function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" {...props}>
@@ -64,6 +66,21 @@ export default function LoginPage() {
     }
   }
 
+  async function loginWithDemoAccount() {
+    if (loading) return;
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const { data } = await boundApi.createDemoPrincipalSession(createRequestIdentity("login_demo"));
+      setSession(data);
+    } catch {
+      setError("Could not start the demo session.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="grid min-h-dvh place-items-center bg-panel px-6 py-12 text-foreground">
       <section className="w-full max-w-[22.5rem] text-center">
@@ -97,6 +114,16 @@ export default function LoginPage() {
                 {logoutBusy ? "Logging out…" : "Log out"}
               </Button>
             </div>
+          ) : demoAuthEnabled ? (
+            <Button
+              className="mt-8 min-h-12 w-full bg-background text-foreground shadow-none hover:bg-secondary"
+              disabled={loading}
+              onClick={() => void loginWithDemoAccount()}
+              variant="outline"
+            >
+              {loading ? <RefreshCwIcon className="animate-spin" /> : <ShieldCheckIcon />}
+              {loading ? "Starting demo session…" : "Continue with demo account"}
+            </Button>
           ) : (
             <Button
               className="mt-8 min-h-12 w-full bg-background text-foreground shadow-none hover:bg-secondary"

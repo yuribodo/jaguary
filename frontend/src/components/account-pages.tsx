@@ -5,6 +5,7 @@ import Cards from "react-19-credit-card";
 import { useMemo, useState } from "react";
 import { CheckIcon, CircleAlertIcon, ExternalLinkIcon, FileCheck2Icon, LayoutDashboardIcon, LinkIcon, LockKeyholeIcon, PlaneIcon, RadarIcon, ReceiptTextIcon, SearchIcon, ShieldCheckIcon, TerminalSquareIcon, WalletCardsIcon } from "lucide-react";
 import { AccountPageShell } from "@/components/account-page-shell";
+import { useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
 import { BoundApiError, boundApi } from "@/lib/bound-api";
 import type { AuditTimeline } from "@/lib/contracts";
 import { demoPurchases, walletCards } from "@/lib/demo-data";
@@ -17,7 +18,9 @@ function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: st
 }
 
 function CardPreview({ card, selected, onSelect }: { card: WalletCard; selected: boolean; onSelect: () => void }) {
-  return <button aria-pressed={selected} className="group m-2 min-w-[17.75rem] snap-center text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/35" onClick={onSelect} type="button"><div className={selected ? "rounded-xl ring-2 ring-[#334de8] ring-offset-4 ring-offset-background" : "rounded-xl transition-transform duration-200 group-hover:-translate-y-1"}><Cards acceptedCards={[card.brand]} cvc="" expiry={card.expiry} focused="number" issuer={card.brand} name="MARTA ALMEIDA" number={`••••••••••••${card.lastFour}`} preview /></div><div className="mt-4 flex items-center justify-between px-1"><span className="font-mono text-xs tracking-[0.12em]">•••• {card.lastFour}</span><span className="text-xs text-muted-foreground">{selected ? "Selecionado" : "Ver detalhes"}</span></div></button>;
+  const principalSession = useAuthenticatedPrincipalSession();
+  const cardholderName = principalSession.principal.display_name.toLocaleUpperCase();
+  return <button aria-pressed={selected} className="group m-2 min-w-[17.75rem] snap-center text-left outline-none focus-visible:ring-4 focus-visible:ring-ring/35" onClick={onSelect} type="button"><div className={selected ? "rounded-xl ring-2 ring-[#334de8] ring-offset-4 ring-offset-background" : "rounded-xl transition-transform duration-200 group-hover:-translate-y-1"}><Cards acceptedCards={[card.brand]} cvc="" expiry={card.expiry} focused="number" issuer={card.brand} name={cardholderName} number={`••••••••••••${card.lastFour}`} preview /></div><div className="mt-4 flex items-center justify-between px-1"><span className="font-mono text-xs tracking-[0.12em]">•••• {card.lastFour}</span><span className="text-xs text-muted-foreground">{selected ? "Selecionado" : "Ver detalhes"}</span></div></button>;
 }
 
 export function PaymentMethodsPage() {

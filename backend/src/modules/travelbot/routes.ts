@@ -1,7 +1,8 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 
 import { correlationIdSchema, identifierSchema, PublicApiError } from "../../contracts/v1/index.js";
+import { readSessionCookie, type PrincipalAuthService } from "../auth/index.js";
 import type { TravelBotService } from "./service.js";
 
 const createConversationBodySchema = z.object({
@@ -26,8 +27,10 @@ export interface TravelBotEventSource {
 }
 
 interface TravelBotRoutesOptions {
-  service: Pick<TravelBotService, "createConversation" | "getConversation" | "postMessage">;
+  service: Pick<TravelBotService, "createConversation" | "discardConversation" | "getConversation" | "postMessage">;
   events?: TravelBotEventSource;
+  auth?: PrincipalAuthService;
+  allowedOrigin?: string;
 }
 
 function idempotencyKey(headers: Record<string, unknown>): string {
@@ -41,6 +44,20 @@ function requireCorrelationId(headers: Record<string, unknown>): void {
   if (typeof value !== "string" || !correlationIdSchema.safeParse(value).success) {
     throw new PublicApiError(400, "validation_error", "X-Correlation-Id is required for TravelBot mutations");
   }
+}
+
+async function mutablePrincipalSession(request: FastifyRequest, options: TravelBotRoutesOptions) {
+  if (options.auth === undefined || options.allowedOrigin === undefined) {
+    throw new PublicApiError(404, "not_found", "Conversation discard is unavailable");
+  }
+  if (request.headers.origin !== options.allowedOrigin) {
+    throw new PublicApiError(403, "invalid_request", "Request origin is not allowed");
+  }
+  const csrf = request.headers["x-csrf-token"];
+  return options.auth.requireSession(
+    readSessionCookie(request.headers.cookie),
+    typeof csrf === "string" ? csrf : "",
+  );
 }
 
 function parseAfterSequence(value: string | string[] | undefined): number {
@@ -75,6 +92,15 @@ export const travelBotRoutes: FastifyPluginAsync<TravelBotRoutesOptions> = async
     const parsed = conversationParamsSchema.safeParse(request.params);
     if (!parsed.success) throw new PublicApiError(404, "not_found", "Conversation not found");
     return options.service.getConversation(parsed.data.id);
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/conversations/:id", async (request, reply) => {
+    requireCorrelationId(request.headers);
+    const parsed = conversationParamsSchema.safeParse(request.params);
+    if (!parsed.success) throw new PublicApiError(404, "not_found", "Conversation not found");
+    const session = await mutablePrincipalSession(request, options);
+    await options.service.discardConversation(parsed.data.id, session.principal.principal_id);
+    return reply.code(204).send();
   });
 
   app.post<{ Params: { id: string } }>("/v1/conversations/:id/messages", async (request, reply) => {
