@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   CreditCardIcon,
+  LayoutDashboardIcon,
   HandshakeIcon,
   HistoryIcon,
   ScrollTextIcon,
@@ -28,9 +29,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-type AccountPage = "payment-methods" | "purchases" | "merchants" | "audit";
+type AccountPage = "dashboard" | "payment-methods" | "purchases" | "merchants" | "audit";
 
 const pages = [
+  { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
   { key: "payment-methods", href: "/metodos-de-pagamento", label: "M\u00e9todos de pagamento", icon: CreditCardIcon },
   { key: "purchases", href: "/compras", label: "Compras", icon: HistoryIcon },
   { key: "merchants", href: "/lojas-conectadas", label: "Lojas conectadas", icon: HandshakeIcon },

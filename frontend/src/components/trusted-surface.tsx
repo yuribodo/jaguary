@@ -21,6 +21,7 @@ import {
   FileCheck2Icon,
   HandshakeIcon,
   HistoryIcon,
+  LayoutDashboardIcon,
   MessageSquareIcon,
   PlaneIcon,
   PlusIcon,
@@ -732,6 +733,12 @@ function AppSidebar({
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton render={<Link href="/dashboard" />} tooltip="Dashboard">
+                  <LayoutDashboardIcon />
+                  <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton render={<Link href="/metodos-de-pagamento" />} tooltip="Métodos de pagamento">
                   <CreditCardIcon />
