@@ -1,3 +1,3 @@
-import { ConnectedMerchantsPage } from "@/components/account-pages";
+import { ConnectedStoresPage } from "@/components/connected-stores-page";
 
-export default function Page() { return <ConnectedMerchantsPage />; }
+export default function Page() { return <ConnectedStoresPage />; }
