@@ -1,6 +1,8 @@
 import type {
   AgentIdentity,
   AuditTimeline,
+  OrderReceipt,
+  TravelBotConversation,
   CreateMandateDraftInput,
   Mandate,
   MerchantCapabilities,
@@ -132,6 +134,14 @@ export const boundApi = {
 
   getAuditTimeline(correlationId: string, signal?: AbortSignal) {
     return request<AuditTimeline>(`/audit/${encodeURIComponent(correlationId)}`, { signal });
+  },
+
+  getReceipt(receiptId: string, signal?: AbortSignal) {
+    return request<OrderReceipt>(`/receipts/${encodeURIComponent(receiptId)}`, { signal });
+  },
+
+  getConversation(conversationId: string, signal?: AbortSignal) {
+    return request<TravelBotConversation>(`/v1/conversations/${encodeURIComponent(conversationId)}`, { signal });
   },
 
   createCheckout(

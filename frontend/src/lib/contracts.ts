@@ -20,6 +20,17 @@ export type AuditTimeline = {
   events: AuditTimelineEvent[];
 };
 
+export type OrderReceipt = {
+  receipt_id: string;
+  evidence: { correlation_id: string };
+};
+
+export type TravelBotConversation = {
+  conversation_id: string;
+  messages: Array<{ correlation_id: string }>;
+  operation: { receipt_id: string | null };
+};
+
 export type AgentIdentity = {
   agent_id: string;
   principal_id: string;
