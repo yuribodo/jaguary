@@ -77,7 +77,13 @@ function paint(
   }
 }
 
-export function LandingAsciiField({ tone = "paper" }: { tone?: "paper" | "ink" }) {
+export function LandingAsciiField({
+  className,
+  tone = "paper",
+}: {
+  className?: string;
+  tone?: "paper" | "ink";
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -116,7 +122,11 @@ export function LandingAsciiField({ tone = "paper" }: { tone?: "paper" | "ink" }
   return (
     <canvas
       aria-hidden
-      className="pointer-events-none absolute inset-0 size-full"
+      className={
+        className
+          ? `pointer-events-none absolute inset-0 size-full ${className}`
+          : "pointer-events-none absolute inset-0 size-full"
+      }
       ref={canvasRef}
     />
   );

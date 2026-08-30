@@ -1,121 +1,153 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 
 import { LandingAsciiField } from "@/components/landing/LandingAsciiField";
-import { useReducedMotion } from "@/components/landing/use-reduced-motion";
-import { cn } from "@/lib/utils";
+import { LandingReveal } from "@/components/landing/LandingReveal";
 
-const SPEECH = [
-  "I need Córdoba this week.",
-  "Economy. Not above one fifty.",
-  "TravelBot books it after I sign.",
+const REQUEST_STEPS = [
+  {
+    index: "01",
+    title: "Marta asks",
+    copy: "A flight to Córdoba, economy, no more than US$150.",
+  },
+  {
+    index: "02",
+    title: "TravelBot proposes",
+    copy: "The agent searches and selects — it does not authorize.",
+  },
+  {
+    index: "03",
+    title: "VuelaYa fixes the terms",
+    copy: "The merchant signs the exact offer, price, and expiry.",
+  },
+] as const;
+
+const AUTHORITY_TERMS = [
+  ["Who", "TravelBot"],
+  ["What", "GRU → COR"],
+  ["Limit", "≤ US$150"],
+  ["Use", "Once"],
 ] as const;
 
 export function LandingLetter() {
-  const isReduced = useReducedMotion();
-  const rootRef = useRef<HTMLElement>(null);
-  const [scene, setScene] = useState(5);
-
-  useEffect(() => {
-    if (isReduced) return;
-
-    const root = rootRef.current;
-    if (!root) return;
-
-    let timers: number[] = [];
-    const play = () => {
-      timers = [140, 320, 500, 780, 1120].map((ms, index) =>
-        window.setTimeout(() => setScene(index + 1), ms)
-      );
-    };
-
-    const rect = root.getBoundingClientRect();
-    const isInView = rect.top < window.innerHeight * 0.72 && rect.bottom > 0;
-    if (isInView) return;
-
-    setScene(0);
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-        observer.disconnect();
-        play();
-      },
-      { threshold: 0.28 }
-    );
-
-    observer.observe(root);
-    return () => {
-      observer.disconnect();
-      timers.forEach((id) => window.clearTimeout(id));
-    };
-  }, [isReduced]);
-
   return (
     <section
       className="relative flex min-h-svh overflow-hidden bg-[#171a17] text-[#eee9dc]"
       id="enter"
-      ref={rootRef}
     >
-      <LandingAsciiField tone="ink" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_18%_24%,rgb(23_26_23_/_72%)_0%,rgb(23_26_23_/_28%)_46%,transparent_72%)]" />
+      <LandingAsciiField className="opacity-[0.3] md:opacity-[0.46]" tone="ink" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_14%_18%,rgb(23_26_23_/_62%)_0%,rgb(23_26_23_/_24%)_46%,transparent_70%)]" />
 
-      <div className="relative z-10 flex min-h-svh w-full flex-col justify-between px-6 py-16 md:px-10 md:py-20">
-        <div>
-          <p className="mb-8 text-sm text-[#eee9dc]/40">The surface</p>
-          <ol className="space-y-3">
-            {SPEECH.map((line, index) => (
-              <li
-                className={cn(
-                  "landing-speech max-w-[22ch] text-[1.2rem] leading-[1.4] tracking-[-0.02em] text-[#eee9dc]/80 md:text-[1.35rem]",
-                  scene > index ? "is-on" : "is-off"
-                )}
-                key={line}
-              >
-                {line}
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <h2
-          className={cn(
-            "landing-letter-name [font-family:var(--font-display)] md:absolute md:top-[38%] md:right-10 md:left-auto",
-            scene >= 4 ? "is-on" : "is-off"
-          )}
-        >
-          TravelBot
-        </h2>
-
-        <div
-          className={cn(
-            "landing-instrument max-w-[22rem]",
-            scene >= 4 ? "is-on" : "is-off"
-          )}
-        >
-          <p className="mb-4 font-mono text-[0.68rem] tracking-[0.18em] text-[#eee9dc]/40 uppercase">
-            Marta authorizes
+      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-[100rem] flex-col px-6 py-14 md:px-10 md:py-16 lg:px-14">
+        <LandingReveal className="flex items-start justify-between gap-6 border-b border-[#eee9dc]/14 pb-5">
+          <p className="shrink-0 whitespace-nowrap font-mono text-[0.65rem] tracking-[0.18em] text-[#eee9dc]/72 uppercase">
+            Bound by Jaguary
           </p>
-          <p className="text-[1.05rem] leading-[1.5] text-[#eee9dc]/70">
-            GRU → COR · economy · ≤ US$ 150 · once
+          <p className="max-w-[11rem] text-right text-xs text-[#eee9dc]/52">
+            The enforcement layer before payment
           </p>
-          <div
-            className={cn(
-              "landing-speech mt-8 flex flex-col items-start gap-3",
-              scene >= 5 ? "is-on" : "is-off"
-            )}
-          >
-            <Link
-              className="inline-flex min-h-11 items-center bg-[#eee9dc] px-5 text-sm text-[#171a17] transition-[transform,background-color,color] duration-[160ms] ease-[var(--ease-out)] hover:bg-[#315bea] hover:text-white focus-visible:bg-[#315bea] focus-visible:text-white active:scale-[0.97]"
-              href="/demo"
-            >
-              Enter the surface
-            </Link>
-            <p className="text-sm text-[#eee9dc]/38">Revoke anytime. Payment never starts.</p>
+        </LandingReveal>
+
+        <div className="grid flex-1 items-center gap-14 py-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-20 lg:py-16">
+          <div>
+            <LandingReveal>
+              <h2 className="max-w-[15ch] text-[clamp(2.6rem,5vw,5rem)] leading-[0.92] font-semibold tracking-[-0.06em] [font-family:var(--font-display)]">
+                <span className="block">One request.</span>
+                <span className="block whitespace-nowrap">One enforceable</span>
+                <span className="block">path.</span>
+              </h2>
+              <p className="mt-6 max-w-[41rem] text-[1rem] leading-[1.65] text-[#eee9dc]/58 md:text-[1.08rem]">
+                The model can understand intent. It cannot become the final authority over money.
+                Jaguary keeps proposal, commercial truth, deterministic verification, and payment
+                on separate rails.
+              </p>
+            </LandingReveal>
+
+            <ol className="mt-10 grid gap-7 border-t border-[#eee9dc]/14 pt-7 sm:grid-cols-3 sm:gap-5">
+              {REQUEST_STEPS.map((step, index) => (
+                <li key={step.index}>
+                  <LandingReveal delayMs={120 + index * 90}>
+                    <p className="font-mono text-[0.62rem] tracking-[0.16em] text-[#eee9dc]/50 uppercase">
+                      {step.index}
+                    </p>
+                    <h3 className="mt-3 text-[1rem] tracking-[-0.025em] text-[#eee9dc]/92">
+                      {step.title}
+                    </h3>
+                    <p className="mt-2 max-w-[17rem] text-sm leading-[1.55] text-[#eee9dc]/58">
+                      {step.copy}
+                    </p>
+                  </LandingReveal>
+                </li>
+              ))}
+            </ol>
           </div>
+
+          <LandingReveal
+            className="border-y border-[#eee9dc]/18 py-6 lg:border-y-0 lg:border-l lg:py-2 lg:pl-10"
+            delayMs={180}
+          >
+            <div className="flex items-baseline justify-between gap-5 border-b border-[#eee9dc]/14 pb-5">
+              <p className="font-mono text-[0.64rem] tracking-[0.17em] text-[#eee9dc]/56 uppercase">
+                Authority instrument
+              </p>
+              <p className="font-mono text-[0.6rem] tracking-[0.12em] text-[#65d6a3] uppercase">
+                Revocable
+              </p>
+            </div>
+
+            <dl className="py-3">
+              {AUTHORITY_TERMS.map(([label, value]) => (
+                <div
+                  className="grid grid-cols-[5.5rem_1fr] items-baseline border-b border-[#eee9dc]/10 py-3.5"
+                  key={label}
+                >
+                  <dt className="font-mono text-[0.62rem] tracking-[0.14em] text-[#eee9dc]/52 uppercase">
+                    {label}
+                  </dt>
+                  <dd className="text-[0.95rem] text-[#eee9dc]/84">{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className="mt-3 grid gap-5 border-l-2 border-[#315bea] pl-5 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div>
+                <p className="font-mono text-[0.64rem] tracking-[0.16em] text-[#6684ff] uppercase">
+                  Bound Verify
+                </p>
+                <p className="mt-2 max-w-[28rem] text-[1.45rem] leading-[1.14] font-semibold tracking-[-0.04em] [font-family:var(--font-display)] md:text-[1.8rem]">
+                  Payment waits for ALLOW.
+                </p>
+              </div>
+              <p className="font-mono text-[0.58rem] leading-[1.6] tracking-[0.11em] text-[#eee9dc]/52 uppercase sm:text-right">
+                Identity · scope
+                <br />
+                nonce · replay
+              </p>
+            </div>
+
+            <div className="mt-7 flex items-start gap-3 border-t border-dashed border-[#e45d46]/48 pt-4 text-[#f17a64]">
+              <span aria-hidden className="mt-[0.45rem] size-1.5 shrink-0 rounded-full bg-current" />
+              <p className="text-xs leading-[1.55]">
+                Revoke or mismatch interrupts the rail before a payment credential is resolved.
+              </p>
+            </div>
+          </LandingReveal>
         </div>
+
+        <LandingReveal
+          className="flex flex-col items-start justify-between gap-5 border-t border-[#eee9dc]/14 pt-6 sm:flex-row sm:items-center"
+          delayMs={260}
+        >
+          <Link
+            className="inline-flex min-h-12 items-center gap-8 bg-[#315bea] px-6 text-sm font-medium text-white transition-[transform,background-color] duration-[160ms] ease-[var(--ease-out)] hover:bg-[#4269f4] focus-visible:bg-[#4269f4] active:scale-[0.98]"
+            href="/demo"
+          >
+            Run the demo
+            <span aria-hidden>→</span>
+          </Link>
+          <p className="max-w-[25rem] text-sm leading-[1.55] text-[#eee9dc]/58 sm:text-right">
+            Follow the evidence behind identity, mandate, checkout, decision, payment, and receipt.
+          </p>
+        </LandingReveal>
       </div>
     </section>
   );
