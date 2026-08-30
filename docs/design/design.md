@@ -30,8 +30,8 @@ A entrada do produto é a intenção em linguagem natural. A conversa organiza o
 Sequência principal:
 
 1. Marta descreve a viagem no composer ou usa a sugestão GRU → COR;
-2. TravelBot consulta identidade, merchant e ofertas reais e devolve um ticket VuelaYa dentro da conversa;
-3. Marta seleciona a oferta e o checkout real fixa os termos comerciais;
+2. TravelBot consulta identidade, merchant e ofertas reais e seleciona automaticamente a opção mais bem ranqueada;
+3. o checkout real fixa os termos comerciais e Marta revisa o voo escolhido junto da autorização;
 4. TravelBot apresenta a carta de autoridade completa e solicita a criação do `DRAFT`;
 5. um segundo gesto, separado e explícito, ativa o mandato;
 6. o mandato ativo permanece na thread, com detalhes expansíveis e revogação confirmada.
@@ -42,7 +42,7 @@ Sequência principal:
 - **Memória lateral:** no desktop, uma sidebar de 272 px guarda apenas a conversa atual e a identidade verificável do agente; no mobile, a mesma estrutura abre como drawer. Ela recolhe com `Ctrl/Cmd+B`, preserva foco visível e não inventa histórico persistente.
 - **Mensagem humana:** alinhada à direita, curta e sem bolha colorida genérica.
 - **Mensagem do agente:** nome, timestamp e texto editorial alinhados à esquerda.
-- **Widget de oferta:** ticket merchant-authored, anexado à resposta que o originou.
+- **Widget de voo selecionado:** resumo merchant-authored inspirado na hierarquia informacional do Flighty, integrado à revisão de autorização.
 - **Widget de mandato:** documento inline com estados `PROPOSTA`, `DRAFT`, `ACTIVE` e `REVOKED`; ações anteriores ficam visualmente encerradas após a transição.
 - **Atividade:** uma linha textual discreta durante requisições; sem cadeia de raciocínio, passos fictícios ou teatro de autonomia.
 - **Composer:** textarea com crescimento automático, `Enter` envia e `Shift+Enter` cria linha; permanece disponível para recomeçar o fluxo.
@@ -118,11 +118,11 @@ Hierarquia base:
 
 ## Superfícies desta entrega
 
-### 1. Seleção de oferta
+### 1. Voo selecionado e autorização
 
 - Cabeçalho curto “Bound by Jaguary”, status real da API e última correlation ID.
 - Rota GRU → COR é o display principal.
-- Ticket VuelaYa contém voo, cabine, horário, total e validade observados na API.
+- O único voo escolhido pelo TravelBot contém rota, aeroportos, horários locais, duração, escalas, cabine, total e validade observados na API.
 - Passaporte do TravelBot mostra estado, algoritmo, key ID e build fingerprint reais.
 
 ### 2. Revisão do mandato

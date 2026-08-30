@@ -17,8 +17,8 @@ export const Conversation = ({ className, ...props }: ConversationProps) => {
   return (
     <StickToBottom
       className={cn("relative flex-1 overflow-y-hidden", className)}
-      initial={reduceMotion ? "instant" : { damping: 0.78, mass: 0.9, stiffness: 0.09 }}
-      resize={reduceMotion ? "instant" : { damping: 0.82, mass: 0.8, stiffness: 0.11 }}
+      initial="instant"
+      resize={reduceMotion ? "instant" : "smooth"}
       role="log"
       {...props}
     />
@@ -87,7 +87,7 @@ export const ConversationScrollButton = ({
     scrollToBottom(
       reduceMotion
         ? "instant"
-        : { animation: { damping: 0.8, mass: 0.85, stiffness: 0.1 } },
+        : { animation: { damping: 0.75, mass: 1, stiffness: 0.08 } },
     );
   }, [reduceMotion, scrollToBottom]);
 
@@ -95,12 +95,12 @@ export const ConversationScrollButton = ({
     <AnimatePresence>
       {!isAtBottom ? (
         <motion.div
-          animate={{ opacity: 1, transform: "translate(-50%, 0px)" }}
-          className="absolute bottom-4 left-1/2 z-10"
-          exit={{ opacity: 0, transform: "translate(-50%, 4px)" }}
+          animate={{ opacity: 1, transform: "translateY(0px)" }}
+          className="absolute right-4 bottom-4 z-10"
+          exit={{ opacity: 0, transform: "translateY(4px)" }}
           initial={{
             opacity: 0,
-            transform: reduceMotion ? "translate(-50%, 0px)" : "translate(-50%, 6px)",
+            transform: reduceMotion ? "translateY(0px)" : "translateY(6px)",
           }}
           transition={{ duration: reduceMotion ? 0.1 : 0.18, ease: [0.23, 1, 0.32, 1] }}
         >

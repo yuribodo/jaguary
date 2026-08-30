@@ -176,7 +176,7 @@ export function PromptInputSubmit({
       variant="default"
       {...props}
     >
-      <AnimatePresence initial={false} mode="wait">
+      <AnimatePresence initial={false} mode="popLayout">
         <motion.span
           animate={{ filter: "blur(0px)", opacity: 1, transform: "scale(1)" }}
           className="grid place-items-center"
