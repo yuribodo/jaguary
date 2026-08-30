@@ -1,2 +1,2 @@
-import { TrustCenterPage } from "@/components/workspace-pages";
+import { TrustCenterPage } from "@/components/trust-center-page";
 export default function Page() { return <TrustCenterPage />; }
