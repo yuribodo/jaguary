@@ -3,6 +3,7 @@ import type {
   TravelIntent,
   TravelIntentProposal,
 } from "../../contracts/v1/index.js";
+import { destinationAirportFrom, originAirportFrom } from "./airport-directory.js";
 
 export const requiredTravelIntentFields = [
   "origin_iata",
@@ -89,21 +90,6 @@ function destinationRegionFrom(
     }
   }
   return undefined;
-}
-
-function mentionsThailand(recentMessages: readonly string[]): boolean {
-  return recentMessages.some((message) => {
-    const normalized = normalizedText(message);
-    return /\bthailand\b/.test(normalized);
-  });
-}
-
-function mentionsLondonDestination(recentMessages: readonly string[]): boolean {
-  return recentMessages.some((message) => {
-    const normalized = normalizedText(message).trim();
-    return /^(?:london|londres|londes)[.!?]?$/.test(normalized)
-      || /\b(?:to|para|pra|pro|destination(?: is|:)?|destino(?:\s+(?:e|:))?)\s+(?:london|londres|londes)\b/.test(normalized);
-  });
 }
 
 function budgetFrom(recentMessages: readonly string[]): TravelIntent["max_total_budget"] | undefined {
@@ -223,7 +209,6 @@ export function applyConversationConventions(
   now: Date,
 ): TravelIntentProposal {
   let contextual = structuredClone(proposal);
-  const normalizedMessages = recentMessages.map(normalizedText);
   const resolved = new Set<RequiredTravelIntentField>();
   for (const field of travelIntentInputFields) {
     if (current[field] !== null && contextual[field] === null) resolved.add(field);
@@ -243,12 +228,9 @@ export function applyConversationConventions(
     resolved.add("cabin");
   }
 
-  const originContext = normalizedMessages.toReversed().find((message) => (
-    /(?:i(?:'m| am)?\s+)?(?:leav(?:e|ing)|depart(?:ing)?)\s+from\s+sao paulo\b/.test(message)
-    || /\borigin(?:\s+is|:)\s+sao paulo\b/.test(message)
-  ));
-  if (contextual.origin_iata === null && originContext !== undefined) {
-    contextual.origin_iata = "GRU";
+  const originAirport = originAirportFrom(recentMessages);
+  if (current.origin_iata === null && contextual.origin_iata === null && originAirport !== undefined) {
+    contextual.origin_iata = originAirport.iata;
     resolved.add("origin_iata");
   }
   if (current.origin_iata === null && contextual.origin_iata === null) {
@@ -264,9 +246,7 @@ export function applyConversationConventions(
   const destinationRegion = destinationRegionFrom(recentMessages);
   if (current.destination_iata === null && contextual.destination_iata === null) {
     const preferredAirport = destinationRegion === undefined
-      ? mentionsLondonDestination(recentMessages)
-        ? "LHR"
-        : mentionsThailand(recentMessages) ? "BKK" : undefined
+      ? destinationAirportFrom(recentMessages)?.iata
       : preferredAirportByRegion[destinationRegion];
     if (preferredAirport !== undefined) {
       contextual.destination_iata = preferredAirport;
@@ -314,12 +294,11 @@ export function deterministicClarification(
   recentMessages: readonly string[] = [],
 ): string {
   const destinationRegion = destinationRegionFrom(recentMessages);
-  const thailand = mentionsThailand(recentMessages);
   const departureDeadline = departureDeadlineFrom(recentMessages);
   const destinationRegionLabel = destinationRegion === "Rio de Janeiro"
     ? "in Rio de Janeiro"
     : destinationRegion === undefined
-      ? thailand ? "in Thailand" : undefined
+      ? undefined
       : `in ${destinationRegion}`;
   const fields = [...new Set([...invalid, ...missing])].map((field) => (
     field === "destination_iata" && destinationRegionLabel !== undefined

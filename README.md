@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml/badge.svg)](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml)
 
-[Open the live demo](https://jaguary.vercel.app) · [Read the Decision Log](docs/decision-log.md) · [Explore the technical documentation](docs/technical/README.md) · [Review known gaps](docs/technical/known-gaps.md)
+[Open the live demo](https://jaguary.vercel.app) · [Read the Decision Log](docs/decision-log.md) · [Copy the Hackathon Decision Export](docs/hackathon-decision-log.md) · [Explore the technical documentation](docs/technical/README.md) · [Review known gaps](docs/technical/known-gaps.md)
 
 Jaguary is a reference application for governed agentic commerce. Its core enforcement layer, **Bound**, decides whether an identified agent may perform one exact economic action before a payment credential is resolved or money can move.
 

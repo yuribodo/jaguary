@@ -633,6 +633,78 @@ test("a Portuguese London request keeps tomorrow and resolves the primary airpor
   assert.deepEqual(second.missing_fields, ["max_total_budget"]);
 });
 
+test("major destinations across more than sixty countries resolve without model guesswork", async () => {
+  const destinations = [
+    ["São Paulo", "GRU"], ["Buenos Aires", "EZE"], ["Santiago", "SCL"],
+    ["Montevidéu", "MVD"], ["Assunção", "ASU"], ["Lima", "LIM"],
+    ["Bogotá", "BOG"], ["Quito", "UIO"], ["Santa Cruz de la Sierra", "VVI"],
+    ["Cidade do México", "MEX"], ["Nova York", "JFK"], ["Toronto", "YYZ"],
+    ["San José Costa Rica", "SJO"], ["Cidade do Panamá", "PTY"], ["Santo Domingo", "SDQ"],
+    ["Havana", "HAV"], ["Kingston Jamaica", "KIN"], ["Nassau", "NAS"],
+    ["Londres", "LHR"], ["Paris", "CDG"], ["Lisboa", "LIS"],
+    ["Madri", "MAD"], ["Frankfurt", "FRA"], ["Roma", "FCO"],
+    ["Amsterdã", "AMS"], ["Bruxelas", "BRU"], ["Zurique", "ZRH"],
+    ["Viena", "VIE"], ["Dublin", "DUB"], ["Copenhague", "CPH"],
+    ["Oslo", "OSL"], ["Estocolmo", "ARN"], ["Helsinque", "HEL"],
+    ["Reykjavik", "KEF"], ["Atenas", "ATH"], ["Varsóvia", "WAW"],
+    ["Praga", "PRG"], ["Budapeste", "BUD"], ["Bucareste", "OTP"],
+    ["Zagreb", "ZAG"], ["Belgrado", "BEG"], ["Istambul", "IST"],
+    ["Casablanca", "CMN"], ["Cairo", "CAI"], ["Joanesburgo", "JNB"],
+    ["Nairóbi", "NBO"], ["Adis Abeba", "ADD"], ["Acra", "ACC"],
+    ["Lagos", "LOS"], ["Dacar", "DSS"], ["Dubai", "DXB"],
+    ["Doha", "DOH"], ["Tel Aviv", "TLV"], ["Riad", "RUH"],
+    ["Amã", "AMM"], ["Bangkok", "BKK"], ["Tóquio", "HND"],
+    ["Seul", "ICN"], ["Pequim", "PEK"], ["Singapura", "SIN"],
+    ["Nova Délhi", "DEL"], ["Jacarta", "CGK"], ["Kuala Lumpur", "KUL"],
+    ["Hanói", "HAN"], ["Manila", "MNL"], ["Taipei", "TPE"],
+    ["Colombo", "CMB"], ["Catmandu", "KTM"], ["Daca", "DAC"],
+    ["Sydney", "SYD"], ["Auckland", "AKL"], ["Nadi", "NAN"],
+  ] as const;
+  const service = new TravelBotService({
+    repository: new InMemoryTravelBotRepository(),
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [{ field: "destination_iata" as const, reason: "AMBIGUOUS" as const }],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "I need the destination.",
+        };
+      },
+    },
+    tools: { findOffers: async () => assert.fail("the trip is still incomplete") },
+    clock: { now: () => new Date("2026-08-30T12:00:00.000Z") },
+  });
+
+  for (const [index, [destination, expectedIata]] of destinations.entries()) {
+    const sequence = String(index + 1).padStart(3, "0");
+    const conversation = await service.createConversation({
+      principal_id: "principal_marta",
+      agent_id: "agent_travelbot",
+      idempotency_key: `idem_world_destination_create_${sequence}`,
+      correlation_id: `corr_world_destination_create_${sequence}`,
+    });
+    const result = await service.postMessage({
+      conversation_id: conversation.conversation_id,
+      content: `quero ir para ${destination}`,
+      idempotency_key: `idem_world_destination_message_${sequence}`,
+      correlation_id: `corr_world_destination_message_${sequence}`,
+    });
+
+    assert.equal(result.intent.destination_iata, expectedIata, destination);
+    assert.equal(result.missing_fields.includes("destination_iata"), false, destination);
+  }
+});
+
 test("a Brazilian numeric date in the user message completes the travel intent", async () => {
   let searchedDate: string | null = null;
   const service = new TravelBotService({

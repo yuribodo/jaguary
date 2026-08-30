@@ -248,6 +248,16 @@ Customer request
 
 **Decision and outcome.** VuelaYa now copies the HTTPS source URL into the flight fulfillment before signing the checkout. The signed value follows the existing checkout → authorization → order → receipt path without creating a browser-authored field. A data migration backfills historical receipts only when the durable conversation, selected offer, checkout, and receipt agree; unmatched legacy receipts remain unchanged.
 
+### 20. Expand global destinations without allowing model-invented airports
+
+**When:** 2026-08-30
+
+**Problem.** Natural-language destination grounding covered only a handful of countries. Asking the model to infer arbitrary airport codes would increase apparent coverage but violate the rule that economic inputs must be grounded, while sending a large global directory on every turn would increase latency and token cost.
+
+**Decision and outcome.** A shared backend directory now grounds 78 major airports across 72 countries, including Portuguese and English aliases. The deterministic conversation layer resolves matching origins and destinations even when model output is inconclusive, while the OpenAI runtime receives only directory entries relevant to the current sanitized conversation. Explicit three-letter IATA codes remain accepted for provider searches beyond the curated city aliases, subject to Google Flights inventory.
+
+**Trade-off.** The curated directory is predictable, testable, and inexpensive at runtime, but it requires maintenance and chooses one documented gateway for broad country aliases. A dedicated aviation/geocoding provider becomes preferable when complete airport coverage, multi-airport city ranking, or frequently changing metadata justifies the added dependency.
+
 ## Decisions that remained invariant
 
 1. The model proposes; deterministic code decides and commits.
@@ -273,6 +283,7 @@ These are not free improvements: each choice deliberately accepts a concrete cos
 | Pre-authorized conditional mandate for fare monitoring | A matching fare can be bought unattended while price and inventory are still available | The customer does not reconfirm at match time, so authority must be narrower, single-use, revocable, and liveness-bound | Fresh confirmation would defeat the stated autonomous-purchase use case | Require a new mandate whenever budget, route, date window, cabin, passengers, merchant, or execution mode changes |
 | Normalized provider adapters instead of adopting provider payloads as domain models | Providers can be replaced and none can smuggle missing evidence into `ALLOW` | Adapter code must track upstream changes, and the current UCP/AP2-shaped subset is not full standards interoperability | Stable trust semantics were achievable within hackathon scope without coupling policy to one vendor | Implement pinned conformance suites before claiming standard interoperability or accepting third-party clients |
 | Deterministic fake payment in the deployed demo while retaining a tested Yuno adapter | The end-to-end authorization, receipt, dispute, and audit demonstration is reliable without pretending sandbox access equals settlement readiness | The demo does not execute a real Yuno payment and must say so clearly | Demonstrating the authority boundary safely is more honest than presenting a partially wired provider as production payment | Replace the fake only after runtime composition, credential resolution, webhooks, reconciliation, and production safety tests are complete |
+| Curated airport grounding with relevant-only prompt injection instead of model memory or a full directory in every request | 72-country natural-language coverage remains deterministic while prompt size stays proportional to the current conversation | The team must maintain aliases and one primary gateway can simplify a country with several valid entry points | It delivers broad, testable hackathon coverage without letting the model invent IATA codes or paying the token cost on every turn | Introduce an authoritative airport/geocoding service when complete global coverage and multi-airport ranking become product requirements |
 
 ## Alternatives rejected
 

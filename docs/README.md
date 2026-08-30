@@ -10,6 +10,7 @@ This directory separates current behavior, operating instructions, architecture 
 | --- | --- |
 | Understand the product and its boundaries | [Technical documentation](technical/README.md) |
 | Follow how the project evolved and what was learned | [Project decision log](decision-log.md) |
+| Copy the strongest trade-offs into the hackathon form | [Hackathon decision export](hackathon-decision-log.md) |
 | See how the complete system fits together | [System architecture](technical/architecture.md) |
 | Understand PostgreSQL tables and relationships | [Database model](technical/database-model.md) |
 | Understand OpenAI, Google Flights search, Didit, UCP, or AP2 | [Integration guides](technical/README.md#integration-guides) |
@@ -23,6 +24,7 @@ This directory separates current behavior, operating instructions, architecture 
 
 - `technical/` — current, code-backed architecture and integration guides.
 - `decision-log.md` — chronological project decisions, discoveries, corrections, and improvements.
+- `hackathon-decision-log.md` — concise, copy-ready trade-offs in the submission form's field structure.
 - `adr/` — accepted architecture decisions and their consequences.
 - `diagrams/` — self-contained visual explanations. HTML is the editable source.
 - `design/` — product and visual design rationale.
