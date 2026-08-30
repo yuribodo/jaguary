@@ -4,7 +4,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Pool } from "pg";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import {
   agentRequestProofFixture,
   approvedPaymentFixture,

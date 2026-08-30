@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import { AuthCrypto } from "../src/modules/auth/crypto.js";
 import { DemoPrincipalAuthProvider } from "../src/modules/auth/demo-provider.js";
 import { InMemoryPrincipalAuthStore } from "../src/modules/auth/memory-repository.js";

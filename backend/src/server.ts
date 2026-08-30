@@ -1,6 +1,7 @@
 import "dotenv/config";
+import "fastify";
 
-import { buildApp } from "./app.js";
+import { buildApp } from "./build-app.js";
 import { ConfigurationError, loadEnv } from "./config/env.js";
 import {
   Aes256GcmApprovalStateProtector,
