@@ -55,14 +55,14 @@ export function AccountPageShell({
         <SidebarHeader className="gap-3 border-b border-sidebar-border p-3">
           <div className="flex h-10 items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             <Link className="text-[1.65rem] font-normal leading-none [font-family:var(--font-serif)] group-data-[collapsible=icon]:hidden" href="/">
-              Bound
+              JaguaryAI
             </Link>
             <SidebarTrigger aria-label="Recolher barra lateral" className="ml-auto size-9 group-data-[collapsible=icon]:ml-0" />
           </div>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton render={<Link href="/" />} className="h-11 border border-sidebar-border bg-background px-3 shadow-none" tooltip="Voltar para a conversa">
-                <><ArrowLeftIcon /><span>Voltar para a conversa</span></>
+              <SidebarMenuButton render={<Link href="/demo" />} className="h-11 border border-sidebar-border bg-background px-3 shadow-none" tooltip="Nova conversa">
+                <><ArrowLeftIcon /><span>Nova conversa</span></>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -83,7 +83,7 @@ export function AccountPageShell({
         <SidebarFooter className="border-t border-sidebar-border p-3">
           <div className="flex min-h-12 items-center gap-3 rounded-lg px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             <span className="grid size-9 shrink-0 place-items-center rounded-full border border-sidebar-border bg-background"><BotIcon className="size-4" /></span>
-            <span className="grid text-xs group-data-[collapsible=icon]:hidden"><strong>TravelBot</strong><small className="text-[10px] text-sidebar-foreground/60">Identidade verificada</small></span>
+            <span className="grid text-xs group-data-[collapsible=icon]:hidden"><strong>Jaguary</strong><small className="text-[10px] text-sidebar-foreground/60">Identidade verificada</small></span>
           </div>
         </SidebarFooter>
         <SidebarRail />

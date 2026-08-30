@@ -198,7 +198,7 @@ function mandateStatusLabel(status?: Mandate["status"]) {
 function AssistantMessage({
   children,
   text,
-  name = "TravelBot",
+  name = "Jaguary",
   identified = true,
 }: {
   children?: ReactNode;
@@ -228,7 +228,7 @@ function AssistantMessage({
       <Message className="max-w-full" from="assistant">
         <div className="flex items-start gap-3">
         <span className="mt-0.5 grid size-7 shrink-0 place-items-center text-blue-700">
-          {name === "TravelBot" ? (
+          {name === "Jaguary" ? (
             <BotIcon className="size-4" />
           ) : (
             <CircleAlertIcon className="size-4" />
@@ -703,7 +703,7 @@ function AppSidebar({
               B
             </span>
             <strong className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-              Bound Control
+              JaguaryAI
             </strong>
           </Link>
           <SidebarTrigger
@@ -814,7 +814,7 @@ function AppSidebar({
             </span>
             <span className="grid min-w-0 flex-1 text-xs group-data-[collapsible=icon]:hidden">
               <strong className="truncate">
-                {data?.agent.display_name ?? "TravelBot"}
+                Jaguary
               </strong>
               <small className="truncate text-[10px] text-sidebar-foreground/60">
                 {data ? "Identidade verificada" : "Verificando identidade…"}
@@ -1358,7 +1358,7 @@ function MandateCard({
               >
                 <ConfirmationRequest>
                   <ConfirmationTitle className="grid gap-1 text-foreground">
-                    <strong>Conceder esta autoridade ao TravelBot?</strong>
+                    <strong>Conceder esta autoridade ao Jaguary?</strong>
                     <span className="text-xs font-normal leading-5 text-muted-foreground">
                       Limitada a estes termos e revogável a qualquer momento.
                     </span>
@@ -1369,7 +1369,7 @@ function MandateCard({
                       disabled={action.kind === "activate"}
                       onClick={onActivate}
                     >
-                      {action.kind === "activate" ? "Ativando…" : "Autorizar TravelBot"}
+                      {action.kind === "activate" ? "Ativando…" : "Autorizar Jaguary"}
                     </ConfirmationAction>
                   </ConfirmationActions>
                 </ConfirmationRequest>
@@ -1774,7 +1774,7 @@ export function TrustedSurface() {
           ) : null}
 
           {loadState.kind === "error" ? (
-            <AssistantMessage identified={false} name="Bound">
+            <AssistantMessage identified={false} name="Jaguary">
               <ErrorCard
                 error={loadState.error}
                 onRetry={() => void loadSurface()}
@@ -1858,7 +1858,7 @@ export function TrustedSurface() {
                 className="min-h-12"
                 disabled={loadState.kind !== "ready"}
                 onChange={(event) => setComposerValue(event.currentTarget.value)}
-                placeholder="Converse com o TravelBot…"
+                placeholder="Converse com o Jaguary…"
                 value={composerValue}
               />
             </PromptInputBody>

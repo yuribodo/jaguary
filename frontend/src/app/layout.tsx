@@ -30,9 +30,9 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bound — the authority rail",
+  title: "JaguaryAI — compras autorizadas com evidências",
   description:
-    "Bound decides whether an agent may perform an economic action — identity, mandate, scope, and replay — before any payment.",
+    "JaguaryAI controla identidade, mandato, escopo e evidências antes de qualquer pagamento.",
 };
 
 export default function RootLayout({
