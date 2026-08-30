@@ -138,6 +138,11 @@ const englishMonths = [
   "july", "august", "september", "october", "november", "december",
 ] as const;
 
+const portugueseMonths = [
+  "janeiro", "fevereiro", "marco", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+] as const;
+
 function inferredYear(monthIndex: number, now: Date, explicitYear?: string): number {
   if (explicitYear !== undefined) return Number(explicitYear);
   return now.getUTCFullYear() + (monthIndex < now.getUTCMonth() ? 1 : 0);
@@ -181,9 +186,10 @@ function departureDateFrom(recentMessages: readonly string[], now: Date): string
         if (exactDate[2] === undefined && candidate <= now) year += 1;
         return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
-      const monthOnly = new RegExp(`^\\s*${month}\\s*[.!?]?\\s*$`).test(normalized);
+      const portugueseMonth = portugueseMonths[monthIndex];
+      const monthOnly = new RegExp(`^\\s*(?:${month}|${portugueseMonth})\\s*[.!?]?\\s*$`).test(normalized);
       const monthWithDateContext = new RegExp(
-        `\\b(?:in|during|last\\s+day\\s+of|travel(?:\\s+in|\\s+during)?)\\s+${month}\\b`,
+        `\\b(?:(?:in|during|last\\s+day\\s+of|travel(?:\\s+in|\\s+during)?)\\s+${month}|(?:em|durante|no\\s+mes\\s+de|viaj(?:ar|o|em)(?:\\s+em|\\s+durante)?)\\s+${portugueseMonth})\\b`,
       ).test(normalized);
       if (monthOnly || monthWithDateContext) {
         const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
