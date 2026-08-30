@@ -814,10 +814,10 @@ function AppSidebar({
             </span>
             <span className="grid min-w-0 flex-1 text-xs group-data-[collapsible=icon]:hidden">
               <strong className="truncate">
-                Jaguary
+                Marta
               </strong>
               <small className="truncate text-[10px] text-sidebar-foreground/60">
-                {data ? "Identidade verificada" : "Verificando identidade…"}
+                {data ? "Verified identity" : "Verifying identity…"}
               </small>
             </span>
             <ChevronDownIcon className="size-3 text-sidebar-foreground/50 transition-transform duration-150 group-open/identity:rotate-180 group-data-[collapsible=icon]:hidden" />
