@@ -7,7 +7,7 @@
 | Database | PostgreSQL through Drizzle ORM |
 | Primary source | [`backend/src/db/schema.ts`](../../backend/src/db/schema.ts) |
 
-Jaguary persists 25 tables in five domains. The database is more than storage: it is the transaction boundary that makes mandate usage, nonce consumption, authorization reservation, payment state, and audit evidence agree under concurrency.
+Jaguary persists 26 tables in five domains. The database is more than storage: it is the transaction boundary that makes mandate usage, nonce consumption, authorization reservation, payment state, disputes, and audit evidence agree under concurrency.
 
 [Open the complete domain map](../diagrams/database-domain-map.html) · [Open the detailed authority schema](../diagrams/authority-database-schema.html)
 
@@ -25,7 +25,7 @@ The detailed schema expands the five tables at the core of a purchase: `mandates
 | TravelBot runtime | `travel_conversations`, `travel_messages`, `travel_intent_snapshots`, `travel_model_runs`, `travel_tool_executions`, `travel_approvals`, `travel_sse_events`, `travel_watches`, `travel_watch_checks` | Durable conversation workflow, OpenAI runs, tools, human interruptions, event replay, and autonomous flight watches |
 | Commerce inputs | `payment_credentials`, `checkouts` | Logical provider credential references and merchant-authored economic terms |
 | Authority and replay | `mandates`, `mandate_biometric_consents`, `nonces`, `authorizations` | Human authority, optional biometric evidence, replay prevention, and transactional `ALLOW` reservation |
-| Effect and evidence | `payments`, `orders`, `audit_events` | Provider attempt state, merchant receipt, and correlated append-only evidence |
+| Effect and evidence | `payments`, `orders`, `purchase_disputes`, `audit_events` | Provider attempt state, merchant receipt, deterministic liability outcomes, and correlated append-only evidence |
 
 ## The transaction spine
 
@@ -35,6 +35,7 @@ The detailed schema expands the five tables at the core of a purchase: `mandates
 4. `authorizations` records the deterministic decision and reserves an allowed checkout against mandate usage in the same transaction.
 5. `payments` references the reserved authorization and credential; its state machine records the provider outcome without accepting economic values from the browser.
 6. `orders` closes the path by linking checkout, authorization, payment, and audit evidence to a receipt.
+7. `purchase_disputes` binds one owner claim to that completed graph, stores its evidence hash and liability outcome, and emits a separate three-event audit chain.
 
 No displayed foreign key declares an explicit delete action, so PostgreSQL uses `ON DELETE NO ACTION`. That is appropriate for durable authority and evidence, but deletion tooling must remove dependent records in an explicit, safe order.
 

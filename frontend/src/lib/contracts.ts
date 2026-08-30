@@ -239,6 +239,46 @@ export type OrderReceipt = {
   evidence: AuditEvidence;
 };
 
+export type PurchaseDisputeEvidenceChecks = {
+  receipt_ownership_verified: boolean;
+  commercial_binding_verified: boolean;
+  mandate_authority_verified: boolean;
+  agent_identity_verified: boolean;
+  payment_approved_verified: boolean;
+  audit_chain_verified: boolean;
+};
+
+export type PurchaseDispute = {
+  dispute_id: string;
+  receipt_id: string;
+  order_id: string;
+  authorization_id: string;
+  payment_id: string;
+  principal_id: string;
+  merchant_id: string;
+  reason: "UNRECOGNIZED_PURCHASE";
+  status: "RESOLVED";
+  verdict: "AUTHORIZED" | "UNAUTHORIZED";
+  liable_party: "PRINCIPAL" | "MERCHANT";
+  financial_outcome: "NO_CHARGEBACK" | "CHARGEBACK_RECORDED";
+  resolution_code:
+    | "VALID_MANDATE_AGENT_AND_PAYMENT_EVIDENCE"
+    | "AUTHORITY_EVIDENCE_INCOMPLETE";
+  evidence: {
+    mandate_id: string;
+    agent_id: string;
+    checkout_id: string;
+    policy_version: string;
+    amount: Money;
+    original_purchase_correlation_id: string;
+    checks: PurchaseDisputeEvidenceChecks;
+    evidence_hash: string;
+  };
+  opened_at: string;
+  resolved_at: string;
+  audit_correlation_id: string;
+};
+
 export type AuditTimelineEvent = AuditEvidence & {
   payload: Record<string, unknown> | null;
 };

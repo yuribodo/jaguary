@@ -43,6 +43,7 @@ Suppose a traveler asks for a flight from São Paulo to Córdoba within a fixed 
 4. **The human** reviews those terms and approves an immutable, revocable mandate aligned with the AP2 authorization model.
 5. **Bound Verify** checks identity, signatures, checkout binding, scope, limits, nonce, replay, and state before transactionally reserving `ALLOW`.
 6. **Payment** runs only from that reservation; the outcome, receipt, and correlated evidence are written to the ledger.
+7. **A later dispute** replays the persisted authority, agent, checkout, payment, receipt, and hash-chain evidence to assign liability and record a mock chargeback outcome.
 
 The integration guides explain each boundary and its failure behavior: [OpenAI](docs/technical/openai-travelbot.md), [Google Flights](docs/technical/google-flights-search.md), [Didit](docs/technical/didit-trust.md), [UCP](docs/technical/ucp-commerce.md), and [AP2 / Bound](docs/technical/ap2-bound.md).
 
@@ -59,6 +60,7 @@ The integration guides explain each boundary and its failure behavior: [OpenAI](
 | Enforcement | Pure ordered policy, signed agent requests, nonce protection, idempotency, and transactional reservation |
 | Payments | Durable payment state machine with a deterministic fake executor in the application runtime |
 | Evidence | PostgreSQL-backed conversations, decisions, payment attempts, receipts, and correlated hash-chain audit events |
+| Disputes | Owner-authenticated unrecognized-purchase flow with deterministic evidence adjudication, liability, mock chargeback outcome, and auditable resolution |
 
 ## Current boundaries
 
@@ -66,6 +68,7 @@ This repository is deliberately honest about the difference between a working re
 
 - UCP and AP2 are implemented as normalized demo subsets; the public wire contracts are not yet fully conformant with the upstream specifications.
 - The Yuno executor exists and is tested in isolation, but the application entry point still installs the fake executor and has no complete webhook/reconciliation path.
+- Chargeback recording is deliberately simulated: dispute adjudication is complete and auditable, but no issuer, acquirer, card-network, or Yuno dispute API is called.
 - Merchant checkout state and several signing keys remain process-local, so restart and multi-instance operation require durable key and checkout storage.
 - Multi-passenger Google Flights searches currently derive a unit quote from `adults=1` and multiply it during checkout.
 

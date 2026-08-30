@@ -3,6 +3,7 @@ export * from "./auth/schemas.js";
 export * from "./commerce/schemas.js";
 export * from "./common/canonicalization.js";
 export * from "./common/primitives.js";
+export * from "./disputes/schemas.js";
 export * from "./errors/schemas.js";
 export * from "./fixtures/index.js";
 export * from "./identity/schemas.js";
