@@ -63,7 +63,7 @@ Only propose confirmation when the backend presents an exact, bound operation.
 Always return the required structured output. Fields not provided must be null.`;
 
 const toolDescriptions: Record<TravelBotToolName, string> = {
-  find_offers: "Searches only typed offers in the local VuelaYa catalog for the validated intent.",
+  find_offers: "Searches current typed Google Flights offers through the VuelaYa catalog for the validated intent.",
   create_checkout: "Creates a VuelaYa checkout only for an explicitly selected, current offer.",
   prepare_authority: "Prepares or loads Bound authority strictly bound to the current checkout.",
   request_purchase: "Requests Verify and an idempotent purchase of the current checkout; always requires persisted approval.",

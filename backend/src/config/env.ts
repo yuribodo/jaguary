@@ -97,6 +97,9 @@ const envSchema = z.object({
   LANGFUSE_SECRET_KEY: yunoSecretSchema.optional(),
   LANGFUSE_BASE_URL: httpsUrlSchema.optional(),
   RELEASE: safeIdentifierSchema.optional(),
+  SERPAPI_API_KEY: yunoSecretSchema.optional(),
+  FLIGHT_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(59_000).default(15_000),
+  GOOGLE_FLIGHTS_DEEP_SEARCH: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 }).superRefine((value, context) => {
   if (value.YUNO_ENABLED) {
     const requiredFields = [
@@ -186,11 +189,19 @@ export type LangfuseConfig = { enabled: false } | {
   baseUrl: string;
 };
 
-export type Env = Omit<ParsedEnv, `YUNO_${string}` | `OPENAI_${string}` | `TRAVELBOT_${string}` | `LANGFUSE_${string}`> & {
+export type FlightSearchConfig = { enabled: false } | {
+  enabled: true;
+  apiKey: string;
+  timeoutMs: number;
+  deepSearch: boolean;
+};
+
+export type Env = Omit<ParsedEnv, `YUNO_${string}` | `OPENAI_${string}` | `TRAVELBOT_${string}` | `LANGFUSE_${string}` | "SERPAPI_API_KEY" | "FLIGHT_SEARCH_TIMEOUT_MS" | "GOOGLE_FLIGHTS_DEEP_SEARCH"> & {
   yuno: YunoConfig;
   openai: OpenAIConfig;
   travelbot: TravelBotRuntimeConfig;
   langfuse: LangfuseConfig;
+  flightSearch: FlightSearchConfig;
 };
 
 export class ConfigurationError extends Error {
@@ -228,6 +239,9 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
     LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY,
     LANGFUSE_BASE_URL,
+    SERPAPI_API_KEY,
+    FLIGHT_SEARCH_TIMEOUT_MS,
+    GOOGLE_FLIGHTS_DEEP_SEARCH,
     ...environment
   } = result.data;
   const openai: OpenAIConfig = OPENAI_API_KEY === undefined || OPENAI_MODEL === undefined
@@ -256,13 +270,22 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
       secretKey: LANGFUSE_SECRET_KEY!,
       baseUrl: LANGFUSE_BASE_URL!.replace(/\/$/, ""),
     };
-  if (!YUNO_ENABLED) return { ...environment, yuno: { enabled: false }, openai, travelbot, langfuse };
+  const flightSearch: FlightSearchConfig = SERPAPI_API_KEY === undefined
+    ? { enabled: false }
+    : {
+      enabled: true,
+      apiKey: SERPAPI_API_KEY,
+      timeoutMs: FLIGHT_SEARCH_TIMEOUT_MS,
+      deepSearch: GOOGLE_FLIGHTS_DEEP_SEARCH,
+    };
+  if (!YUNO_ENABLED) return { ...environment, yuno: { enabled: false }, openai, travelbot, langfuse, flightSearch };
 
   return {
     ...environment,
     openai,
     travelbot,
     langfuse,
+    flightSearch,
     yuno: {
       enabled: true,
       baseUrl: YUNO_BASE_URL!.replace(/\/$/, ""),

@@ -54,7 +54,7 @@ import {
   type LlmTelemetryPort,
   type TravelBotEventSource,
 } from "./modules/travelbot/index.js";
-import { listVuelaYaOffers } from "./modules/vuelaya/catalog.js";
+import { VuelaYaCatalog, type VuelaYaCatalogPort } from "./modules/vuelaya/catalog.js";
 
 export interface BuildAppOptions {
   corsOrigin?: string;
@@ -80,6 +80,7 @@ export interface BuildAppOptions {
   travelBotCredentialId?: string;
   travelBotApprovalStateProtector?: ApprovalStateProtectorPort;
   llmTelemetry?: LlmTelemetryPort;
+  flightCatalog?: VuelaYaCatalogPort;
 }
 
 const redactedLogPaths = [
@@ -104,6 +105,7 @@ const redactedLogPaths = [
   "LANGFUSE_SECRET_KEY",
   "TRAVELBOT_AGENT_PRIVATE_JWK",
   "TRAVELBOT_APPROVAL_ENCRYPTION_KEY",
+  "SERPAPI_API_KEY",
   "*.sdk_run_state",
 ];
 
@@ -187,9 +189,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const receiptStore = database === undefined || ledger === undefined
     ? undefined
     : new PostgresReceiptStore(database, ledger);
-  const merchant = new VuelaYaMerchant(signer, clock);
+  const flightCatalog = options.flightCatalog ?? new VuelaYaCatalog();
+  const merchant = new VuelaYaMerchant(signer, clock, flightCatalog);
   await app.register(vuelaYaRoutes, {
     merchant,
+    catalog: flightCatalog,
     ...(receiptStore === undefined ? {} : { orders: receiptStore }),
   });
   let mandateService: MandateService | undefined;
@@ -272,6 +276,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         clock,
         credentialId: options.travelBotCredentialId,
         audit: ledger,
+        catalog: flightCatalog,
       });
       travelBotService = new TravelBotService({
         repository,
@@ -292,7 +297,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       travelBotService = new TravelBotService({
         repository,
         runtime: new UnavailableAgentRuntime(),
-        tools: { findOffers: async () => listVuelaYaOffers() },
+        tools: { findOffers: async (intent) => flightCatalog.search(intent) },
         clock,
         model,
       });

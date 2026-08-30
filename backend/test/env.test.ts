@@ -18,10 +18,31 @@ test("database configuration accepts only PostgreSQL URLs", () => {
   assert.deepEqual(env.openai, { enabled: false });
   assert.deepEqual(env.travelbot, { enabled: false });
   assert.deepEqual(env.langfuse, { enabled: false });
+  assert.deepEqual(env.flightSearch, { enabled: false });
   assert.throws(
     () => loadEnv({ ...validEnvironment, DATABASE_URL: "sqlite::memory:" }),
     ConfigurationError,
   );
+});
+
+test("Google Flights search is backend-only, optional, and validates its controls", () => {
+  const env = loadEnv({
+    ...validEnvironment,
+    SERPAPI_API_KEY: "serpapi-secret",
+    FLIGHT_SEARCH_TIMEOUT_MS: "12000",
+    GOOGLE_FLIGHTS_DEEP_SEARCH: "true",
+  });
+  assert.deepEqual(env.flightSearch, {
+    enabled: true,
+    apiKey: "serpapi-secret",
+    timeoutMs: 12_000,
+    deepSearch: true,
+  });
+  assert.throws(() => loadEnv({
+    ...validEnvironment,
+    SERPAPI_API_KEY: "serpapi-secret",
+    FLIGHT_SEARCH_TIMEOUT_MS: "60000",
+  }), ConfigurationError);
 });
 
 test("OpenAI chat configuration validates the model and fails closed when incomplete", () => {
