@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:test": "tsx src/db/migrate.ts --test",
+    "db:demo:reset": "tsx src/db/reset-demo.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/**/*.test.ts",
@@ -17,10 +18,15 @@
   },
   "dependencies": {
     "@fastify/cors": "11.3.0",
+    "@langfuse/otel": "5.11.0",
+    "@langfuse/tracing": "5.11.0",
+    "@openai/agents": "0.17.0",
+    "@opentelemetry/sdk-node": "0.209.0",
     "dotenv": "17.4.2",
     "drizzle-orm": "0.45.2",
     "fastify": "5.12.1",
     "jose": "6.2.10",
+    "openai": "7.2.0",
     "pg": "8.23.0",
     "zod": "4.5.2"
   },

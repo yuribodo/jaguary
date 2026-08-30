@@ -50,6 +50,13 @@
       "when": 1788041736364,
       "tag": "0006_large_fallen_one",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788043273295,
+      "tag": "0007_fat_black_cat",
+      "breakpoints": true
     }
   ]
 }

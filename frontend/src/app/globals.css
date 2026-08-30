@@ -5,33 +5,36 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f6f4ee;
-  --foreground: #191a17;
-  --card: #fffefa;
-  --card-foreground: #191a17;
-  --popover: #fffefa;
-  --popover-foreground: #191a17;
-  --primary: #191a17;
-  --primary-foreground: #fffefa;
-  --secondary: #ebe8df;
-  --secondary-foreground: #191a17;
-  --muted: #eeece5;
-  --muted-foreground: #686a63;
-  --accent: #ebe8df;
-  --accent-foreground: #191a17;
-  --destructive: #cf5d49;
-  --border: #d9d6cd;
-  --input: #d4d1c8;
-  --ring: #334de8;
-  --radius: 0.875rem;
-  --sidebar: #efede6;
-  --sidebar-foreground: #191a17;
-  --sidebar-primary: #191a17;
-  --sidebar-primary-foreground: #fffefa;
-  --sidebar-accent: #e3e0d7;
-  --sidebar-accent-foreground: #191a17;
-  --sidebar-border: #d6d2c8;
-  --sidebar-ring: #334de8;
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #202124;
+  --card: #ffffff;
+  --card-foreground: #202124;
+  --popover: #ffffff;
+  --popover-foreground: #202124;
+  --primary: #202124;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f3f5;
+  --secondary-foreground: #202124;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #e9ecf2;
+  --accent-foreground: #202124;
+  --destructive: #c84b4b;
+  --border: #dfe2e7;
+  --input: #d4d8df;
+  --ring: #4969d8;
+  --radius: 0.55rem;
+  --sidebar: #f5f6f8;
+  --sidebar-foreground: #292b2f;
+  --sidebar-primary: #202124;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9ebef;
+  --sidebar-accent-foreground: #202124;
+  --sidebar-border: #dfe2e7;
+  --sidebar-ring: #4969d8;
+  --panel: #fafbfc;
+  --workspace: #ffffff;
 }
 
 @theme inline {
@@ -61,6 +64,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-panel: var(--panel);
+  --color-workspace: var(--workspace);
   --radius-sm: calc(var(--radius) * 0.7);
   --radius-md: calc(var(--radius) * 0.85);
   --radius-lg: var(--radius);
@@ -84,7 +89,95 @@
   }
 
   ::selection {
-    background: rgb(51 77 232 / 16%);
+    background: rgb(73 105 216 / 18%);
+  }
+
+  * {
+    scrollbar-color: #c6cad1 transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  .panel-label {
+    color: var(--muted-foreground);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bound-popover {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transform-origin: top right;
+    transition:
+      opacity 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+      display 160ms allow-discrete;
+  }
+
+  .bound-popover-bottom {
+    transform-origin: bottom left;
+  }
+
+  details:not([open]) > .bound-popover {
+    display: none;
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+
+  details:not([open]) > .bound-popover-bottom {
+    transform: translateY(3px) scale(0.98);
+  }
+
+  .bound-disclosure {
+    display: grid !important;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows 220ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  details[open] > .bound-disclosure {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+
+  @starting-style {
+    details[open] > .bound-popover {
+      opacity: 0;
+      transform: translateY(-3px) scale(0.98);
+    }
+
+    details[open] > .bound-popover-bottom {
+      transform: translateY(3px) scale(0.98);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: scale(0.98);
   }
 }
 

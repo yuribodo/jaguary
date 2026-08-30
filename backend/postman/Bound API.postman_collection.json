@@ -45,6 +45,11 @@
       "key": "receiptId",
       "value": "receipt_authorization_vy_471_001",
       "type": "string"
+    },
+    {
+      "key": "conversationId",
+      "value": "00000000-0000-4000-8000-000000000000",
+      "type": "string"
     }
   ],
   "event": [
@@ -829,6 +834,100 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "TravelBot chat",
+      "item": [
+        {
+          "name": "Create conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_conversation_create_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "corr_postman_conversation_create_001", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"principal_id\":\"principal_marta\",\"agent_id\":\"agent_travelbot\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "conversations"]
+            },
+            "description": "Creates the durable PostgreSQL TravelBot conversation; requires the demo TravelBot identity seed."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Conversation is created\", function () { pm.response.to.have.status(201); });",
+                "pm.collectionVariables.set(\"conversationId\", pm.response.json().conversation_id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Read conversation",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Correlation-Id", "value": "corr_postman_conversation_read_001", "type": "text" }],
+            "url": {
+              "raw": "{{baseUrl}}/v1/conversations/{{conversationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "conversations", "{{conversationId}}"]
+            },
+            "description": "Reads normalized state and ordered sanitized messages without contacting OpenAI."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": ["pm.test(\"Conversation is readable\", function () { pm.response.to.have.status(200); });"]
+            }
+          }]
+        },
+        {
+          "name": "Append message as SSE",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "idem_postman_conversation_message_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "corr_postman_conversation_message_001", "type": "text" },
+              { "key": "Accept", "value": "text/event-stream", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"content\":\"Quero ir de GRU para COR em 15/09/2026, uma pessoa, econômica, até USD 150.\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/conversations/{{conversationId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "conversations", "{{conversationId}}", "messages"]
+            },
+            "description": "Returns persisted SSE events when OpenAI is configured; otherwise returns the explicit sanitized 503 unavailable response."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"Chat succeeds or is explicitly unavailable\", function () {",
+                "  pm.expect([200, 503]).to.include(pm.response.code);",
+                "});"
+              ]
+            }
+          }]
         }
       ]
     },

@@ -15,10 +15,52 @@ test("database configuration accepts only PostgreSQL URLs", () => {
 
   assert.equal(env.DATABASE_URL, validEnvironment.DATABASE_URL);
   assert.deepEqual(env.yuno, { enabled: false });
+  assert.deepEqual(env.openai, { enabled: false });
+  assert.deepEqual(env.travelbot, { enabled: false });
+  assert.deepEqual(env.langfuse, { enabled: false });
   assert.throws(
     () => loadEnv({ ...validEnvironment, DATABASE_URL: "sqlite::memory:" }),
     ConfigurationError,
   );
+});
+
+test("OpenAI chat configuration validates the model and fails closed when incomplete", () => {
+  const secret = "sk-secret-must-never-appear";
+  assert.throws(
+    () => loadEnv({ ...validEnvironment, OPENAI_API_KEY: secret }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConfigurationError);
+      assert.match(error.message, /OPENAI_MODEL/);
+      assert.doesNotMatch(error.message, new RegExp(secret));
+      return true;
+    },
+  );
+  assert.throws(
+    () => loadEnv({
+      ...validEnvironment,
+      OPENAI_API_KEY: secret,
+      OPENAI_MODEL: "model with spaces",
+    }),
+    ConfigurationError,
+  );
+  assert.deepEqual(loadEnv({
+    ...validEnvironment,
+    OPENAI_API_KEY: secret,
+    OPENAI_MODEL: "gpt-5.2",
+    OPENAI_REQUEST_TIMEOUT_MS: "15000",
+    TRAVELBOT_AGENT_PRIVATE_JWK: JSON.stringify({
+      kty: "EC", crv: "P-256", x: "x", y: "y", d: "private-never-log",
+    }),
+    TRAVELBOT_AGENT_KEY_ID: "key_travelbot_test",
+    TRAVELBOT_AGENT_BUILD_FINGERPRINT: "a".repeat(64),
+    TRAVELBOT_DEMO_CREDENTIAL_ID: "cred_demo_marta_visa",
+    TRAVELBOT_APPROVAL_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
+  }).openai, {
+    enabled: true,
+    apiKey: secret,
+    model: "gpt-5.2",
+    requestTimeoutMs: 15_000,
+  });
 });
 
 test("Yuno is disabled by default and incomplete enablement fails closed", () => {

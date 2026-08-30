@@ -16,6 +16,7 @@ import {
   normalizedAuthorizationFixture,
   normalizedCheckoutFixture,
   normalizedCheckoutSchema,
+  offerCandidateFixture,
   orderReceiptSchema,
   paymentResultSchema,
   purchaseIntentFixture,
@@ -35,6 +36,7 @@ import {
 } from "../src/db/database.js";
 import { migrateDatabase } from "../src/db/migrate.js";
 import { DrizzleAgentIdentityRegistry } from "../src/modules/identity/registry.js";
+import { AgentRequestVerifier } from "../src/modules/identity/verifier.js";
 import {
   agents,
   auditEvents,
@@ -45,19 +47,33 @@ import {
   orders,
   paymentCredentials,
   payments,
+  travelMessages,
+  travelModelRuns,
+  travelToolExecutions,
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
 import { MandateService } from "../src/modules/mandates/index.js";
 import {
   AuditLedgerService,
   PostgresAuditEventRepository,
+  PostgresReceiptStore,
   validateAuditChain,
 } from "../src/modules/ledger/index.js";
 import {
   FakePaymentExecutor,
   PostgresPaymentClaimStore,
+  PaymentService,
 } from "../src/modules/payments/index.js";
+import { PostgresAuthorizationReservationStore, VerifyOrchestrator } from "../src/modules/verify/index.js";
+import { verifyCheckoutIntegrity, VuelaYaMerchant } from "../src/modules/vuelaya/merchant.js";
 import { createTestAgentSigner } from "./support/agent-signing.js";
+import {
+  PostgresTravelBotRepository,
+  ApplicationTravelBotTools,
+  TravelBotService,
+  type AgentRuntimePort,
+} from "../src/modules/travelbot/index.js";
+import { listVuelaYaOffers } from "../src/modules/vuelaya/catalog.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const integrationTest = testDatabaseUrl === undefined ? test.skip : test;
@@ -496,6 +512,13 @@ beforeEach(async () => {
   if (administrationPool === undefined) return;
   await administrationPool.query(`
     TRUNCATE TABLE
+      travel_approvals,
+      travel_tool_executions,
+      travel_sse_events,
+      travel_model_runs,
+      travel_intent_snapshots,
+      travel_messages,
+      travel_conversations,
       orders,
       audit_events,
       payments,
@@ -532,8 +555,300 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
       "orders",
       "payment_credentials",
       "payments",
+      "travel_approvals",
+      "travel_conversations",
+      "travel_intent_snapshots",
+      "travel_messages",
+      "travel_model_runs",
+      "travel_sse_events",
+      "travel_tool_executions",
     ],
   );
+});
+
+integrationTest("TravelBot persists sanitized idempotent turns, tool executions and recoverable SSE events", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-integration-model");
+  let modelRuns = 0;
+  const runtime: AgentRuntimePort = {
+    async run() {
+      modelRuns += 1;
+      return {
+        proposal: {
+          origin_iata: "GRU",
+          destination_iata: "COR",
+          departure_date: "2026-09-15",
+          passenger_count: 1,
+          cabin: "ECONOMY",
+          max_total_budget: { amount: 15000, currency: "USD" },
+          selected_offer_id: null,
+          explicit_confirmation: null,
+          ambiguities: [],
+          requested_action: "FIND_OFFERS",
+        },
+        assistant_message: "Oferta local encontrada.",
+      };
+    },
+  };
+  const service = new TravelBotService({
+    repository,
+    runtime,
+    tools: { findOffers: async () => listVuelaYaOffers() },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+    model: "fake-integration-model",
+  });
+  const conversation = await service.createConversation({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_travelbot_integration_create_001",
+    correlation_id: "corr_travelbot_integration_create_001",
+  });
+  const command = {
+    conversation_id: conversation.conversation_id,
+    content: "GRU para COR; api_key=sk-supersecret123456",
+    idempotency_key: "idem_travelbot_integration_message_001",
+    correlation_id: "corr_travelbot_integration_message_001",
+  };
+  const first = await service.postMessage(command);
+  const replay = await service.postMessage(command);
+  assert.deepEqual(replay, first);
+  assert.equal(modelRuns, 1);
+  assert.equal(first.state, "AWAITING_OFFER_SELECTION");
+  const messages = await database.db.select().from(travelMessages);
+  assert.equal(messages.some(({ content }) => content.includes("sk-supersecret")), false);
+  assert.equal((await database.db.select().from(travelModelRuns)).length, 1);
+  assert.equal((await database.db.select().from(travelToolExecutions)).length, 1);
+  const events = await repository.listSseEvents(conversation.conversation_id, 1);
+  assert.equal(events.length, 4);
+  assert.equal(events.at(-1)?.event_type, "turn.completed");
+});
+
+integrationTest("TravelBot serializes concurrent messages on one conversation", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-concurrency-model");
+  const runtime: AgentRuntimePort = {
+    async run() {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      return {
+        proposal: {
+          origin_iata: null,
+          destination_iata: null,
+          departure_date: null,
+          passenger_count: null,
+          cabin: null,
+          max_total_budget: null,
+          selected_offer_id: null,
+          explicit_confirmation: null,
+          ambiguities: [],
+          requested_action: "NONE",
+        },
+        assistant_message: "Informe os dados.",
+      };
+    },
+  };
+  const service = new TravelBotService({
+    repository,
+    runtime,
+    tools: { findOffers: async () => [] },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_travelbot_concurrent_create_001",
+    correlation_id: "corr_travelbot_concurrent_create_001",
+  });
+  const results = await Promise.allSettled([1, 2].map((suffix) => service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: `mensagem ${suffix}`,
+    idempotency_key: `idem_travelbot_concurrent_message_00${suffix}`,
+    correlation_id: `corr_travelbot_concurrent_message_00${suffix}`,
+  })));
+  assert.equal(results.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(results.filter(({ status }) => status === "rejected").length, 1);
+});
+
+integrationTest("a crashed TravelBot run lease is reclaimed with the same run and message", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-restart-model");
+  const startedAt = new Date("2026-08-29T12:04:01.000Z");
+  const conversation = await repository.create({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_travelbot_restart_create_001",
+    correlation_id: "corr_travelbot_restart_create_001",
+  }, startedAt);
+  const command = {
+    conversation_id: conversation.conversation_id,
+    content: "mensagem antes do restart",
+    idempotency_key: "idem_travelbot_restart_message_001",
+    correlation_id: "corr_travelbot_restart_message_001",
+  };
+  const first = await repository.claimTurn(command, startedAt);
+  assert.equal(first.kind, "CLAIMED");
+  await assert.rejects(repository.claimTurn(command, new Date(startedAt.getTime() + 29_000)));
+  const reclaimed = await repository.claimTurn(command, new Date(startedAt.getTime() + 31_000));
+  assert.equal(reclaimed.kind, "CLAIMED");
+  if (first.kind === "CLAIMED" && reclaimed.kind === "CLAIMED") {
+    assert.equal(reclaimed.claim.run_id, first.claim.run_id);
+  }
+  assert.equal((await database.db.select().from(travelMessages)).length, 1);
+  assert.equal((await database.db.select().from(travelModelRuns)).length, 1);
+});
+
+integrationTest("canonical GRU to COR chat completes through Verify, fake payment, receipt and audit", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-29T12:04:01.000Z");
+  const clock = { now: () => now };
+  const authoritySigner = new EphemeralEs256Signer();
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const registry = new DrizzleAgentIdentityRegistry(database, clock, ledger);
+  const agentSigner = await createTestAgentSigner();
+  await registry.register({
+    agent_id: agentSigner.agent.agent_id,
+    principal_id: agentSigner.agent.principal_id,
+    display_name: agentSigner.agent.display_name,
+    status: agentSigner.agent.status,
+    build_fingerprint: agentSigner.agent.build_fingerprint,
+    verification_key: agentSigner.agent.verification_key,
+  }, {
+    idempotencyKey: "idem_chat_happy_agent_001",
+    correlationId: "corr_chat_happy_agent_001",
+  });
+  const credentialId = "credential_chat_happy_001";
+  await database.db.insert(paymentCredentials).values({
+    credentialId,
+    principalId: agentSigner.agent.principal_id,
+    display: "Visa •••• 4242",
+  });
+  const merchant = new VuelaYaMerchant(authoritySigner, clock);
+  const mandatesService = new MandateService(database, authoritySigner, clock, ledger);
+  const verifier = new VerifyOrchestrator({
+    agentRegistry: registry,
+    agentVerifier: new AgentRequestVerifier(registry, clock),
+    mandateLoader: mandatesService,
+    mandateSignatureVerifier: authoritySigner,
+    checkoutVerifier: {
+      async verify(checkout) {
+        try {
+          return canonicalizeJson(merchant.getCheckout(checkout.terms.checkout_id)) === canonicalizeJson(checkout)
+            && await verifyCheckoutIntegrity(checkout, authoritySigner);
+        } catch {
+          return false;
+        }
+      },
+    },
+    reservationStore: new PostgresAuthorizationReservationStore(database, ledger),
+    clock,
+    humanApprovalRequired: () => false,
+  });
+  const receipts = new PostgresReceiptStore(database, ledger);
+  const paymentService = new PaymentService(
+    new PostgresPaymentClaimStore(database, clock, ledger),
+    new FakePaymentExecutor({ outcome: "APPROVED", occurredAt: now.toISOString() }),
+  );
+  const tools = new ApplicationTravelBotTools({
+    merchant,
+    mandates: mandatesService,
+    verify: verifier,
+    payments: paymentService,
+    receipts,
+    proofFactory: {
+      sign: async (input) => agentSigner.sign(input.body, {
+        method: "POST",
+        route: "/verify",
+        agent_id: input.agent_id,
+        nonce: input.nonce,
+        issued_at: input.issued_at,
+        expires_at: input.expires_at,
+      }),
+    },
+    clock,
+    credentialId,
+    audit: ledger,
+  });
+  const runtime: AgentRuntimePort = {
+    async run(request) {
+      const base = {
+        origin_iata: null,
+        destination_iata: null,
+        departure_date: null,
+        passenger_count: null,
+        cabin: null,
+        max_total_budget: null,
+        selected_offer_id: null,
+        explicit_confirmation: null,
+        ambiguities: [],
+        requested_action: "NONE" as const,
+      };
+      if (request.user_message === "pedido completo") {
+        return {
+          proposal: {
+            ...base,
+            origin_iata: "GRU",
+            destination_iata: "COR",
+            departure_date: "2026-09-15",
+            passenger_count: 1,
+            cabin: "ECONOMY",
+            max_total_budget: { amount: 15000, currency: "USD" },
+            requested_action: "FIND_OFFERS",
+          },
+          assistant_message: "Buscando oferta.",
+        };
+      }
+      if (request.user_message === "seleciono") {
+        return {
+          proposal: {
+            ...base,
+            selected_offer_id: offerCandidateFixture.offer_id,
+            requested_action: "CREATE_CHECKOUT",
+          },
+          assistant_message: "Preparando checkout.",
+        };
+      }
+      return {
+        proposal: { ...base, explicit_confirmation: "CONFIRM", requested_action: "REQUEST_PURCHASE" },
+        assistant_message: "Confirmado.",
+      };
+    },
+  };
+  const repository = new PostgresTravelBotRepository(database, "fake-happy-model");
+  const chat = new TravelBotService({ repository, runtime, tools, clock, model: "fake-happy-model" });
+  const conversation = await chat.createConversation({
+    principal_id: agentSigner.agent.principal_id,
+    agent_id: agentSigner.agent.agent_id,
+    idempotency_key: "idem_chat_happy_create_001",
+    correlation_id: "corr_chat_happy_create_001",
+  });
+  await chat.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "pedido completo",
+    idempotency_key: "idem_chat_happy_request_001",
+    correlation_id: "corr_chat_happy_request_001",
+  });
+  await chat.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "seleciono",
+    idempotency_key: "idem_chat_happy_select_001",
+    correlation_id: "corr_chat_happy_select_001",
+  });
+  const completed = await chat.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "confirmo",
+    idempotency_key: "idem_chat_happy_confirm_001",
+    correlation_id: "corr_chat_happy_confirm_001",
+  });
+  assert.equal(completed.state, "COMPLETED");
+  assert.ok(completed.operation.authorization_id);
+  assert.ok(completed.operation.receipt_id);
+  assert.equal((await database.db.select().from(payments)).length, 1);
+  assert.equal((await database.db.select().from(orders)).length, 1);
+  const timeline = await ledger.getTimeline("corr_chat_happy_confirm_001");
+  assert.equal(timeline.events.some(({ event_type: type }) => type === "payment.approved"), true);
+  assert.equal(timeline.events.some(({ event_type: type }) => type === "order.confirmed"), true);
 });
 
 integrationTest("a successful transaction commits all writes", async () => {

@@ -46,6 +46,7 @@ pnpm check
 - [ADR-002 — Commerce, authorization and payment protocol layering](docs/adr/ADR-002-commerce-protocol-layering.md)
 - [ADR-003 — Agent identity assurance and KYA evolution](docs/adr/ADR-003-agent-identity-assurance.md)
 - [ADR-004 — Credential enrollment and external checkout](docs/adr/ADR-004-credential-enrollment-and-external-checkout.md)
+- [ADR-005 — Deterministic TravelBot over OpenAI Agents SDK](docs/adr/ADR-005-travelbot-agents-runtime.md)
 
 ## MVP sentence
 
