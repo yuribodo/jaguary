@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { AgentAttestationProviderPort, AgentTrustSnapshot } from "../src/contracts/v1/index.js";
+import type { AgentAttestationProviderPort, AgentTrustRepositoryPort, AgentTrustSnapshot } from "../src/contracts/v1/index.js";
+import type { TransactionClient } from "../src/db/database.js";
 import { BoundAgentPassportService } from "../src/modules/trust/passport.js";
 import { agentBindingHash, evaluateAgentEligibility } from "../src/modules/trust/eligibility.js";
 import { DeterministicFakeAttestationProvider } from "../src/modules/trust/fake-provider.js";
 import { InMemoryAgentTrustRepository } from "../src/modules/trust/memory-repository.js";
-import { AgentTrustService } from "../src/modules/trust/service.js";
+import { AgentEligibilityService, AgentTrustService } from "../src/modules/trust/service.js";
 
 const now = new Date("2026-08-29T12:00:00.000Z");
 function trust(overrides: Partial<AgentTrustSnapshot> = {}): AgentTrustSnapshot {
@@ -84,6 +85,18 @@ test("provider unavailability is persisted as ERROR and never becomes eligible i
   const started = await service.start(session, "agent_travelbot", { consent: true, idempotencyKey: "idem_provider_down", correlationId: "corr_provider_down" });
   assert.equal(started.status, "ERROR");
   assert.equal((await service.assurance(session, "agent_travelbot")).eligibility.reason, "agent_attestation_provider_unavailable");
+});
+
+test("a revocation committed after precheck is reloaded and denied at the reservation seam", async () => {
+  const repository = {
+    getCurrent: async () => trust(),
+    getCurrentInTransaction: async () => trust({ attestation_status: "REVOKED" }),
+  } as unknown as AgentTrustRepositoryPort & { getCurrentInTransaction(transaction: TransactionClient, agentId: string, at: Date): Promise<AgentTrustSnapshot> };
+  const eligibility = new AgentEligibilityService(repository);
+  assert.equal((await eligibility.evaluate("agent_travelbot", "principal_marta", now)).eligible, true);
+  const reserved = await eligibility.evaluateInTransaction({} as TransactionClient, "agent_travelbot", "principal_marta", now);
+  assert.equal(reserved.eligible, false);
+  assert.equal(reserved.reason, "agent_attestation_revoked");
 });
 
 test("Bound passport signs privacy-safe claims and verifies JWKS, audience, expiry and binding", async () => {

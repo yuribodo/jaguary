@@ -949,12 +949,6 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
     idempotency_key: "idem_chat_happy_request_001",
     correlation_id: "corr_chat_happy_request_001",
   });
-  await chat.postMessage({
-    conversation_id: conversation.conversation_id,
-    content: "seleciono",
-    idempotency_key: "idem_chat_happy_select_001",
-    correlation_id: "corr_chat_happy_select_001",
-  });
   const completed = await chat.postMessage({
     conversation_id: conversation.conversation_id,
     content: "confirmo",
