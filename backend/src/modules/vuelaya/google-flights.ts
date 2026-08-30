@@ -50,6 +50,12 @@ export interface GoogleFlightsSearchOptions {
   fetch?: typeof fetch;
 }
 
+interface FlightSearchHttpResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  json(): Promise<unknown>;
+}
+
 type SearchableTravelIntent = TravelIntent & {
   origin_iata: string;
   destination_iata: string;
@@ -162,7 +168,7 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
     });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
-    let response: Response;
+    let response: FlightSearchHttpResponse;
     try {
       response = await this.#fetch(`https://serpapi.com/search.json?${params}`, {
         headers: { Accept: "application/json" },
