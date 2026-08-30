@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { offerCandidateFixture } from "../src/contracts/v1/index.js";
+import { offerCandidateFixture, offerCandidateSchema } from "../src/contracts/v1/index.js";
 import {
   AgentRuntimeInvalidOutputError,
   AgentRuntimeUnavailableError,
@@ -203,7 +203,7 @@ test("delegated airport and month choices are retained without asking for an exa
   assert.deepEqual(second.missing_fields, []);
   assert.equal(
     second.messages.at(-1)?.content,
-    "I found no flights matching this search. I can try another airport or date range.",
+    "I found no flights matching these criteria. I can try another airport, date, or budget.",
   );
 });
 
@@ -347,6 +347,62 @@ test("natural month expressions complete a pending travel search", async () => {
     assert.deepEqual(result.missing_fields, [], scenario.phrase);
     assert.equal(searched, true, scenario.phrase);
   }
+});
+
+test("a flexible month reports the exact earliest date selected by the provider", async () => {
+  const repository = new InMemoryTravelBotRepository();
+  const monthlyOffer = offerCandidateSchema.parse({
+    ...offerCandidateFixture,
+    total: { amount: 100_000, currency: "BRL" },
+    fulfillment: {
+      ...offerCandidateFixture.fulfillment,
+      destination: "GIG",
+      departure_at: "2026-09-01T10:00:00.000Z",
+      arrival_at: "2026-09-01T11:05:00.000Z",
+      departure_local: "2026-09-01T07:00",
+      arrival_local: "2026-09-01T08:05",
+    },
+  });
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: "GRU",
+            destination_iata: "GIG",
+            departure_date: "2026-09",
+            passenger_count: 1,
+            cabin: "ECONOMY",
+            max_total_budget: { amount: 300_000, currency: "BRL" },
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [],
+            requested_action: "FIND_OFFERS",
+          },
+          assistant_message: "Vou buscar.",
+        };
+      },
+    },
+    tools: { findOffers: async () => [monthlyOffer] },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_monthly_offer_create_001",
+    correlation_id: "corr_monthly_offer_create_001",
+  });
+
+  const result = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Quero sair de GRU para o Rio em setembro, até R$ 3.000.",
+    idempotency_key: "idem_monthly_offer_message_001",
+    correlation_id: "corr_monthly_offer_message_001",
+  });
+
+  assert.equal(result.state, "AWAITING_OFFER_SELECTION");
+  assert.match(result.messages.at(-1)?.content ?? "", /first date.*01\/09\/2026/i);
 });
 
 test("invalid or refused model output falls back without changing business state", async () => {

@@ -83,12 +83,27 @@ function selectPreferredOffer(offers: readonly TravelBotConversation["offers"][n
   ))[0];
 }
 
-function approvalMessage(offer: TravelBotConversation["offers"][number]): string {
+function flexibleDateNotice(
+  requestedDate: string | null,
+  offer: TravelBotConversation["offers"][number],
+): string {
+  if (requestedDate === null || !/^\d{4}-\d{2}$/.test(requestedDate)) return "";
+  const selectedDate = (
+    offer.fulfillment.departure_local
+    ?? offer.fulfillment.departure_at
+  ).slice(0, 10).split("-").toReversed().join("/");
+  return ` You provided only the month, so I used the first date with a matching flight: ${selectedDate}.`;
+}
+
+function approvalMessage(
+  offer: TravelBotConversation["offers"][number],
+  requestedDate: string | null,
+): string {
   const departure = new Date(offer.fulfillment.departure_at).toISOString();
   const arrival = new Date(offer.fulfillment.arrival_at).toISOString();
   const total = `${offer.total.currency} ${(offer.total.amount / 100).toFixed(2)}`;
   return [
-    `I chose the best matching flight: ${offer.fulfillment.origin} → ${offer.fulfillment.destination}.`,
+    `I chose the best matching flight: ${offer.fulfillment.origin} → ${offer.fulfillment.destination}.${flexibleDateNotice(requestedDate, offer)}`,
     `Departure ${departure}; arrival ${arrival}; ${offer.fulfillment.cabin.toLowerCase()} cabin; total ${total}.`,
     `Official flight: ${offer.source_url}`,
     `Explicitly confirm or deny this ${total} purchase from ${offer.merchant_id}.`,
@@ -303,7 +318,7 @@ export class TravelBotService {
           },
         };
         state = "AWAITING_AUTHORITY_CONFIRMATION";
-        assistantMessage = approvalMessage(selected);
+        assistantMessage = approvalMessage(selected, applied.intent.departure_date);
         return true;
       };
 
@@ -429,16 +444,25 @@ export class TravelBotService {
             receipt_id: result.receipt_id ?? null,
             reason_code: result.reason_code ?? null,
           }));
-          state = purchase.status === "COMPLETED" ? "COMPLETED" : "FAILED";
-          operation = {
-            ...operation,
-            authorization_id: purchase.authorization_id ?? null,
-            receipt_id: purchase.receipt_id ?? null,
-            pending_approval: null,
-          };
-          assistantMessage = purchase.status === "COMPLETED"
-            ? `Purchase completed. Receipt ${purchase.receipt_id}.`
-            : `Purchase not completed (${purchase.reason_code ?? "rejected"}).`;
+          if (purchase.status === "FAILED" && purchase.reason_code === "checkout_stale") {
+            applied.intent.selected_offer_id = null;
+            applied.intent.confirmation = null;
+            offers = [];
+            operation = emptyOperation();
+            state = "READY_TO_SEARCH";
+            assistantMessage = "The previous checkout became stale before payment. Nothing was charged; ask me to refresh the search and I will choose the best current flight again.";
+          } else {
+            state = purchase.status === "COMPLETED" ? "COMPLETED" : "FAILED";
+            operation = {
+              ...operation,
+              authorization_id: purchase.authorization_id ?? null,
+              receipt_id: purchase.receipt_id ?? null,
+              pending_approval: null,
+            };
+            assistantMessage = purchase.status === "COMPLETED"
+              ? `Purchase confirmed. Receipt ${purchase.receipt_id} was saved in Bound.`
+              : `The purchase was not completed. No new payment was made (${purchase.reason_code ?? "rejected"}).`;
+          }
         }
       } else if (
         conversation.state === "AWAITING_OFFER_SELECTION"
@@ -468,7 +492,7 @@ export class TravelBotService {
         state = "AWAITING_OFFER_SELECTION";
         assistantMessage = offers.length === 0
           ? "The offers are stale. Correct the details to search again."
-          : `Explicitly select ${offers[0]!.offer_id}.`;
+          : "Choose one of the current options below to continue.";
       } else {
         state = "READY_TO_SEARCH";
         offers = (await executeTool("find_offers", {
@@ -493,10 +517,10 @@ export class TravelBotService {
           if (!(await prepareOfferApproval(selected))) {
             offers = [selected];
             state = "AWAITING_OFFER_SELECTION";
-            assistantMessage = `I chose ${selected.offer_id}, but checkout tools are unavailable.`;
+            assistantMessage = `I chose ${selected.offer_id}.${flexibleDateNotice(applied.intent.departure_date, selected)} Checkout tools are unavailable.`;
           }
         } else {
-          assistantMessage = "I found no flights matching this search. I can try another airport or date range.";
+          assistantMessage = "I found no flights matching these criteria. I can try another airport, date, or budget.";
         }
       }
 

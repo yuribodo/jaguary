@@ -8,6 +8,11 @@ import {
   LangfuseTelemetryAdapter,
   NoopLlmTelemetry,
 } from "./modules/travelbot/index.js";
+import {
+  GoogleFlightsSearchProvider,
+  UnavailableFlightSearchProvider,
+  VuelaYaCatalog,
+} from "./modules/vuelaya/index.js";
 
 async function start(): Promise<void> {
   const env = loadEnv();
@@ -20,11 +25,26 @@ async function start(): Promise<void> {
       ...(env.RELEASE === undefined ? {} : { release: env.RELEASE }),
     })
     : new NoopLlmTelemetry();
+  const runtimeClock = { now: () => new Date() };
+  const flightProvider = env.flightSearch.enabled
+    ? new GoogleFlightsSearchProvider({
+      apiKey: env.flightSearch.apiKey,
+      timeoutMs: env.flightSearch.timeoutMs,
+      deepSearch: env.flightSearch.deepSearch,
+      clock: runtimeClock,
+    })
+    : new UnavailableFlightSearchProvider();
   const app = await buildApp({
     corsOrigin: env.CORS_ORIGIN,
     databaseUrl: env.DATABASE_URL,
     logger: { level: env.LOG_LEVEL },
     llmTelemetry: telemetry,
+    clock: runtimeClock,
+    flightCatalog: new VuelaYaCatalog(flightProvider, [], {
+      clock: runtimeClock,
+      ttlMs: 5 * 60_000,
+      maxEntries: 100,
+    }),
     ...(env.openai.enabled && env.travelbot.enabled ? {
       openAI: {
         apiKey: env.openai.apiKey,

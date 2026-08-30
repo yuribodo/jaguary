@@ -10,6 +10,7 @@ import type {
 } from "@/lib/contracts";
 
 const DEFAULT_API_URL = "http://localhost:3001";
+const REQUEST_TIMEOUT_MS = 10_000;
 const UCP_CAPABILITIES = [
   "dev.ucp.shopping.checkout",
   "dev.ucp.common.payment.ap2_mandate",
@@ -69,23 +70,46 @@ async function request<T>(
   init: RequestInit = {},
 ): Promise<ApiResult<T>> {
   let response: Response;
+  const requestController = new AbortController();
+  const callerSignal = init.signal;
+  const forwardCallerAbort = () => requestController.abort(callerSignal?.reason);
+  const timeout = setTimeout(() => {
+    requestController.abort(new DOMException("Request timed out", "TimeoutError"));
+  }, REQUEST_TIMEOUT_MS);
+
+  if (callerSignal?.aborted) forwardCallerAbort();
+  else callerSignal?.addEventListener("abort", forwardCallerAbort, { once: true });
 
   try {
     response = await fetch(`${apiUrl}${path}`, {
       cache: "no-store",
       ...init,
+      signal: requestController.signal,
       headers: {
         Accept: "application/json",
         ...init.headers,
       },
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (callerSignal?.aborted) throw error;
+    if (
+      requestController.signal.reason instanceof DOMException
+      && requestController.signal.reason.name === "TimeoutError"
+    ) {
+      throw new BoundApiError({
+        message: "The Bound API took more than 10 seconds to respond. Check that the backend is running and try again.",
+        code: "api_timeout",
+        offline: true,
+      });
+    }
     throw new BoundApiError({
       message: "Could not reach the Bound API.",
       code: "api_offline",
       offline: true,
     });
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", forwardCallerAbort);
   }
 
   const headerCorrelationId = response.headers.get("x-correlation-id") ?? undefined;

@@ -29,6 +29,14 @@ export const flightFulfillmentSchema = z
     destination: z.string().regex(/^[A-Z]{3}$/),
     departure_at: utcRfc3339Schema,
     arrival_at: utcRfc3339Schema,
+    departure_local: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
+    arrival_local: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
+    departure_airport_name: z.string().min(1).max(256).optional(),
+    arrival_airport_name: z.string().min(1).max(256).optional(),
+    airline_names: z.array(z.string().min(1).max(128)).min(1).max(12).optional(),
+    flight_numbers: z.array(z.string().min(1).max(32)).min(1).max(12).optional(),
+    duration_minutes: z.number().int().positive().max(10_080).optional(),
+    stops: z.number().int().nonnegative().max(11).optional(),
   })
   .strict();
 
@@ -58,6 +66,8 @@ export const offerCandidateSchema = z
     available_until: utcRfc3339Schema,
     source_url: z.url(),
     observed_at: utcRfc3339Schema,
+    source: z.enum(["GOOGLE_FLIGHTS", "VUELAYA_DEMO"]).optional(),
+    ranking: z.enum(["BEST", "OTHER"]).optional(),
   })
   .strict();
 

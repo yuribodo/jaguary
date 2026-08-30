@@ -130,3 +130,23 @@ test("a Verify DENY never reaches payment", async () => {
   assert.deepEqual(result, { status: "DENIED", reason_code: "amount_limit_exceeded" });
   assert.equal(fixture.paymentCalls(), 0);
 });
+
+test("a changed checkout is reported as stale before Verify or payment", async () => {
+  const fixture = dependencies("ALLOW");
+  fixture.options.merchant = {
+    createCheckout: async () => ({
+      ...normalizedCheckoutFixture,
+      checkout_hash: "b".repeat(64),
+    }),
+  };
+  const tools = new ApplicationTravelBotTools(fixture.options);
+
+  const result = await tools.requestPurchase!({
+    conversation: boundConversation(),
+    idempotency_key: "purchase_stale_checkout_001",
+    correlation_id: "corr_purchase_stale_checkout_001",
+  });
+
+  assert.deepEqual(result, { status: "FAILED", reason_code: "checkout_stale" });
+  assert.equal(fixture.paymentCalls(), 0);
+});

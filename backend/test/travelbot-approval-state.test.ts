@@ -11,5 +11,7 @@ test("resumable SDK approval state is authenticated and encrypted at rest", asyn
   assert.match(sealed, /^v1\./);
   assert.equal(sealed.includes("texto privado"), false);
   assert.equal(await protector.open(sealed), raw);
-  await assert.rejects(protector.open(`${sealed.slice(0, -1)}x`));
+  const [version, iv, tag, encrypted] = sealed.split(".") as [string, string, string, string];
+  const tamperedTag = `${tag[0] === "A" ? "B" : "A"}${tag.slice(1)}`;
+  await assert.rejects(protector.open([version, iv, tamperedTag, encrypted].join(".")));
 });
