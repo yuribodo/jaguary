@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import {
   ArrowRightIcon,
@@ -24,7 +27,6 @@ import {
   PlaneIcon,
   ReceiptTextIcon,
   RefreshCwIcon,
-  SearchIcon,
   ShieldCheckIcon,
   SparklesIcon,
   SquareIcon,
@@ -32,6 +34,8 @@ import {
   WifiOffIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import {
@@ -89,10 +93,16 @@ const STARTER_PROMPTS = [
 ];
 
 type LoadState = "loading" | "ready" | "error";
-type BusyState = "creating" | "switching" | "sending" | null;
+type BusyState = "authorizing" | "creating" | "switching" | "sending" | null;
+type TurnMode = "authority" | "chat";
 type FailedTurn = {
   text: string;
   identity: ReturnType<typeof createRequestIdentity>;
+  mode: TurnMode;
+};
+type SubmitTurnOptions = {
+  identity?: ReturnType<typeof createRequestIdentity>;
+  mode?: TurnMode;
 };
 
 type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
@@ -367,20 +377,82 @@ function UserMessage({
   status,
 }: {
   message: Pick<TravelBotMessage, "content" | "created_at">;
-  status?: "sending" | "sent";
+  status?: "failed" | "sending" | "sent";
 }) {
+  const statusLabel = status === "failed" ? "not sent" : status === "sending" ? "sending…" : "sent";
+
   return (
     <Message from="user">
       <MessageContent className="max-w-[92%] whitespace-pre-wrap rounded-xl rounded-br-sm border bg-secondary px-3.5 py-2.5 text-[13px] leading-6 sm:max-w-[82%]">
         {message.content}
         <span className="flex items-center justify-end gap-1.5 text-[9px] text-muted-foreground">
           <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
-          <span aria-live="polite">{status === "sending" ? "sending…" : "sent"}</span>
+          <span aria-live="polite" className={cn(status === "failed" && "text-destructive")}>{statusLabel}</span>
         </span>
       </MessageContent>
     </Message>
   );
 }
+
+type ChatPresenceItemProps = {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+  enter?: boolean;
+  layout?: boolean;
+};
+
+const ChatPresenceItem = forwardRef<HTMLDivElement, ChatPresenceItemProps>(function ChatPresenceItem({
+  children,
+  className,
+  delay = 0,
+  enter = true,
+  layout = true,
+}, ref) {
+  const reduceMotion = useReducedMotion();
+  const restingTransform = "translateY(0px)";
+
+  return (
+    <motion.div
+      className={className}
+      layout={!reduceMotion && layout ? "position" : false}
+      ref={ref}
+      transition={{
+        layout: {
+          duration: 0.22,
+          ease: [0.77, 0, 0.175, 1],
+        },
+      }}
+    >
+      <motion.div
+        animate={{ opacity: 1, transform: restingTransform }}
+        exit={{
+          opacity: 0,
+          transform: reduceMotion ? restingTransform : "translateY(-6px)",
+          transition: {
+            duration: reduceMotion ? 0.1 : 0.14,
+            ease: [0.23, 1, 0.32, 1],
+          },
+        }}
+        initial={
+          enter
+            ? {
+                opacity: 0,
+                transform: reduceMotion ? restingTransform : "translateY(12px)",
+              }
+            : false
+        }
+        transition={{
+          delay: reduceMotion ? 0 : delay,
+          duration: reduceMotion ? 0.14 : 0.28,
+          ease: [0.23, 1, 0.32, 1],
+        }}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+});
 
 function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: (value: string) => void }) {
   return (
@@ -441,17 +513,35 @@ function IntentSummary({ conversation }: { conversation: TravelBotConversation }
 
 function WorkingStatus({ state }: { state: TravelBotState }) {
   const label = state === "AWAITING_OFFER_SELECTION"
-    ? "Locking the offer and preparing your review…"
+    ? "Checking the selected flight"
     : state === "AWAITING_AUTHORITY_CONFIRMATION"
-      ? "Validating the authorization and processing securely…"
-    : "Finding the best flight and preparing your review…";
+      ? "Securing your authorization"
+      : "Searching flights and comparing options";
+
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3.5" aria-live="polite" role="status">
-      <span className="relative mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm">
-        <SearchIcon className="size-4" />
-        <i className="absolute -top-0.5 -right-0.5 size-2 animate-pulse rounded-full bg-blue-600 ring-2 ring-white" />
+    <div
+      aria-label={`TravelBot is working: ${label}`}
+      aria-live="polite"
+      className="flex min-h-[4.5rem] items-start gap-3"
+      role="status"
+    >
+      <span className="mt-0.5 grid size-7 shrink-0 place-items-center text-blue-700">
+        <BotIcon className="size-4" />
       </span>
-      <div><strong className="block text-xs">{label}</strong><p className="mt-1 text-[11px] leading-5 text-muted-foreground">This may take a few seconds. You can stay on this screen.</p></div>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2">
+          <strong className="text-xs">TravelBot</strong>
+          <span className="text-[10px] text-muted-foreground">working</span>
+        </div>
+        <div className="inline-flex min-h-9 max-w-full items-center gap-3 rounded-xl rounded-tl-sm border bg-panel/80 px-3.5 py-2 shadow-xs">
+          <span aria-hidden="true" className="flex h-3 items-center gap-1">
+            <i className="bound-typing-dot size-1.5 rounded-full bg-blue-600" />
+            <i className="bound-typing-dot size-1.5 rounded-full bg-blue-600" />
+            <i className="bound-typing-dot size-1.5 rounded-full bg-blue-600" />
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground">{label}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -601,7 +691,18 @@ function ApprovalCard({
 
               <div className="mt-5 grid gap-2">
                 <Button className="h-11 w-full rounded-md" disabled={disabled} onClick={() => onDecision(true)}>
-                  <CheckIcon />{disabled ? "Processing…" : `Authorize ${formatMoney(approval.amount, approval.currency)}`}
+                  {disabled ? (
+                    <>
+                      <span aria-hidden="true" className="flex h-3 items-center gap-1">
+                        <i className="bound-typing-dot size-1 rounded-full bg-current" />
+                        <i className="bound-typing-dot size-1 rounded-full bg-current" />
+                        <i className="bound-typing-dot size-1 rounded-full bg-current" />
+                      </span>
+                      Processing securely
+                    </>
+                  ) : (
+                    <><CheckIcon />Authorize {formatMoney(approval.amount, approval.currency)}</>
+                  )}
                 </Button>
                 <Button className="h-11 w-full rounded-md border-[#cfd3d9] bg-[#fffefb]" disabled={disabled} onClick={() => onDecision(false)} variant="outline">Not now</Button>
               </div>
@@ -671,6 +772,7 @@ function loadPurchaseEvidence(receiptId: string, correlationId: string) {
 }
 
 function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation }) {
+  const reduceMotion = useReducedMotion();
   const receiptId = conversation.operation.receipt_id;
   const auditCorrelationId = conversation.messages.filter(({ role }) => role === "USER").at(-1)?.correlation_id;
   const [evidence, setEvidence] = useState<{
@@ -772,31 +874,56 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
           </dl>
         </section>
 
-        <section className="-mx-4 border-b border-[#d9dcda] bg-[#f3f7f4] px-4 py-5 sm:-mx-6 sm:px-6" aria-labelledby="audit-trail-title">
+        <section className="relative -mx-4 border-b border-[#d9dcda] bg-[#f3f7f4] px-4 py-5 sm:-mx-6 sm:px-6" aria-labelledby="audit-trail-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-emerald-800 uppercase">Bound audit</p><h3 className="mt-1 text-base font-semibold" id="audit-trail-title">Authorization path</h3></div>
             {currentEvidence.timeline ? <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-emerald-800"><FingerprintIcon className="size-3.5" />{events.length} checks · Chain validated</span> : null}
           </div>
 
-          {evidenceLoading ? (
-            <div className="mt-4 min-h-[28rem] sm:min-h-48" aria-live="polite">
-              <Shimmer className="text-xs text-[#68716b]">Loading the signed receipt and audit trail…</Shimmer>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2"><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /></div>
-            </div>
-          ) : events.length ? (
-            <ol className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-              {events.map((event) => {
-                const content = auditLabel(event);
-                return (
-                  <li className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-2.5 border-t border-emerald-200 pt-3" key={event.event_id}>
-                    <span className="mt-0.5 grid size-[1.125rem] place-items-center rounded-full bg-emerald-800 text-white"><CheckIcon className="size-2.5 stroke-[3]" /></span>
-                    <div className="min-w-0"><strong className="block text-[11px]">{content.title}</strong><p className="mt-0.5 text-[9px] leading-4 text-[#68716b]">{content.detail}</p></div>
-                    <time className="font-mono text-[8px] text-[#68716b]" dateTime={event.recorded_at}>{formatTime(event.recorded_at)}</time>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : <p className="mt-4 text-xs text-[#68716b]">The receipt is saved; its detailed audit trail is not available in this view.</p>}
+          <AnimatePresence initial={false} mode="popLayout">
+            {evidenceLoading ? (
+              <motion.div
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                aria-live="polite"
+                className="mt-4 min-h-[28rem] sm:min-h-48"
+                exit={{ opacity: 0, transform: reduceMotion ? "translateY(0px)" : "translateY(-3px)" }}
+                key="evidence-loading"
+                transition={{ duration: reduceMotion ? 0.08 : 0.16, ease: [0.23, 1, 0.32, 1] }}
+              >
+                <Shimmer className="text-xs text-[#68716b]">Loading the signed receipt and audit trail…</Shimmer>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2"><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /></div>
+              </motion.div>
+            ) : events.length ? (
+              <motion.ol
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2"
+                initial={{ opacity: 0, transform: reduceMotion ? "translateY(0px)" : "translateY(4px)" }}
+                key="evidence-ready"
+                transition={{ duration: reduceMotion ? 0.08 : 0.18, ease: [0.23, 1, 0.32, 1] }}
+              >
+                {events.map((event) => {
+                  const content = auditLabel(event);
+                  return (
+                    <li className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-2.5 border-t border-emerald-200 pt-3" key={event.event_id}>
+                      <span className="mt-0.5 grid size-[1.125rem] place-items-center rounded-full bg-emerald-800 text-white"><CheckIcon className="size-2.5 stroke-[3]" /></span>
+                      <div className="min-w-0"><strong className="block text-[11px]">{content.title}</strong><p className="mt-0.5 text-[9px] leading-4 text-[#68716b]">{content.detail}</p></div>
+                      <time className="font-mono text-[8px] text-[#68716b]" dateTime={event.recorded_at}>{formatTime(event.recorded_at)}</time>
+                    </li>
+                  );
+                })}
+              </motion.ol>
+            ) : (
+              <motion.p
+                animate={{ opacity: 1 }}
+                className="mt-4 text-xs text-[#68716b]"
+                initial={{ opacity: 0 }}
+                key="evidence-unavailable"
+                transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+              >
+                The receipt is saved; its detailed audit trail is not available in this view.
+              </motion.p>
+            )}
+          </AnimatePresence>
 
           {currentEvidence.error ? <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-4 text-amber-800"><CircleAlertIcon className="mt-0.5 size-3 shrink-0" />{currentEvidence.error}</p> : null}
         </section>
@@ -823,6 +950,56 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
         </footer>
       </div>
     </article>
+  );
+}
+
+function AuthoritySurface({
+  conversation,
+  disabled,
+  onDecision,
+}: {
+  conversation: TravelBotConversation;
+  disabled: boolean;
+  onDecision: (approved: boolean) => void;
+}) {
+  const { scrollRef, stopScroll } = useStickToBottomContext();
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const anchorTopRef = useRef<number | undefined>(undefined);
+  const showApproval = conversation.state === "AWAITING_AUTHORITY_CONFIRMATION" && Boolean(conversation.operation.pending_approval);
+
+  const handleDecision = useCallback((approved: boolean) => {
+    anchorTopRef.current = surfaceRef.current?.getBoundingClientRect().top;
+    stopScroll();
+    onDecision(approved);
+  }, [onDecision, stopScroll]);
+
+  useLayoutEffect(() => {
+    const anchorTop = anchorTopRef.current;
+    const surface = surfaceRef.current;
+    const scroll = scrollRef.current;
+    if (anchorTop === undefined || !surface || !scroll) return;
+
+    const offset = surface.getBoundingClientRect().top - anchorTop;
+    if (Math.abs(offset) > 0.5) {
+      scroll.scrollTop += offset;
+    }
+    stopScroll();
+  }, [conversation.messages.length, conversation.operation.receipt_id, conversation.state, scrollRef, stopScroll]);
+
+  return (
+    <div className="relative" ref={surfaceRef}>
+      <AnimatePresence initial={false} mode="popLayout">
+        {showApproval ? (
+          <ChatPresenceItem key="approval-card">
+            <ApprovalCard conversation={conversation} disabled={disabled} onDecision={handleDecision} />
+          </ChatPresenceItem>
+        ) : conversation.state === "COMPLETED" ? (
+          <ChatPresenceItem delay={0.06} key={`receipt-${conversation.operation.receipt_id ?? "pending"}`}>
+            <PurchaseReceipt conversation={conversation} />
+          </ChatPresenceItem>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -933,6 +1110,8 @@ export function TrustedSurface() {
   const [error, setError] = useState<BoundApiError>();
   const [failedTurn, setFailedTurn] = useState<FailedTurn>();
   const [lastCorrelationId, setLastCorrelationId] = useState<string>();
+  const [arrivingAssistantMessageId, setArrivingAssistantMessageId] = useState<string>();
+  const [enteringConversationId, setEnteringConversationId] = useState<string>();
 
   const rememberConversation = useCallback((next: TravelBotConversation) => {
     setConversation(next);
@@ -948,6 +1127,7 @@ export function TrustedSurface() {
   const createConversation = useCallback(async (signal?: AbortSignal) => {
     setBusy("creating");
     setError(undefined);
+    setArrivingAssistantMessageId(undefined);
     const identity = createRequestIdentity("conversation_create");
     try {
       const result = await boundApi.createConversation(
@@ -956,6 +1136,7 @@ export function TrustedSurface() {
         signal,
       );
       if (signal?.aborted) return;
+      setEnteringConversationId(result.data.conversation_id);
       rememberConversation(result.data);
       setLastCorrelationId(result.correlationId ?? identity.correlationId);
       setComposerValue("");
@@ -999,6 +1180,7 @@ export function TrustedSurface() {
         if (conversations.length) {
           setRecents(conversations);
           const selectedConversation = conversations.find(({ conversation_id }) => conversation_id === requestedConversationId) ?? conversations[0];
+          setEnteringConversationId(selectedConversation.conversation_id);
           setConversation(selectedConversation);
           setLastCorrelationId(messageCorrelationId(selectedConversation) ?? agentResult.correlationId ?? healthResult.correlationId);
           writeRecentConversationIds(conversations.map(({ conversation_id }) => conversation_id));
@@ -1023,8 +1205,10 @@ export function TrustedSurface() {
     if (conversationId === conversation?.conversation_id || busy) return;
     setBusy("switching");
     setError(undefined);
+    setArrivingAssistantMessageId(undefined);
     try {
       const result = await boundApi.getConversation(conversationId);
+      setEnteringConversationId(result.data.conversation_id);
       rememberConversation(result.data);
       setLastCorrelationId(messageCorrelationId(result.data) ?? result.correlationId);
       setComposerValue("");
@@ -1039,24 +1223,33 @@ export function TrustedSurface() {
 
   const submitTurn = useCallback(async (
     text: string,
-    identity = createRequestIdentity("conversation_message"),
+    {
+      identity = createRequestIdentity("conversation_message"),
+      mode = "chat",
+    }: SubmitTurnOptions = {},
   ) => {
     if (!conversation || busy || !text.trim()) return;
     const cleanText = text.trim();
-    setBusy("sending");
+    setBusy(mode === "authority" ? "authorizing" : "sending");
     setError(undefined);
     setFailedTurn(undefined);
-    setPendingMessage(cleanText);
+    setArrivingAssistantMessageId(undefined);
+    setPendingMessage(mode === "chat" ? cleanText : undefined);
     setComposerValue("");
     try {
       const result = await boundApi.postConversationMessage(conversation.conversation_id, cleanText, identity);
+      const existingMessageIds = new Set(conversation.messages.map(({ message_id: messageId }) => messageId));
+      const arrivingAssistant = result.data.messages
+        .filter(({ message_id: messageId, role }) => role === "ASSISTANT" && !existingMessageIds.has(messageId))
+        .at(-1);
+      setArrivingAssistantMessageId(arrivingAssistant?.message_id);
       rememberConversation(result.data);
       setLastCorrelationId(result.correlationId ?? identity.correlationId);
       setPendingMessage(undefined);
     } catch (caught) {
       const apiError = asApiError(caught);
       setError(apiError);
-      setFailedTurn({ text: cleanText, identity });
+      setFailedTurn({ text: cleanText, identity, mode });
       setLastCorrelationId(apiError.correlationId ?? identity.correlationId);
     } finally {
       setBusy(null);
@@ -1069,8 +1262,13 @@ export function TrustedSurface() {
 
   const updateComposer = useCallback((value: string) => setComposerValue(value), []);
   const speech = useSpeechInput(composerValue, updateComposer, busy !== null || loadState !== "ready");
-  const lastMessage = conversation?.messages.at(-1);
   const showApproval = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && Boolean(conversation.operation.pending_approval);
+  const enteringHistory = conversation?.conversation_id === enteringConversationId && arrivingAssistantMessageId === undefined;
+  const hasIntentSummary = Boolean(
+    conversation?.intent.origin_iata
+    || conversation?.intent.destination_iata
+    || conversation?.intent.departure_date,
+  );
   const isBusy = busy !== null;
 
   return (
@@ -1105,31 +1303,96 @@ export function TrustedSurface() {
             </div>
           </header>
 
-          <Conversation aria-busy={busy === "sending"} className="min-h-0 min-w-0 overflow-x-hidden bg-workspace">
-            <ConversationContent className={cn("mx-auto min-h-full min-w-0 w-full max-w-3xl gap-7 overflow-x-hidden px-4 py-7 md:px-8 md:py-10", !conversation?.messages.length && "justify-center")}>
-              {loadState === "loading" ? (
-                <div className="my-auto flex items-center justify-center"><Shimmer className="text-sm text-muted-foreground">Opening your secure conversation…</Shimmer></div>
-              ) : null}
+          <Conversation aria-busy={busy === "sending" || busy === "authorizing"} className="min-h-0 min-w-0 overflow-x-hidden bg-workspace">
+            <ConversationContent
+              className={cn(
+                "relative mx-auto min-h-full min-w-0 w-full max-w-3xl gap-7 overflow-x-hidden px-4 py-7 transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] md:px-8 md:py-10",
+                !conversation?.messages.length && !pendingMessage && busy !== "sending" && "justify-center",
+                (busy === "creating" || busy === "switching") && "opacity-60",
+              )}
+            >
+              <AnimatePresence initial={false} mode="popLayout">
+                {loadState === "loading" ? (
+                  <ChatPresenceItem className="my-auto flex items-center justify-center" key="conversation-loading">
+                    <Shimmer className="text-sm text-muted-foreground">Opening your secure conversation…</Shimmer>
+                  </ChatPresenceItem>
+                ) : null}
 
-              {loadState === "error" && !conversation ? <ErrorNotice error={error ?? new BoundApiError({ message: "The Bound API did not respond.", offline: true })} onRetry={() => void createConversation()} /> : null}
+                {loadState === "error" && !conversation ? (
+                  <ChatPresenceItem key="conversation-load-error">
+                    <ErrorNotice error={error ?? new BoundApiError({ message: "The Bound API did not respond.", offline: true })} onRetry={() => void createConversation()} />
+                  </ChatPresenceItem>
+                ) : null}
 
-              {loadState === "ready" && conversation && !conversation.messages.length ? <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} /> : null}
+                {loadState === "ready" && conversation && !conversation.messages.length && !pendingMessage ? (
+                  <ChatPresenceItem key="welcome">
+                    <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} />
+                  </ChatPresenceItem>
+                ) : null}
 
-              {conversation?.messages.map((message) => message.role === "USER" ? <UserMessage key={message.message_id} message={message} status="sent" /> : <AssistantMessage key={message.message_id} message={message} />)}
+                {conversation?.messages.map((message, index) => (
+                  <ChatPresenceItem
+                    delay={enteringHistory ? Math.min(index * 0.025, 0.15) : message.message_id === arrivingAssistantMessageId ? 0.08 : 0}
+                    enter={enteringHistory || message.message_id === arrivingAssistantMessageId}
+                    key={message.message_id}
+                  >
+                    {message.role === "USER" ? (
+                      <UserMessage message={message} status="sent" />
+                    ) : (
+                      <AssistantMessage message={message} />
+                    )}
+                  </ChatPresenceItem>
+                ))}
 
-              {conversation?.messages.length ? <IntentSummary conversation={conversation} /> : null}
+                {pendingMessage ? (
+                  <ChatPresenceItem key="pending-user-message">
+                    <UserMessage
+                      message={{ content: pendingMessage, created_at: new Date().toISOString() }}
+                      status={failedTurn?.text === pendingMessage ? "failed" : "sent"}
+                    />
+                  </ChatPresenceItem>
+                ) : null}
 
-              {pendingMessage && lastMessage?.content !== pendingMessage ? (
-                <UserMessage message={{ content: pendingMessage, created_at: new Date().toISOString() }} status="sending" />
-              ) : null}
+                {busy === "sending" ? (
+                  <ChatPresenceItem key="working-status">
+                    <WorkingStatus state={conversation?.state ?? "COLLECTING"} />
+                  </ChatPresenceItem>
+                ) : null}
+              </AnimatePresence>
 
-              {busy === "sending" ? <WorkingStatus state={conversation?.state ?? "COLLECTING"} /> : null}
+              <AnimatePresence initial={false} mode="popLayout">
+                {conversation && hasIntentSummary ? (
+                  <ChatPresenceItem delay={arrivingAssistantMessageId ? 0.12 : 0} key={`intent-summary-${conversation.conversation_id}-${conversation.updated_at}`}>
+                    <IntentSummary conversation={conversation} />
+                  </ChatPresenceItem>
+                ) : null}
+              </AnimatePresence>
 
-              {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.")} /> : null}
+              <AnimatePresence initial={false} mode="popLayout">
+                {showApproval || conversation?.state === "COMPLETED" ? (
+                  <ChatPresenceItem delay={arrivingAssistantMessageId ? 0.16 : 0} key={`authority-surface-${conversation.conversation_id}`} layout={false}>
+                    <AuthoritySurface
+                      conversation={conversation}
+                      disabled={isBusy}
+                      onDecision={(approved) => void submitTurn(
+                        approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.",
+                        { mode: "authority" },
+                      )}
+                    />
+                  </ChatPresenceItem>
+                ) : null}
+              </AnimatePresence>
 
-              {conversation ? <PurchaseReceipt conversation={conversation} /> : null}
-
-              {error && conversation ? <ErrorNotice error={error} onRetry={failedTurn ? () => void submitTurn(failedTurn.text, failedTurn.identity) : undefined} /> : null}
+              <AnimatePresence initial={false} mode="popLayout">
+                {error && conversation ? (
+                  <ChatPresenceItem key={`conversation-error-${error.correlationId ?? error.code}`}>
+                    <ErrorNotice
+                      error={error}
+                      onRetry={failedTurn ? () => void submitTurn(failedTurn.text, { identity: failedTurn.identity, mode: failedTurn.mode }) : undefined}
+                    />
+                  </ChatPresenceItem>
+                ) : null}
+              </AnimatePresence>
             </ConversationContent>
             <ConversationScrollButton aria-label="Go to the end of the conversation" />
           </Conversation>
