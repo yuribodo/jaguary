@@ -4,13 +4,15 @@
 
 [![CI](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml/badge.svg)](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml)
 
+[Open the live demo](https://jaguary.vercel.app) · [Explore the technical documentation](docs/technical/README.md) · [Review known gaps](docs/technical/known-gaps.md)
+
 Jaguary is a reference application for governed agentic commerce. Its core enforcement layer, **Bound**, decides whether an identified agent may perform one exact economic action before a payment credential is resolved or money can move.
 
 The current product demonstrates a flight-purchase journey: TravelBot interprets a request, searches Google Flights through SerpApi, receives merchant-authored terms from VuelaYa, asks the human to approve a scoped mandate, and submits the exact checkout to deterministic verification.
 
 > **OpenAI proposes. The merchant fixes the terms. AP2 carries authority. Bound decides. Payment waits for `ALLOW`.**
 
-[Explore the technical documentation](docs/technical/README.md) · [Open the system diagram](docs/diagrams/system-context.html) · [Explore the database map](docs/diagrams/database-domain-map.html) · [Review known gaps](docs/technical/known-gaps.md)
+[Open the system diagram](docs/diagrams/system-context.html) · [Explore the database map](docs/diagrams/database-domain-map.html)
 
 ## Why Jaguary exists
 
