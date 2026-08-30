@@ -23,6 +23,7 @@ import {
   type AuditLedgerPort,
 } from "../ledger/index.js";
 import type { MandateBiometricConsentGate } from "./biometric-consent.js";
+import type { PrincipalPaymentCredentialResolver } from "./credential-resolver.js";
 
 type MandateRow = typeof mandates.$inferSelect;
 
@@ -151,12 +152,14 @@ export class MandateService {
     ),
     private readonly eligibility?: AgentEligibilityPort,
     private readonly biometricConsent?: MandateBiometricConsentGate,
+    private readonly credentialResolver?: PrincipalPaymentCredentialResolver,
   ) {}
 
   async createDraft(
     input: CreateMandateDraftInput,
     idempotencyKey: string,
     correlationId: string,
+    options: { allowDemoCredentialTemplate?: boolean } = {},
   ): Promise<{ mandate: Mandate; replayed: boolean }> {
     const requestHash = sha256CanonicalJson(input);
     return this.database.transaction(async (transaction) => {
@@ -182,20 +185,27 @@ export class MandateService {
       }
 
       if (this.eligibility !== undefined) {
-        const decision = await this.eligibility.evaluate(input.agent_id, input.principal_id, this.clock.now());
+        const decision = await this.eligibility.evaluate(input.agent_id, { purpose: "EXECUTION" }, this.clock.now());
         if (!decision.eligible) throw new PublicApiError(403, decision.reason ?? "agent_not_active", "Mandate agent is not eligible");
       } else {
         const agent = (await transaction.select({ status: agents.status }).from(agents)
-          .where(and(eq(agents.agentId, input.agent_id), eq(agents.principalId, input.principal_id))))[0];
+          .where(eq(agents.agentId, input.agent_id)))[0];
         if (agent === undefined || agent.status !== "ACTIVE") throw new PublicApiError(400, "invalid_request", "Mandate agent is unknown or inactive");
       }
-      const credential = (await transaction
-        .select({ display: paymentCredentials.display })
-        .from(paymentCredentials)
-        .where(and(
-          eq(paymentCredentials.credentialId, input.credential_id),
-          eq(paymentCredentials.principalId, input.principal_id),
-        )))[0];
+      const credential = this.credentialResolver === undefined || options.allowDemoCredentialTemplate !== true
+        ? (await transaction
+          .select({ credentialId: paymentCredentials.credentialId, display: paymentCredentials.display })
+          .from(paymentCredentials)
+          .where(and(
+            eq(paymentCredentials.credentialId, input.credential_id),
+            eq(paymentCredentials.principalId, input.principal_id),
+          )))[0]
+        : await this.credentialResolver.resolve(
+          transaction,
+          input.credential_id,
+          input.principal_id,
+          this.clock.now(),
+        );
       if (credential === undefined) {
         throw new PublicApiError(400, "invalid_request", "Payment credential is unknown for this principal");
       }
@@ -232,7 +242,7 @@ export class MandateService {
         max_uses: input.max_uses,
         valid_from: input.valid_from,
         expires_at: input.expires_at,
-        credential_id: input.credential_id,
+        credential_id: credential.credentialId,
       });
       const now = this.clock.now();
       await transaction.insert(mandates).values({

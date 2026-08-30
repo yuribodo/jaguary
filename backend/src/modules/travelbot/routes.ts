@@ -6,8 +6,12 @@ import { readSessionCookie, type PrincipalAuthService } from "../auth/index.js";
 import type { TravelBotService } from "./service.js";
 import type { VoiceSessionIssuerPort } from "./voice.js";
 
-const createConversationBodySchema = z.object({
+const internalCreateConversationBodySchema = z.object({
   principal_id: identifierSchema,
+  agent_id: identifierSchema,
+}).strict();
+
+const authenticatedCreateConversationBodySchema = z.object({
   agent_id: identifierSchema,
 }).strict();
 
@@ -50,7 +54,7 @@ function requireCorrelationId(headers: Record<string, unknown>): void {
 
 async function mutablePrincipalSession(request: FastifyRequest, options: TravelBotRoutesOptions) {
   if (options.auth === undefined || options.allowedOrigin === undefined) {
-    throw new PublicApiError(404, "not_found", "Conversation discard is unavailable");
+    throw new PublicApiError(404, "not_found", "Authenticated conversation mutation is unavailable");
   }
   if (request.headers.origin !== options.allowedOrigin) {
     throw new PublicApiError(403, "invalid_request", "Request origin is not allowed");
@@ -60,6 +64,27 @@ async function mutablePrincipalSession(request: FastifyRequest, options: TravelB
     readSessionCookie(request.headers.cookie),
     typeof csrf === "string" ? csrf : "",
   );
+}
+
+async function readPrincipalSession(request: FastifyRequest, options: TravelBotRoutesOptions) {
+  if (options.auth === undefined) return undefined;
+  return options.auth.requireSession(readSessionCookie(request.headers.cookie));
+}
+
+async function ownedConversation(
+  request: FastifyRequest,
+  options: TravelBotRoutesOptions,
+  conversationId: string,
+  mutable: boolean,
+) {
+  const session = mutable
+    ? await mutablePrincipalSession(request, options)
+    : await readPrincipalSession(request, options);
+  const conversation = await options.service.getConversation(conversationId);
+  if (session !== undefined && conversation.principal_id !== session.principal.principal_id) {
+    throw new PublicApiError(404, "not_found", "Conversation not found");
+  }
+  return conversation;
 }
 
 function parseAfterSequence(value: string | string[] | undefined): number {
@@ -80,10 +105,16 @@ function encodeSse(events: TravelBotSseEvent[]): string {
 export const travelBotRoutes: FastifyPluginAsync<TravelBotRoutesOptions> = async (app, options) => {
   app.post("/v1/conversations", async (request, reply) => {
     requireCorrelationId(request.headers);
-    const parsed = createConversationBodySchema.safeParse(request.body);
+    const parsed = options.auth === undefined
+      ? internalCreateConversationBodySchema.safeParse(request.body)
+      : authenticatedCreateConversationBodySchema.safeParse(request.body);
     if (!parsed.success) throw new PublicApiError(400, "validation_error", "Conversation request is invalid");
+    const principalId = options.auth === undefined
+      ? (parsed.data as z.infer<typeof internalCreateConversationBodySchema>).principal_id
+      : (await mutablePrincipalSession(request, options)).principal.principal_id;
     const result = await options.service.createConversation({
       ...parsed.data,
+      principal_id: principalId,
       idempotency_key: idempotencyKey(request.headers),
       correlation_id: request.id,
     });
@@ -93,7 +124,7 @@ export const travelBotRoutes: FastifyPluginAsync<TravelBotRoutesOptions> = async
   app.get<{ Params: { id: string } }>("/v1/conversations/:id", async (request) => {
     const parsed = conversationParamsSchema.safeParse(request.params);
     if (!parsed.success) throw new PublicApiError(404, "not_found", "Conversation not found");
-    return options.service.getConversation(parsed.data.id);
+    return ownedConversation(request, options, parsed.data.id, false);
   });
 
   app.delete<{ Params: { id: string } }>("/v1/conversations/:id", async (request, reply) => {
@@ -127,6 +158,7 @@ export const travelBotRoutes: FastifyPluginAsync<TravelBotRoutesOptions> = async
     if (!params.success || !body.success) {
       throw new PublicApiError(400, "validation_error", "Conversation message is invalid");
     }
+    if (options.auth !== undefined) await ownedConversation(request, options, params.data.id, true);
     const result = await options.service.postMessage({
       conversation_id: params.data.id,
       content: body.data.content,

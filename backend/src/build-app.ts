@@ -22,6 +22,7 @@ import {
   PostgresReceiptStore,
 } from "./modules/ledger/index.js";
 import {
+  DemoPaymentCredentialResolver,
   mandateRoutes,
   MandateBiometricConsentService,
   MandateService,
@@ -373,7 +374,17 @@ export async function buildApp(options: BuildAppOptions = {}) {
         return biometricConsentService.consumeInTransaction(transaction, input);
       },
     } : undefined;
-    mandateService = new MandateService(database, signer, clock, ledger, configuredTrust?.service.eligibility, biometricGate);
+    mandateService = new MandateService(
+      database,
+      signer,
+      clock,
+      ledger,
+      configuredTrust?.service.eligibility,
+      biometricGate,
+      options.travelBotCredentialId === undefined
+        ? undefined
+        : new DemoPaymentCredentialResolver(options.travelBotCredentialId),
+    );
     if (biometricEnabled) {
       biometricConsentService = new MandateBiometricConsentService({
         database,

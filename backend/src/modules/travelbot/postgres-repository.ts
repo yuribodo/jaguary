@@ -110,7 +110,7 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
 
   async create(command: CreateConversationCommand, now: Date): Promise<TravelBotConversation> {
     if (this.eligibility !== undefined) {
-      const decision = await this.eligibility.evaluate(command.agent_id, command.principal_id, now);
+      const decision = await this.eligibility.evaluate(command.agent_id, { purpose: "EXECUTION" }, now);
       if (!decision.eligible) throw new PublicApiError(403, decision.reason ?? "agent_not_active", "TravelBot agent is not eligible");
     }
     const requestHash = sha256CanonicalJson({
@@ -130,7 +130,7 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
       }
       if (this.eligibility === undefined) {
         const agent = (await transaction.select({ status: agents.status }).from(agents).where(and(
-          eq(agents.agentId, command.agent_id), eq(agents.principalId, command.principal_id),
+          eq(agents.agentId, command.agent_id),
         )))[0];
         if (agent === undefined || agent.status !== "ACTIVE") throw new PublicApiError(400, "invalid_request", "TravelBot agent is unknown or inactive");
       }

@@ -1495,7 +1495,8 @@ export function TrustedSurface() {
     const identity = createRequestIdentity("conversation_create");
     try {
       const result = await boundApi.createConversation(
-        { principal_id: principalId, agent_id: TRAVELBOT_ID },
+        TRAVELBOT_ID,
+        principalSession.csrf_token,
         identity,
         signal,
       );
@@ -1517,7 +1518,7 @@ export function TrustedSurface() {
     } finally {
       if (!signal?.aborted) setBusy(null);
     }
-  }, [principalId, rememberConversation]);
+  }, [principalSession.csrf_token, rememberConversation]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1723,7 +1724,12 @@ export function TrustedSurface() {
     setPendingMessage(mode === "chat" ? cleanText : undefined);
     setComposerValue("");
     try {
-      const result = await boundApi.postConversationMessage(conversation.conversation_id, cleanText, identity);
+      const result = await boundApi.postConversationMessage(
+        conversation.conversation_id,
+        cleanText,
+        principalSession.csrf_token,
+        identity,
+      );
       const existingMessageIds = new Set(conversation.messages.map(({ message_id: messageId }) => messageId));
       const arrivingAssistant = result.data.messages
         .filter(({ message_id: messageId, role }) => role === "ASSISTANT" && !existingMessageIds.has(messageId))
@@ -1741,7 +1747,7 @@ export function TrustedSurface() {
     } finally {
       setBusy(null);
     }
-  }, [busy, conversation, rememberConversation]);
+  }, [busy, conversation, principalSession.csrf_token, rememberConversation]);
 
   const beginBiometricAuthorization = useCallback(async () => {
     const approval = conversation?.operation.pending_approval;

@@ -130,7 +130,8 @@ function WorkspaceAccountPageShell({
 
     try {
       const result = await boundApi.createConversation(
-        { principal_id: principalId, agent_id: TRAVELBOT_ID },
+        TRAVELBOT_ID,
+        principalSession.csrf_token,
         createRequestIdentity("conversation_create"),
       );
       rememberRecentConversationId(principalId, result.data.conversation_id);
@@ -139,7 +140,7 @@ function WorkspaceAccountPageShell({
       setRecentMessage("Could not create a conversation. Please try again.");
       setCreatingConversation(false);
     }
-  }, [creatingConversation, principalId, router]);
+  }, [creatingConversation, principalId, principalSession.csrf_token, router]);
 
   return (
     <AccountActivityContext.Provider value={{ conversations: recents, watchesByConversation }}>

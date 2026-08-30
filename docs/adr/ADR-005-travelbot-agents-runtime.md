@@ -13,6 +13,8 @@ Use one OpenAI Agents SDK for TypeScript `Agent` behind the application-owned `A
 
 PostgreSQL is the source of truth for conversations, ordered sanitized messages, intent snapshots, model runs, normalized tool executions, encrypted approval interruptions and replayable SSE events. Provider response/run identifiers are correlation metadata only.
 
+For the public browser surface, the API derives the conversation customer from the opaque authenticated session and rejects a caller-authored `principal_id`. Conversation reads, messages, and deletion are owner-scoped. The platform TravelBot may therefore serve many customers without changing its registered operator/trust binding.
+
 The application owns this state machine. In the normal user journey it ranks compatible offers deterministically (lowest total, earliest departure, then stable offer ID), keeps one best match and proceeds directly to purchase approval:
 
 ```text

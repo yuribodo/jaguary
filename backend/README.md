@@ -153,11 +153,11 @@ Optional Langfuse export uses the current `@langfuse/tracing`/`@langfuse/otel` a
 
 | Method | Route | Behavior |
 | --- | --- | --- |
-| `POST` | `/v1/conversations` | creates an idempotent conversation for `{ principal_id, agent_id }` |
-| `GET` | `/v1/conversations/:id` | reads sanitized intent, state, approvals and ordered messages |
-| `POST` | `/v1/conversations/:id/messages` | appends one message and commits the deterministic assistant turn |
+| `POST` | `/v1/conversations` | creates an idempotent conversation for `{ agent_id }`; configured public auth derives the customer from the session |
+| `GET` | `/v1/conversations/:id` | reads sanitized intent, state, approvals and ordered messages only for the owning session |
+| `POST` | `/v1/conversations/:id/messages` | appends one owner-authenticated message and commits the deterministic assistant turn |
 
-Mutable calls require both `Idempotency-Key` and `X-Correlation-Id`. Send `Accept: text/event-stream` to the message route for persisted SSE events. Event types are `assistant.delta`, `state.snapshot`, `tool.status`, `confirmation.required`, `turn.completed` and `error`; `id` is the monotonically increasing conversation event sequence. Reconnect with `Last-Event-ID: <sequence>` to recover committed events without repeating a tool or payment.
+Configured browser calls also require the opaque session cookie, the allowlisted `Origin`, and `X-CSRF-Token` for mutations. Mutable calls require both `Idempotency-Key` and `X-Correlation-Id`. Send `Accept: text/event-stream` to the message route for persisted SSE events. Event types are `assistant.delta`, `state.snapshot`, `tool.status`, `confirmation.required`, `turn.completed` and `error`; `id` is the monotonically increasing conversation event sequence. Reconnect with `Last-Event-ID: <sequence>` to recover committed events without repeating a tool or payment.
 
 Authority/purchase approval is bound to merchant, checkout hash, amount, currency and mandate. The SDK interruption is encrypted and persisted before confirmation is requested. A changed field cancels it; explicit denial rejects it; a matching explicit confirmation resumes it once. Application confirmation—not SDK `needsApproval`—is consent. The final purchase always runs signed Verify/reservation and `PaymentService`; TravelBot has no `PaymentExecutor` dependency.
 

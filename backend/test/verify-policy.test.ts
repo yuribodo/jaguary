@@ -101,12 +101,19 @@ test("an agent different from the mandate binding is denied", () => {
   assert.equal(evaluate(input).decision, "DENY");
 });
 
+test("a platform-operated agent may execute authority for another customer", () => {
+  const input = canonicalInput();
+  input.mandate.terms.principal_id = "principal_alice";
+  if ("terms_hash" in input.mandate) input.mandate.terms_hash = sha256CanonicalJson(input.mandate.terms);
+  input.authorization.principal_id = "principal_alice";
+
+  assert.deepEqual(evaluate(input).reasons, []);
+  assert.equal(evaluate(input).decision, "ALLOW");
+});
+
 for (const [name, mutate] of [
   ["registered agent", (input: VerifyPolicyInput) => {
     input.agent.agent_id = "agent_other";
-  }],
-  ["registered principal", (input: VerifyPolicyInput) => {
-    input.agent.principal_id = "principal_other";
   }],
   ["authorization agent", (input: VerifyPolicyInput) => {
     input.authorization.agent_id = "agent_other";

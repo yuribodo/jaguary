@@ -58,6 +58,7 @@ export default function BiometricCallbackPage() {
         await boundApi.postConversationMessage(
           pending.conversationId,
           "I confirm and authorize this purchase after biometric verification.",
+          principal.data.csrf_token,
           pending.confirmationIdentity,
         );
       }

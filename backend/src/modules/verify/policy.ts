@@ -184,8 +184,7 @@ function hasIdentityBindingMismatch(input: ParsedPolicyInput): boolean {
   return agent.agent_id !== agentRequest.agent_id
     || agent.agent_id !== mandate.terms.agent_id
     || agent.agent_id !== authorization.agent_id
-    || agent.principal_id !== mandate.terms.principal_id
-    || agent.principal_id !== authorization.principal_id;
+    || mandate.terms.principal_id !== authorization.principal_id;
 }
 
 function evaluateIdentityBinding(input: ParsedPolicyInput, addReason: AddReason): void {

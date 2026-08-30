@@ -1,13 +1,13 @@
-import { sha256CanonicalJson, type AgentEligibilityDecision, type AgentTrustSnapshot, type ReasonCode } from "../../contracts/v1/index.js";
+import { sha256CanonicalJson, type AgentEligibilityContext, type AgentEligibilityDecision, type AgentTrustSnapshot, type ReasonCode } from "../../contracts/v1/index.js";
 
 export function agentBindingHash(input: { agentId: string; principalId: string; keyId: string; buildFingerprint: string }): string {
   return sha256CanonicalJson({ agent_id: input.agentId, principal_id: input.principalId, key_id: input.keyId, build_fingerprint: input.buildFingerprint });
 }
 
-export function evaluateAgentEligibility(trust: AgentTrustSnapshot, principalId: string | undefined, now: Date): AgentEligibilityDecision {
+export function evaluateAgentEligibility(trust: AgentTrustSnapshot, context: AgentEligibilityContext, now: Date): AgentEligibilityDecision {
   let reason: ReasonCode | undefined;
   if (trust.operational_status !== "ACTIVE") reason = "agent_not_active";
-  else if (principalId !== undefined && trust.principal_id !== principalId) reason = "agent_attestation_binding_mismatch";
+  else if (context.purpose === "OPERATOR" && trust.principal_id !== context.principal_id) reason = "agent_attestation_binding_mismatch";
   else if (trust.mode === "EXTERNAL_REQUIRED") {
     if (trust.attestation_status === null) reason = "agent_attestation_required";
     else if (trust.attestation_status === "PENDING") reason = "agent_attestation_pending";

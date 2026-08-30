@@ -147,7 +147,7 @@ export const principalSessions = pgTable("principal_sessions", {
 
 export const agents = pgTable("agents", {
   agentId: varchar("agent_id", { length: 128 }).primaryKey(),
-  principalId: varchar("principal_id", { length: 128 }).notNull(),
+  principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
   displayName: varchar("display_name", { length: 256 }).notNull(),
   status: varchar("status", { length: 16 }).notNull(),
   buildFingerprint: char("build_fingerprint", { length: 64 }).notNull(),
@@ -239,7 +239,7 @@ export const agentAttestationEvents = pgTable("agent_attestation_events", {
 
 export const paymentCredentials = pgTable("payment_credentials", {
   credentialId: varchar("credential_id", { length: 128 }).primaryKey(),
-  principalId: varchar("principal_id", { length: 128 }).notNull(),
+  principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
   display: varchar("display", { length: 128 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -297,9 +297,14 @@ export const mandates = pgTable("mandates", {
     foreignColumns: [table.mandateId],
   }),
   foreignKey({
-    name: "mandates_agent_principal_fk",
-    columns: [table.agentId, table.principalId],
-    foreignColumns: [agents.agentId, agents.principalId],
+    name: "mandates_agent_fk",
+    columns: [table.agentId],
+    foreignColumns: [agents.agentId],
+  }),
+  foreignKey({
+    name: "mandates_principal_fk",
+    columns: [table.principalId],
+    foreignColumns: [principals.principalId],
   }),
   foreignKey({
     name: "mandates_credential_principal_fk",
@@ -656,9 +661,14 @@ export const travelConversations = pgTable("travel_conversations", {
 }, (table) => [
   unique("travel_conversations_creation_idempotency_unique").on(table.creationIdempotencyKey),
   foreignKey({
-    name: "travel_conversations_agent_principal_fk",
-    columns: [table.agentId, table.principalId],
-    foreignColumns: [agents.agentId, agents.principalId],
+    name: "travel_conversations_agent_fk",
+    columns: [table.agentId],
+    foreignColumns: [agents.agentId],
+  }),
+  foreignKey({
+    name: "travel_conversations_principal_fk",
+    columns: [table.principalId],
+    foreignColumns: [principals.principalId],
   }),
   check("travel_conversations_state_check", sql`${table.state} IN (${sqlList(travelBotStateSchema.options)})`),
   check("travel_conversations_version_check", sql`${table.version} >= 0`),
@@ -838,9 +848,14 @@ export const travelWatches = pgTable("travel_watches", {
 }, (table) => [
   unique("travel_watches_creation_idempotency_unique").on(table.creationIdempotencyKey),
   foreignKey({
-    name: "travel_watches_agent_principal_fk",
-    columns: [table.agentId, table.principalId],
-    foreignColumns: [agents.agentId, agents.principalId],
+    name: "travel_watches_agent_fk",
+    columns: [table.agentId],
+    foreignColumns: [agents.agentId],
+  }),
+  foreignKey({
+    name: "travel_watches_principal_fk",
+    columns: [table.principalId],
+    foreignColumns: [principals.principalId],
   }),
   check("travel_watches_mode_check", sql`${table.mode} IN (${sqlList(travelWatchModeSchema.options)})`),
   check("travel_watches_status_check", sql`${table.status} IN (${sqlList(travelWatchStatusSchema.options)})`),

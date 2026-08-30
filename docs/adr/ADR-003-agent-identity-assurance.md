@@ -15,7 +15,7 @@ Soluções como Trulioo KYA, Experian Agent Trust e os programas de agentes das 
 
 No MVP, o Bound será sua própria fonte operacional de identidade do agente:
 
-- registra a chave pública e o vínculo entre `agent_id` e `principal_id`;
+- registra a chave pública e o vínculo entre `agent_id` e o `principal_id` do operador; esse vínculo de confiança não é a identidade do cliente para quem o agente executa uma compra;
 - verifica assinatura, algoritmo, `key_id`, validade e build fingerprint das requisições;
 - mantém status `ACTIVE`, `SUSPENDED` ou `REVOKED`;
 - vincula a requisição a método, rota, corpo, horário e nonce;
@@ -59,3 +59,5 @@ O Bound emite um Agent Passport ES256 de curta duração após atestação váli
 5. Um provider externo pode ser adicionado sem alterar o modelo de mandato ou dar acesso direto ao pagamento.
 6. Verify, mandatos, TravelBot e reserva usam a mesma decisão de elegibilidade; a reserva relê e trava o snapshot na própria transação.
 7. Nenhuma chamada externa ocorre dentro de Verify, pagamento, mandato, TravelBot ou transação SQL.
+
+A separação entre operador do agente e cliente autenticado é detalhada no [ADR-007](ADR-007-agent-operator-and-customer-authority.md).

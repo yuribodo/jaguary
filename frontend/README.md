@@ -35,9 +35,9 @@ The conversation shell uses the installed AI Elements Conversation, Message, Pro
 | `GET` | `/v1/conversations/:id` | reopen backend-stored messages and operation state |
 | `POST` | `/v1/conversations/:id/messages` | send user text through the OpenAI-backed TravelBot runtime |
 
-All mutable requests send an `Idempotency-Key` and a client-generated `X-Correlation-Id`. Checkout creation also sends both required UCP capabilities.
+All mutable conversation requests send the authenticated session cookie, `X-CSRF-Token`, `Idempotency-Key`, and a client-generated `X-Correlation-Id`. The browser sends only `agent_id` when creating a conversation; the API derives its customer principal from the session. Checkout creation also sends both required UCP capabilities.
 
-The conversation service orchestrates merchant discovery, checkout, mandate, verification, payment and receipt APIs on the server. It expects the backend environment to contain the existing Marta/TravelBot and logical credential references (`principal_marta`, `agent_travelbot`, `cred_demo_marta_visa`). The frontend does not bypass that orchestration or write directly to PostgreSQL.
+The conversation service orchestrates merchant discovery, checkout, mandate, verification, payment and receipt APIs on the server. It expects the backend environment to contain the registered platform TravelBot and a logical demo credential template. Each authenticated customer gets an isolated logical demo reference when internal TravelBot authority is prepared; the agent operator is not treated as the shopper. The frontend does not bypass that orchestration or write directly to PostgreSQL.
 
 ### Chat behavior and boundaries
 

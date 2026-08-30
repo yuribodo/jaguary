@@ -139,7 +139,7 @@ export class VerifyOrchestrator {
       this.options.agentRegistry.get(agentRequest?.agent_id ?? request.proof.payload.agent_id),
       loadMandateOrUndefined(this.options.mandateLoader, authorization.mandate_id),
       this.options.checkoutVerifier.verify(checkout),
-      this.options.eligibility?.evaluate(request.proof.payload.agent_id, authorization.principal_id, now),
+      this.options.eligibility?.evaluate(request.proof.payload.agent_id, { purpose: "EXECUTION" }, now),
     ]);
     const mandateSignatureValid = mandate !== undefined && "principal_signature" in mandate
       ? await this.options.mandateSignatureVerifier.verify(

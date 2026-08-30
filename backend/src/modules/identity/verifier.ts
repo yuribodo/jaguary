@@ -49,7 +49,7 @@ export class AgentRequestVerifier implements AgentRequestVerifierPort {
     if (agent === undefined) {
       throw new PublicApiError(401, "agent_not_found", "Agent identity is not registered");
     }
-    const eligibility = this.eligibility === undefined ? undefined : await this.eligibility.evaluate(agent.agent_id, agent.principal_id, this.clock.now());
+    const eligibility = this.eligibility === undefined ? undefined : await this.eligibility.evaluate(agent.agent_id, { purpose: "EXECUTION" }, this.clock.now());
     if (eligibility !== undefined && !eligibility.eligible) {
       throw new PublicApiError(403, eligibility.reason ?? "agent_not_active", "Agent identity is not eligible");
     }

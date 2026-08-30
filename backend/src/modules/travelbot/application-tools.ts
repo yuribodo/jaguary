@@ -33,7 +33,7 @@ interface MandateApplicationPort {
     valid_from: string;
     expires_at: string;
     credential_id: string;
-  }, idempotencyKey: string, correlationId: string): Promise<{ mandate: Mandate }>;
+  }, idempotencyKey: string, correlationId: string, options?: { allowDemoCredentialTemplate?: boolean }): Promise<{ mandate: Mandate }>;
   activate(mandateId: string, idempotencyKey: string, correlationId: string): Promise<Mandate>;
   loadActiveMandate(mandateId: string): Promise<Extract<Mandate, { status: "ACTIVE" }>>;
 }
@@ -173,7 +173,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
       valid_from: now.toISOString(),
       expires_at: expiresAt.toISOString(),
       credential_id: this.options.credentialId,
-    }, input.idempotency_key, input.correlation_id);
+    }, input.idempotency_key, input.correlation_id, { allowDemoCredentialTemplate: true });
     return {
       mandate_id: mandate.terms.mandate_id,
       status: mandate.status === "ACTIVE" ? "ACTIVE" as const : "DRAFT" as const,

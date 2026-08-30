@@ -378,7 +378,7 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
     private readonly ledger: AuditLedgerPort = new AuditLedgerService(
       new PostgresAuditEventRepository(database.db),
     ),
-    private readonly eligibility?: { evaluateInTransaction(transaction: TransactionClient, agentId: string, principalId: string | undefined, now: Date): Promise<AgentEligibilityDecision> },
+    private readonly eligibility?: { evaluateInTransaction(transaction: TransactionClient, agentId: string, context: { purpose: "EXECUTION" }, now: Date): Promise<AgentEligibilityDecision> },
   ) {}
 
   async inspect(command: ReservationInspectionCommand): Promise<ReservationInspection> {
@@ -439,7 +439,7 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
       const eligibility = await this.eligibility?.evaluateInTransaction(
         transaction,
         command.agent_request.agent_id,
-        authorization.principal_id,
+        { purpose: "EXECUTION" },
         command.now,
       );
       const usage = await aggregateUsage(

@@ -49,6 +49,7 @@ import {
   orders,
   paymentCredentials,
   payments,
+  principals,
   principalSessions,
   travelConversations,
   travelIntentSnapshots,
@@ -58,7 +59,7 @@ import {
   travelToolExecutions,
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
-import { MandateService } from "../src/modules/mandates/index.js";
+import { DemoPaymentCredentialResolver, MandateService } from "../src/modules/mandates/index.js";
 import {
   AuditLedgerService,
   PostgresAuditEventRepository,
@@ -93,6 +94,12 @@ let administrationPool: Pool | undefined;
 let database: DatabaseConnection | undefined;
 
 async function insertMandateReferences(transaction: TransactionClient): Promise<void> {
+  await transaction.insert(principals).values({
+    principalId: travelBotFixture.principal_id,
+    displayName: "Marta",
+    createdAt: new Date(travelBotFixture.created_at),
+    updatedAt: new Date(travelBotFixture.created_at),
+  });
   await transaction.insert(agents).values({
     agentId: travelBotFixture.agent_id,
     principalId: travelBotFixture.principal_id,
@@ -254,6 +261,13 @@ async function createVerifyScenario(
     paymentExecutor: options.paymentExecutor,
   });
   t.after(async () => app.close());
+
+  await database.db.insert(principals).values({
+    principalId: agentSigner.agent.principal_id,
+    displayName: "Verify scenario principal",
+    createdAt: now,
+    updatedAt: now,
+  });
 
   const registration = await app.inject({
     method: "POST",
@@ -618,13 +632,13 @@ integrationTest("signed provider events deduplicate concurrently, ignore older s
   assert.ok(database);
   const now = new Date("2026-08-29T12:00:00.000Z");
   await database.transaction(async (transaction) => {
+    await transaction.execute(sql`INSERT INTO principals (principal_id, display_name, created_at, updated_at) VALUES (${travelBotFixture.principal_id}, 'Marta', ${now}, ${now})`);
     await transaction.insert(agents).values({
       agentId: travelBotFixture.agent_id, principalId: travelBotFixture.principal_id, displayName: travelBotFixture.display_name,
       status: "ACTIVE", buildFingerprint: travelBotFixture.build_fingerprint, verificationKeyId: travelBotFixture.verification_key.key_id,
       verificationAlgorithm: "ES256", verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
       correlationId: "corr_kya_agent_seed", idempotencyKey: "idem_kya_agent_seed", createdAt: now,
     });
-    await transaction.execute(sql`INSERT INTO principals (principal_id, display_name, created_at, updated_at) VALUES (${travelBotFixture.principal_id}, 'Marta', ${now}, ${now})`);
   });
   const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
   const repository = new PostgresAgentTrustRepository(database, ledger, { mode: "EXTERNAL_REQUIRED", provider: "fake", attestationTtlSeconds: 3600, encryptionSecret: "integration-kya-secret" });
@@ -655,6 +669,107 @@ integrationTest("signed provider events deduplicate concurrently, ignore older s
   assert.equal(await purgeTerminalAgentAttestationEvidence(database, travelBotFixture.agent_id), 1);
   assert.equal((await database.db.select({ count: sql<number>`count(*)::int` }).from(agentAttestationEvents))[0]!.count, 0);
   assert.equal((await database.db.select({ count: sql<number>`count(*)::int` }).from(auditEvents))[0]!.count, auditCount);
+});
+
+integrationTest("a platform-owned TravelBot creates a conversation for another customer", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-30T06:53:59.000Z");
+  await database.transaction(async (transaction) => {
+    await transaction.insert(principals).values([
+      { principalId: "principal_platform", displayName: "Jaguary", createdAt: now, updatedAt: now },
+      { principalId: "principal_alice", displayName: "Alice", createdAt: now, updatedAt: now },
+    ]);
+    await transaction.insert(agents).values({
+      agentId: travelBotFixture.agent_id,
+      principalId: "principal_platform",
+      displayName: travelBotFixture.display_name,
+      status: "ACTIVE",
+      buildFingerprint: travelBotFixture.build_fingerprint,
+      verificationKeyId: travelBotFixture.verification_key.key_id,
+      verificationAlgorithm: "ES256",
+      verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
+      correlationId: "corr_platform_agent_seed",
+      idempotencyKey: "idem_platform_agent_seed",
+      createdAt: now,
+    });
+  });
+  const repository = new PostgresTravelBotRepository(database, "fake-integration-model");
+  const conversation = await repository.create({
+    principal_id: "principal_alice",
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_platform_conversation_001",
+    correlation_id: "corr_platform_conversation_001",
+  }, now);
+
+  assert.equal(conversation.principal_id, "principal_alice");
+  assert.equal(conversation.agent_id, travelBotFixture.agent_id);
+});
+
+integrationTest("the demo credential template resolves to an isolated customer reference", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-30T06:53:59.000Z");
+  await database.db.insert(principals).values([
+    { principalId: "principal_platform", displayName: "Jaguary", createdAt: now, updatedAt: now },
+    { principalId: "principal_alice", displayName: "Alice", createdAt: now, updatedAt: now },
+  ]);
+  await database.db.insert(paymentCredentials).values({
+    credentialId: "cred_demo_platform",
+    principalId: "principal_platform",
+    display: "Demo payment •••• 4242",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await database.db.insert(agents).values({
+    agentId: travelBotFixture.agent_id,
+    principalId: "principal_platform",
+    displayName: travelBotFixture.display_name,
+    status: "ACTIVE",
+    buildFingerprint: travelBotFixture.build_fingerprint,
+    verificationKeyId: travelBotFixture.verification_key.key_id,
+    verificationAlgorithm: "ES256",
+    verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
+    correlationId: "corr_demo_credential_agent_seed",
+    idempotencyKey: "idem_demo_credential_agent_seed",
+    createdAt: now,
+  });
+  const resolver = new DemoPaymentCredentialResolver("cred_demo_platform");
+  const [first, replay] = await database.transaction(async (transaction) => [
+    await resolver.resolve(transaction, "cred_demo_platform", "principal_alice", now),
+    await resolver.resolve(transaction, "cred_demo_platform", "principal_alice", now),
+  ]);
+
+  assert.ok(first);
+  assert.deepEqual(replay, first);
+  assert.notEqual(first.credentialId, "cred_demo_platform");
+  assert.equal((await database.db.select().from(paymentCredentials).where(eq(paymentCredentials.credentialId, first.credentialId)))[0]?.principalId, "principal_alice");
+
+  const service = new MandateService(
+    database,
+    new EphemeralEs256Signer(),
+    { now: () => now },
+    undefined,
+    undefined,
+    undefined,
+    resolver,
+  );
+  const draftInput = mandateDraftRequest("mandate_demo_credential_alice", {
+    principal_id: "principal_alice",
+    agent_id: travelBotFixture.agent_id,
+    credential_id: "cred_demo_platform",
+    valid_from: now.toISOString(),
+    expires_at: new Date(now.getTime() + 86_400_000).toISOString(),
+  });
+  await assert.rejects(
+    service.createDraft(draftInput, "idem_public_demo_credential_denied", "corr_public_demo_credential_denied"),
+    (error: unknown) => error instanceof PublicApiError && error.code === "invalid_request",
+  );
+  const created = await service.createDraft(
+    draftInput,
+    "idem_internal_demo_credential_allowed",
+    "corr_internal_demo_credential_allowed",
+    { allowDemoCredentialTemplate: true },
+  );
+  assert.equal(created.mandate.terms.credential_id, first.credentialId);
 });
 
 integrationTest("TravelBot persists sanitized idempotent turns, tool executions and recoverable SSE events", async () => {
@@ -899,6 +1014,12 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
   const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
   const registry = new DrizzleAgentIdentityRegistry(database, clock, ledger);
   const agentSigner = await createTestAgentSigner();
+  await database.db.insert(principals).values({
+    principalId: agentSigner.agent.principal_id,
+    displayName: "TravelBot test operator",
+    createdAt: now,
+    updatedAt: now,
+  });
   await registry.register({
     agent_id: agentSigner.agent.agent_id,
     principal_id: agentSigner.agent.principal_id,
@@ -1041,6 +1162,12 @@ integrationTest("a successful transaction commits all writes", async () => {
   assert.ok(database);
 
   await database.transaction(async (tx) => {
+    await tx.insert(principals).values({
+      principalId: "principal_commit",
+      displayName: "Commit test principal",
+      createdAt: new Date("2026-08-29T12:00:00.000Z"),
+      updatedAt: new Date("2026-08-29T12:00:00.000Z"),
+    });
     await tx.insert(paymentCredentials).values({
       credentialId: "credential_commit",
       principalId: "principal_commit",
@@ -1059,6 +1186,12 @@ integrationTest("agent registration is persistent, readable and idempotent", asy
   assert.ok(database);
   const registry = new DrizzleAgentIdentityRegistry(database, {
     now: () => new Date(travelBotFixture.created_at),
+  });
+  await database.db.insert(principals).values({
+    principalId: travelBotFixture.principal_id,
+    displayName: "Marta",
+    createdAt: new Date(travelBotFixture.created_at),
+    updatedAt: new Date(travelBotFixture.created_at),
   });
   const registration = {
     agent_id: travelBotFixture.agent_id,
@@ -1097,6 +1230,12 @@ integrationTest("a failed transaction rolls back all writes", async () => {
 
   await assert.rejects(
     database.transaction(async (tx) => {
+      await tx.insert(principals).values({
+        principalId: "principal_rollback",
+        displayName: "Rollback test principal",
+        createdAt: new Date("2026-08-29T12:00:00.000Z"),
+        updatedAt: new Date("2026-08-29T12:00:00.000Z"),
+      });
       await tx.insert(paymentCredentials).values({
         credentialId: "credential_rollback",
         principalId: "principal_rollback",
@@ -1196,6 +1335,12 @@ integrationTest("a duplicate payment authorization or provider UUID is rejected"
 integrationTest("foreign keys reject a mandate for an unknown agent", async () => {
   assert.ok(database);
 
+  await database.db.insert(principals).values({
+    principalId: mandateFixture.terms.principal_id,
+    displayName: "Marta",
+    createdAt: new Date(mandateFixture.created_at),
+    updatedAt: new Date(mandateFixture.created_at),
+  });
   await database.db.insert(paymentCredentials).values({
     credentialId: mandateFixture.terms.credential_id,
     principalId: mandateFixture.terms.principal_id,
@@ -1214,6 +1359,13 @@ integrationTest("foreign keys reject a mandate for an unknown agent", async () =
 
 integrationTest("state and monetary checks reject invalid rows", async () => {
   assert.ok(database);
+
+  await database.db.insert(principals).values({
+    principalId: "principal_invalid_state",
+    displayName: "Invalid state test principal",
+    createdAt: new Date("2026-08-29T12:00:00.000Z"),
+    updatedAt: new Date("2026-08-29T12:00:00.000Z"),
+  });
 
   await assert.rejects(
     database.db.insert(agents).values({
@@ -1258,6 +1410,12 @@ integrationTest("state and monetary checks reject invalid rows", async () => {
 
 integrationTest("agent table enforces build fingerprint and active ES256 integrity", async () => {
   assert.ok(database);
+  await database.db.insert(principals).values({
+    principalId: "principal_integrity_test",
+    displayName: "Integrity test principal",
+    createdAt: new Date(travelBotFixture.created_at),
+    updatedAt: new Date(travelBotFixture.created_at),
+  });
   const validAgentRow = {
     agentId: "agent_integrity_test",
     principalId: "principal_integrity_test",

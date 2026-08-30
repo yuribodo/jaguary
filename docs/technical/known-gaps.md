@@ -10,6 +10,14 @@ This register distinguishes implemented safeguards from production or interopera
 
 ## High severity
 
+### Mandate and travel-watch routes are not consistently session-owned
+
+Conversation creation, reads, messages, and deletion now derive and enforce the authenticated customer. However, the general mandate create/read/activate/revoke handlers in [`backend/src/modules/mandates/routes.ts`](../../backend/src/modules/mandates/routes.ts) use session ownership only for biometric-consent endpoints, and [`backend/src/modules/travelbot/watch-routes.ts`](../../backend/src/modules/travelbot/watch-routes.ts) is registered without principal auth.
+
+**Impact:** a direct API caller who obtains or predicts a resource identifier can attempt cross-principal reads or mutations. Service-level economic checks still protect Verify and payment, but resource authorization should not depend on identifier secrecy or downstream denial.
+
+**Required work:** derive principals from the opaque session, require Origin/CSRF for every browser mutation, return `404` for cross-principal resources, separate internal service calls from public routes, and add two-principal IDOR tests for mandates and watches.
+
 ### Yuno configuration never reaches the runtime executor
 
 `loadEnv` validates and returns `env.yuno`, and a tested `YunoPaymentExecutor` exists, but [`backend/src/server.ts`](../../backend/src/server.ts) never constructs or passes it to `buildApp`. [`backend/src/build-app.ts`](../../backend/src/build-app.ts) therefore installs an always-approved `FakePaymentExecutor` whenever no executor is injected.
@@ -76,11 +84,11 @@ Search entries are capped and expire, but the remembered-offer map has no evicti
 
 **Required work:** load a durable signing key, publish an overlapping JWKS key set, and define rotation/revocation operations.
 
-### Some ownership and workflow bindings are not database-enforced
+### Some travel workflow bindings are not database-enforced
 
-[`agents.principal_id`](../../backend/src/db/schema.ts) and `payment_credentials.principal_id` are not direct foreign keys to `principals`. Travel workflow rows also store checkout, mandate, authorization, and receipt identifiers without foreign keys in several places. The complete distinction between enforced and logical edges is documented in the [database model](database-model.md).
+Travel workflow rows store checkout, mandate, authorization, and receipt identifiers without foreign keys in several places. Agent ownership, customer principals, and logical credential ownership now have direct database constraints, but the remaining cross-workflow references are still application-enforced. The complete distinction between enforced and logical edges is documented in the [database model](database-model.md).
 
-**Impact:** service-level validation protects normal application paths, but a regression, migration, or alternate writer can create orphaned ownership or workflow references that PostgreSQL cannot reject.
+**Impact:** service-level validation protects normal application paths, but a regression, migration, or alternate writer can still create orphaned workflow references that PostgreSQL cannot reject.
 
 **Required work:** define deletion and retention behavior first, then add validated foreign keys where lifecycle ownership is shared; keep intentionally polymorphic ledger references documented and covered by correlation tests.
 

@@ -175,6 +175,9 @@ export interface AgentEligibilityDecision {
   reason?: import("../authorization/schemas.js").ReasonCode;
   trust: AgentTrustSnapshot;
 }
+export type AgentEligibilityContext =
+  | { purpose: "EXECUTION" }
+  | { purpose: "OPERATOR"; principal_id: string };
 export interface AgentEligibilityPort {
-  evaluate(agentId: string, principalId: string | undefined, now: Date): Promise<AgentEligibilityDecision>;
+  evaluate(agentId: string, context: AgentEligibilityContext, now: Date): Promise<AgentEligibilityDecision>;
 }

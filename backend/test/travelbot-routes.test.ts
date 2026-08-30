@@ -55,6 +55,122 @@ function fixtureAuthService() {
   });
 }
 
+function fixtureAuthenticatedPrincipal(principalId: string) {
+  const crypto = new AuthCrypto("travelbot-create-test-secret");
+  const store = new InMemoryPrincipalAuthStore(crypto);
+  const service = new PrincipalAuthService({
+    mode: "demo",
+    providers: {},
+    authRepository: store,
+    sessions: store,
+    crypto,
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+    callbackUrl: "http://localhost:3001/auth/v1/login/google/callback",
+    sessionTtlSeconds: 28_800,
+    loginTransactionTtlSeconds: 600,
+    demoProvider: new DemoPrincipalAuthProvider("development", "demo"),
+  });
+  return store.create({
+    principal: { principal_id: principalId, display_name: "Alice" },
+    assurance: "OIDC",
+    now: new Date("2026-08-29T12:04:01.000Z"),
+    expiresAt: new Date("2026-08-29T20:04:01.000Z"),
+  }).then((issued) => ({ service, store, issued }));
+}
+
+test("conversation creation derives the customer from the authenticated session", async () => {
+  const { service: auth, issued } = await fixtureAuthenticatedPrincipal("principal_alice");
+  const app = await buildApp({
+    travelBotService: fixtureService(),
+    auth: {
+      service: auth,
+      mode: "oidc",
+      allowedOrigin: "http://localhost:3000",
+      secureCookies: false,
+      sessionTtlSeconds: 28_800,
+    },
+    logger: false,
+  });
+  const commonHeaders = {
+    origin: "http://localhost:3000",
+    cookie: `bound_session=${encodeURIComponent(issued.token)}`,
+    "x-csrf-token": issued.csrfToken,
+    "idempotency-key": "idem_authenticated_create_001",
+    "x-correlation-id": "corr_authenticated_create_001",
+  };
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/v1/conversations",
+    headers: commonHeaders,
+    payload: { agent_id: "agent_travelbot" },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().principal_id, "principal_alice");
+
+  const spoofed = await app.inject({
+    method: "POST",
+    url: "/v1/conversations",
+    headers: { ...commonHeaders, "idempotency-key": "idem_authenticated_create_002" },
+    payload: { agent_id: "agent_travelbot", principal_id: "principal_marta" },
+  });
+  assert.equal(spoofed.statusCode, 400);
+  await app.close();
+});
+
+test("conversation reads and messages remain private to the authenticated customer", async () => {
+  const { service: auth, store, issued: alice } = await fixtureAuthenticatedPrincipal("principal_alice");
+  const bob = await store.create({
+    principal: { principal_id: "principal_bob", display_name: "Bob" },
+    assurance: "OIDC",
+    now: new Date("2026-08-29T12:04:01.000Z"),
+    expiresAt: new Date("2026-08-29T20:04:01.000Z"),
+  });
+  const app = await buildApp({
+    travelBotService: fixtureService(),
+    auth: { service: auth, mode: "oidc", allowedOrigin: "http://localhost:3000", secureCookies: false, sessionTtlSeconds: 28_800 },
+    logger: false,
+  });
+  const created = await app.inject({
+    method: "POST",
+    url: "/v1/conversations",
+    headers: {
+      origin: "http://localhost:3000",
+      cookie: `bound_session=${encodeURIComponent(alice.token)}`,
+      "x-csrf-token": alice.csrfToken,
+      "idempotency-key": "idem_private_create_001",
+      "x-correlation-id": "corr_private_create_001",
+    },
+    payload: { agent_id: "agent_travelbot" },
+  });
+  const conversationId = created.json().conversation_id as string;
+
+  assert.equal((await app.inject({ method: "GET", url: `/v1/conversations/${conversationId}` })).statusCode, 401);
+  assert.equal((await app.inject({
+    method: "GET",
+    url: `/v1/conversations/${conversationId}`,
+    headers: { cookie: `bound_session=${encodeURIComponent(bob.token)}` },
+  })).statusCode, 404);
+  assert.equal((await app.inject({
+    method: "GET",
+    url: `/v1/conversations/${conversationId}`,
+    headers: { cookie: `bound_session=${encodeURIComponent(alice.token)}` },
+  })).statusCode, 200);
+  assert.equal((await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${conversationId}/messages`,
+    headers: {
+      origin: "http://localhost:3000",
+      cookie: `bound_session=${encodeURIComponent(bob.token)}`,
+      "x-csrf-token": bob.csrfToken,
+      "idempotency-key": "idem_private_message_001",
+      "x-correlation-id": "corr_private_message_001",
+    },
+    payload: { content: "Show me Alice's trip" },
+  })).statusCode, 404);
+  await app.close();
+});
+
 test("TravelBot v1 routes create, read and append a durable conversation", async () => {
   const app = await buildApp({ travelBotService: fixtureService(), logger: false });
   const headers = {
@@ -142,14 +258,19 @@ test("discarding a conversation requires the owning principal session, CSRF and 
     },
     logger: false,
   });
+  const issued = await auth.createDemoSession();
+  const cookie = `bound_session=${encodeURIComponent(issued.token)}`;
   const created = await app.inject({
     method: "POST",
     url: "/v1/conversations",
     headers: {
+      origin: "http://localhost:3000",
+      cookie,
+      "x-csrf-token": issued.csrfToken,
       "idempotency-key": "idem_discard_create_001",
       "x-correlation-id": "corr_discard_create_001",
     },
-    payload: { principal_id: "principal_marta", agent_id: "agent_travelbot" },
+    payload: { agent_id: "agent_travelbot" },
   });
   const conversationId = created.json().conversation_id as string;
   const commonHeaders = {
@@ -177,8 +298,6 @@ test("discarding a conversation requires the owning principal session, CSRF and 
   });
   assert.equal(unauthenticated.statusCode, 401);
 
-  const issued = await auth.createDemoSession();
-  const cookie = `bound_session=${encodeURIComponent(issued.token)}`;
   const crossOrigin = await app.inject({
     method: "DELETE",
     url: `/v1/conversations/${conversationId}`,
@@ -197,13 +316,17 @@ test("discarding a conversation requires the owning principal session, CSRF and 
     headers: { ...commonHeaders, cookie, "x-csrf-token": issued.csrfToken },
   });
   assert.equal(discarded.statusCode, 204);
-  const read = await app.inject({ method: "GET", url: `/v1/conversations/${conversationId}` });
+  const read = await app.inject({
+    method: "GET",
+    url: `/v1/conversations/${conversationId}`,
+    headers: { cookie },
+  });
   assert.equal(read.statusCode, 404);
   await app.close();
 });
 
 test("voice sessions are short-lived, authenticated and bound to the conversation owner", async () => {
-  const auth = fixtureAuthService();
+  const { service: auth, store, issued: session } = await fixtureAuthenticatedPrincipal("principal_marta");
   const issuedFor: string[] = [];
   const app = await buildApp({
     travelBotService: fixtureService(),
@@ -222,18 +345,20 @@ test("voice sessions are short-lived, authenticated and bound to the conversatio
     },
     logger: false,
   });
+  const cookie = `bound_session=${encodeURIComponent(session.token)}`;
   const created = await app.inject({
     method: "POST",
     url: "/v1/conversations",
     headers: {
+      origin: "http://localhost:3000",
+      cookie,
+      "x-csrf-token": session.csrfToken,
       "idempotency-key": "idem_voice_create_001",
       "x-correlation-id": "corr_voice_create_001",
     },
-    payload: { principal_id: "principal_marta", agent_id: "agent_travelbot" },
+    payload: { agent_id: "agent_travelbot" },
   });
   const conversationId = created.json().conversation_id as string;
-  const session = await auth.createDemoSession();
-  const cookie = `bound_session=${encodeURIComponent(session.token)}`;
   const commonHeaders = {
     origin: "http://localhost:3000",
     cookie,
@@ -270,14 +395,23 @@ test("voice sessions are short-lived, authenticated and bound to the conversatio
   assert.deepEqual(response.json(), { value: "ek_test_ephemeral_only", expires_at: 1_788_072_900 });
   assert.deepEqual(issuedFor, ["principal_marta"]);
 
+  const otherSession = await store.create({
+    principal: { principal_id: "principal_other", display_name: "Other" },
+    assurance: "OIDC",
+    now: new Date("2026-08-29T12:04:01.000Z"),
+    expiresAt: new Date("2026-08-29T20:04:01.000Z"),
+  });
   const other = await app.inject({
     method: "POST",
     url: "/v1/conversations",
     headers: {
+      origin: "http://localhost:3000",
+      cookie: `bound_session=${encodeURIComponent(otherSession.token)}`,
+      "x-csrf-token": otherSession.csrfToken,
       "idempotency-key": "idem_voice_create_other",
       "x-correlation-id": "corr_voice_create_other",
     },
-    payload: { principal_id: "principal_other", agent_id: "agent_travelbot" },
+    payload: { agent_id: "agent_travelbot" },
   });
   const refused = await app.inject({
     method: "POST",

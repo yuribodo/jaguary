@@ -21,11 +21,13 @@ Shopping agents are good at interpreting intent and navigating choices, but econ
 
 PostgreSQL stores durable conversations, intent snapshots, tool executions, encrypted approval interruptions, identity/trust state, mandates, nonces, authorizations, payment attempts, receipts, and audit events.
 
+The registered agent owner and the shopping customer are different roles. TravelBot's `agents.principal_id` is its operator/trust binding; the authenticated session principal owns the conversation and is the principal on customer authority. Verify requires one agent across the proof, mandate, and authorization, and one customer across the mandate and authorization, but does not incorrectly require the agent operator to be that customer.
+
 The [database model](database-model.md) maps all 25 tables and expands the transactional authority spine down to its selected columns and foreign keys.
 
 ## Request path
 
-1. The browser sends a message with an idempotency key and correlation ID.
+1. The browser sends a message with its opaque session, CSRF token, idempotency key, and correlation ID; the API derives the conversation owner from that session.
 2. TravelBot claims the turn in PostgreSQL before calling OpenAI.
 3. The model returns strict structured intent and may call only tools legal for the persisted state.
 4. Application code searches Google Flights through SerpApi, normalizes short-lived offers, chooses deterministically, and asks VuelaYa for merchant-authored checkout terms.

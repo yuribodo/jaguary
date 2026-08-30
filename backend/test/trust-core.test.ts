@@ -22,16 +22,26 @@ function trust(overrides: Partial<AgentTrustSnapshot> = {}): AgentTrustSnapshot 
 }
 
 test("one eligibility policy covers local, optional and every required attestation state", () => {
-  assert.equal(evaluateAgentEligibility(trust({ mode: "LOCAL", attestation_status: null }), "principal_marta", now).eligible, true);
-  assert.equal(evaluateAgentEligibility(trust({ mode: "EXTERNAL_OPTIONAL", attestation_status: "ERROR" }), "principal_marta", now).eligible, true);
+  assert.equal(evaluateAgentEligibility(trust({ mode: "LOCAL", attestation_status: null }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).eligible, true);
+  assert.equal(evaluateAgentEligibility(trust({ mode: "EXTERNAL_OPTIONAL", attestation_status: "ERROR" }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).eligible, true);
   const cases = new Map<AgentTrustSnapshot["attestation_status"], string>([
     [null, "agent_attestation_required"], ["PENDING", "agent_attestation_pending"], ["REJECTED", "agent_attestation_rejected"],
     ["EXPIRED", "agent_attestation_expired"], ["REVOKED", "agent_attestation_revoked"], ["ERROR", "agent_attestation_provider_unavailable"],
   ]);
-  for (const [status, reason] of cases) assert.equal(evaluateAgentEligibility(trust({ attestation_status: status }), "principal_marta", now).reason, reason);
-  assert.equal(evaluateAgentEligibility(trust({ expires_at: now.toISOString() }), "principal_marta", now).reason, "agent_attestation_expired");
-  assert.equal(evaluateAgentEligibility(trust({ binding_hash: "d".repeat(64) }), "principal_marta", now).reason, "agent_attestation_binding_mismatch");
-  assert.equal(evaluateAgentEligibility(trust({ operational_status: "SUSPENDED" }), "principal_marta", now).reason, "agent_not_active");
+  for (const [status, reason] of cases) assert.equal(evaluateAgentEligibility(trust({ attestation_status: status }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).reason, reason);
+  assert.equal(evaluateAgentEligibility(trust({ expires_at: now.toISOString() }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).reason, "agent_attestation_expired");
+  assert.equal(evaluateAgentEligibility(trust({ binding_hash: "d".repeat(64) }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).reason, "agent_attestation_binding_mismatch");
+  assert.equal(evaluateAgentEligibility(trust({ operational_status: "SUSPENDED" }), { purpose: "OPERATOR", principal_id: "principal_marta" }, now).reason, "agent_not_active");
+});
+
+test("execution eligibility separates the platform operator from the customer", () => {
+  const snapshot = trust({ mode: "EXTERNAL_REQUIRED", attestation_status: "VERIFIED" });
+  assert.equal(evaluateAgentEligibility(snapshot, { purpose: "EXECUTION" }, now).eligible, true);
+  assert.equal(evaluateAgentEligibility(snapshot, { purpose: "OPERATOR", principal_id: "principal_marta" }, now).eligible, true);
+  assert.equal(
+    evaluateAgentEligibility(snapshot, { purpose: "OPERATOR", principal_id: "principal_alice" }, now).reason,
+    "agent_attestation_binding_mismatch",
+  );
 });
 
 test("deterministic fake supplies evidence, not an authorization decision", async () => {
@@ -93,8 +103,8 @@ test("a revocation committed after precheck is reloaded and denied at the reserv
     getCurrentInTransaction: async () => trust({ attestation_status: "REVOKED" }),
   } as unknown as AgentTrustRepositoryPort & { getCurrentInTransaction(transaction: TransactionClient, agentId: string, at: Date): Promise<AgentTrustSnapshot> };
   const eligibility = new AgentEligibilityService(repository);
-  assert.equal((await eligibility.evaluate("agent_travelbot", "principal_marta", now)).eligible, true);
-  const reserved = await eligibility.evaluateInTransaction({} as TransactionClient, "agent_travelbot", "principal_marta", now);
+  assert.equal((await eligibility.evaluate("agent_travelbot", { purpose: "OPERATOR", principal_id: "principal_marta" }, now)).eligible, true);
+  const reserved = await eligibility.evaluateInTransaction({} as TransactionClient, "agent_travelbot", { purpose: "EXECUTION" }, now);
   assert.equal(reserved.eligible, false);
   assert.equal(reserved.reason, "agent_attestation_revoked");
 });

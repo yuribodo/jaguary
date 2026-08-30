@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { decodeJwt } from "jose";
 
-import { PublicApiError, sha256CanonicalJson, type AgentAttestationProviderPort, type AgentEligibilityPort, type AgentTrustRepositoryPort, type PrincipalSession } from "../../contracts/v1/index.js";
+import { PublicApiError, sha256CanonicalJson, type AgentAttestationProviderPort, type AgentEligibilityContext, type AgentEligibilityPort, type AgentTrustRepositoryPort, type PrincipalSession } from "../../contracts/v1/index.js";
 import { randomOpaqueToken } from "../auth/crypto.js";
 import { agentBindingHash, evaluateAgentEligibility } from "./eligibility.js";
 import type { BoundAgentPassportService } from "./passport.js";
@@ -24,11 +24,11 @@ export interface AgentTrustServiceOptions {
 }
 export class AgentEligibilityService implements AgentEligibilityPort {
   constructor(private readonly repository: AgentTrustRepositoryPort) {}
-  async evaluate(agentId: string, principalId: string | undefined, now: Date) { return evaluateAgentEligibility(await this.repository.getCurrent(agentId, now), principalId, now); }
-  async evaluateInTransaction(transaction: TransactionClient, agentId: string, principalId: string | undefined, now: Date) {
+  async evaluate(agentId: string, context: AgentEligibilityContext, now: Date) { return evaluateAgentEligibility(await this.repository.getCurrent(agentId, now), context, now); }
+  async evaluateInTransaction(transaction: TransactionClient, agentId: string, context: AgentEligibilityContext, now: Date) {
     const repository = this.repository as AgentTrustRepositoryPort & { getCurrentInTransaction?(transaction: TransactionClient, agentId: string, now: Date): ReturnType<AgentTrustRepositoryPort["getCurrent"]> };
     const trust = repository.getCurrentInTransaction === undefined ? await repository.getCurrent(agentId, now) : await repository.getCurrentInTransaction(transaction, agentId, now);
-    return evaluateAgentEligibility(trust, principalId, now);
+    return evaluateAgentEligibility(trust, context, now);
   }
 }
 export class AgentTrustService {
@@ -74,7 +74,7 @@ export class AgentTrustService {
   }
   async assurance(session: PrincipalSession, agentId: string) {
     await this.options.repository.getAgentBinding(agentId, session.principal.principal_id);
-    const decision = await this.eligibility.evaluate(agentId, session.principal.principal_id, this.options.clock.now());
+    const decision = await this.eligibility.evaluate(agentId, { purpose: "OPERATOR", principal_id: session.principal.principal_id }, this.options.clock.now());
     const trust = decision.trust;
     return { agent_id: trust.agent_id, operational_status: trust.operational_status, attestation_id: trust.attestation_id, attestation_status: trust.attestation_status,
       provider: trust.provider, assurance_claims: trust.assurance_claims, assurance_level: trust.assurance_level, issued_at: trust.issued_at, expires_at: trust.expires_at,
@@ -107,7 +107,7 @@ export class AgentTrustService {
   async passport(session: PrincipalSession, agentId: string, correlationId: string) {
     await this.options.repository.getAgentBinding(agentId, session.principal.principal_id);
     const trust = await this.options.repository.getCurrent(agentId, this.options.clock.now());
-    const decision = evaluateAgentEligibility(trust, session.principal.principal_id, this.options.clock.now());
+    const decision = evaluateAgentEligibility(trust, { purpose: "OPERATOR", principal_id: session.principal.principal_id }, this.options.clock.now());
     if (!decision.eligible || trust.attestation_status !== "VERIFIED") throw new PublicApiError(403, decision.reason ?? "agent_attestation_required", "Agent is not eligible for a passport");
     const issued = await this.options.passports.issue(trust);
     await this.options.repository.recordPassportIssued?.({ passportId: issued.claims.jti, trust, expiresAt: new Date(issued.claims.exp * 1000), correlationId, now: this.options.clock.now() });

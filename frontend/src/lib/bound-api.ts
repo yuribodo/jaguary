@@ -221,7 +221,8 @@ export const boundApi = {
   },
 
   createConversation(
-    input: { principal_id: string; agent_id: string },
+    agentId: string,
+    csrfToken: string,
     requestIdentity: ReturnType<typeof createRequestIdentity>,
     signal?: AbortSignal,
   ) {
@@ -232,8 +233,9 @@ export const boundApi = {
         "Content-Type": "application/json",
         "Idempotency-Key": requestIdentity.idempotencyKey,
         "X-Correlation-Id": requestIdentity.correlationId,
+        "X-CSRF-Token": csrfToken,
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ agent_id: agentId }),
     });
   },
 
@@ -337,6 +339,7 @@ export const boundApi = {
   postConversationMessage(
     conversationId: string,
     content: string,
+    csrfToken: string,
     requestIdentity: ReturnType<typeof createRequestIdentity>,
   ) {
     return request<TravelBotConversation>(
@@ -347,6 +350,7 @@ export const boundApi = {
           "Content-Type": "application/json",
           "Idempotency-Key": requestIdentity.idempotencyKey,
           "X-Correlation-Id": requestIdentity.correlationId,
+          "X-CSRF-Token": csrfToken,
         },
         body: JSON.stringify({ content }),
       },

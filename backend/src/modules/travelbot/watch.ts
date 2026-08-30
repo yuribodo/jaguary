@@ -75,6 +75,7 @@ interface WatchMandatesPort {
     input: CreateMandateDraftInput,
     idempotencyKey: string,
     correlationId: string,
+    options?: { allowDemoCredentialTemplate?: boolean },
   ): Promise<{ mandate: Mandate }>;
   activate(mandateId: string, idempotencyKey: string, correlationId: string): Promise<Mandate>;
   revoke?(mandateId: string, idempotencyKey: string, correlationId: string): Promise<Mandate>;
@@ -360,7 +361,7 @@ export class TravelWatchService {
         valid_from: now.toISOString(),
         expires_at: expiresAt.toISOString(),
         credential_id: this.options.credentialId,
-    }, `mandate_${command.idempotency_key}`, command.correlation_id);
+    }, `mandate_${command.idempotency_key}`, command.correlation_id, { allowDemoCredentialTemplate: true });
     const requestHash = sha256CanonicalJson({
       conversation_id: command.conversation_id,
       mode: command.mode,

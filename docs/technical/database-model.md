@@ -38,11 +38,12 @@ The detailed schema expands the five tables at the core of a purchase: `mandates
 
 No displayed foreign key declares an explicit delete action, so PostgreSQL uses `ON DELETE NO ACTION`. That is appropriate for durable authority and evidence, but deletion tooling must remove dependent records in an explicit, safe order.
 
+Agent ownership and customer authority are deliberately separate relationships. `agents.principal_id` identifies the operator whose key/build trust is attested. The principal on a conversation, mandate, or watch identifies the authenticated customer for whom that platform-operated agent is acting. PostgreSQL enforces each reference independently; it does not require the operator and customer to be the same row.
+
 ## Integrity boundaries to review
 
 These are current schema facts, not claims that the application is presently producing orphan rows:
 
-- `agents.principal_id` and `payment_credentials.principal_id` are not direct foreign keys to `principals.principal_id`. Composite downstream keys preserve agent and credential ownership when referenced, but the owner row itself can be inserted without database-enforced principal existence.
 - `travel_conversations.selected_checkout_id`, `mandate_id`, `authorization_id`, and `receipt_id` are workflow bindings without foreign keys to commerce, authority, or order tables.
 - `travel_approvals.mandate_id` and receipt identifiers on travel watches/checks are also application-level bindings.
 - `audit_events.subject_id` and `correlation_id` are intentionally polymorphic evidence references rather than foreign keys. This keeps the ledger generic, so correctness depends on service-level correlation tests.
