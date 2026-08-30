@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   BotIcon,
   CreditCardIcon,
+  FingerprintIcon,
   HandshakeIcon,
   HistoryIcon,
   PlusIcon,
@@ -30,12 +31,13 @@ import {
 } from "@/lib/conversation-history";
 import type { TravelBotConversation } from "@/lib/contracts";
 
-export type AccountPage = "payment-methods" | "purchases" | "merchants";
+export type AccountPage = "payment-methods" | "purchases" | "merchants" | "trust";
 
 const accountPages = [
   { key: "payment-methods", href: "/payment-methods", label: "Payment methods", icon: CreditCardIcon },
   { key: "purchases", href: "/purchases", label: "Purchases", icon: HistoryIcon },
   { key: "merchants", href: "/connected-merchants", label: "Connected merchants", icon: HandshakeIcon },
+  { key: "trust", href: "/trust", label: "Identity & trust", icon: FingerprintIcon },
 ] as const;
 
 export function AppSidebar({
