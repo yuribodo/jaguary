@@ -45,6 +45,14 @@ export type FlightFulfillment = {
   destination: string;
   departure_at: string;
   arrival_at: string;
+  departure_local?: string;
+  arrival_local?: string;
+  departure_airport_name?: string;
+  arrival_airport_name?: string;
+  airline_names?: string[];
+  flight_numbers?: string[];
+  duration_minutes?: number;
+  stops?: number;
 };
 
 export type OfferCandidate = {
@@ -57,6 +65,8 @@ export type OfferCandidate = {
   available_until: string;
   source_url: string;
   observed_at: string;
+  source?: "GOOGLE_FLIGHTS" | "VUELAYA_DEMO";
+  ranking?: "BEST" | "OTHER";
 };
 
 export type PurchaseIntent = {

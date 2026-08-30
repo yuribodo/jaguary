@@ -15,21 +15,25 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleIcon,
-  Clock3Icon,
   CopyIcon,
   CreditCardIcon,
+  ExternalLinkIcon,
   HandshakeIcon,
   HistoryIcon,
+  InfoIcon,
   MicIcon,
   MicOffIcon,
   PlaneIcon,
   PlusIcon,
+  ReceiptTextIcon,
   RefreshCwIcon,
+  SearchIcon,
   ShieldCheckIcon,
   SparklesIcon,
   SquareIcon,
   WalletCardsIcon,
   WifiOffIcon,
+  UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -114,7 +118,18 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function asApiError(error: unknown) {
-  if (error instanceof BoundApiError) return error;
+  if (error instanceof BoundApiError) {
+    if (error.status === 503) {
+      return new BoundApiError({
+        message: "The search or TravelBot did not respond in time. Your data is still saved; try again.",
+        code: error.code,
+        status: error.status,
+        correlationId: error.correlationId,
+        offline: error.offline,
+      });
+    }
+    return error;
+  }
   return new BoundApiError({
     message: "An unexpected error occurred in this conversation.",
     code: "unexpected_error",
@@ -139,21 +154,52 @@ function formatMoney(amount: number, currency: string) {
   }).format(amount / 100);
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "America/Sao_Paulo",
-  }).format(new Date(value));
-}
-
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "America/Sao_Paulo",
   }).format(new Date(value));
+}
+
+function formatLocalDate(local: string | undefined, fallback: string) {
+  const date = local?.slice(0, 10) ?? fallback.slice(0, 10);
+  return new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00.000Z`));
+}
+
+function formatLocalTime(local: string | undefined, fallback: string) {
+  return local?.slice(11, 16) ?? formatTime(fallback);
+}
+
+function formatDuration(minutes?: number) {
+  if (minutes === undefined) return undefined;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}min` : `${hours}h`;
+}
+
+function cabinLabel(cabin: OfferCandidate["fulfillment"]["cabin"] | null) {
+  return ({
+    ECONOMY: "Economy",
+    PREMIUM_ECONOMY: "Premium economy",
+    BUSINESS: "Business",
+    FIRST: "First class",
+  } as const)[cabin ?? "ECONOMY"];
+}
+
+function stopLabel(stops?: number) {
+  if (stops === undefined) return undefined;
+  if (stops === 0) return "Nonstop";
+  return `${stops} ${stops === 1 ? "stop" : "stops"}`;
+}
+
+function freshnessLabel(observedAt: string) {
+  return `at ${formatTime(observedAt)}`;
 }
 
 function shortId(value: string, start = 10, end = 6) {
@@ -304,14 +350,21 @@ function AssistantMessage({ message }: { message: TravelBotMessage }) {
   );
 }
 
-function UserMessage({ message }: { message: Pick<TravelBotMessage, "content" | "created_at"> }) {
+function UserMessage({
+  message,
+  status,
+}: {
+  message: Pick<TravelBotMessage, "content" | "created_at">;
+  status?: "sending" | "sent";
+}) {
   return (
     <Message from="user">
-      <MessageContent className="max-w-[88%] whitespace-pre-wrap rounded-lg rounded-br-sm border bg-secondary px-3.5 py-2.5 text-[13px] leading-6">
+      <MessageContent className="max-w-[92%] whitespace-pre-wrap rounded-xl rounded-br-sm border bg-secondary px-3.5 py-2.5 text-[13px] leading-6 sm:max-w-[82%]">
         {message.content}
-        <time className="self-end text-[9px] text-muted-foreground" dateTime={message.created_at}>
-          {formatTime(message.created_at)}
-        </time>
+        <span className="flex items-center justify-end gap-1.5 text-[9px] text-muted-foreground">
+          <time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
+          <span aria-live="polite">{status === "sending" ? "sending…" : "sent"}</span>
+        </span>
       </MessageContent>
     </Message>
   );
@@ -327,7 +380,7 @@ function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: 
         Where are we going, Marta?
       </h1>
       <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">
-        Share your trip details. TravelBot can search, compare, and prepare the purchase — always asking for your confirmation before moving any money.
+        Share your trip details. TravelBot checks Google Flights, compares options, and prepares the purchase — always asking for confirmation before moving any money.
       </p>
       <div className="mt-7 grid max-w-2xl gap-2">
         {STARTER_PROMPTS.map((suggestion) => (
@@ -346,48 +399,106 @@ function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: 
   );
 }
 
+function IntentSummary({ conversation }: { conversation: TravelBotConversation }) {
+  const { intent } = conversation;
+  if (!intent.origin_iata && !intent.destination_iata && !intent.departure_date) return null;
+  return (
+    <section className="rounded-xl border bg-panel/70 p-3.5" aria-label="Understood trip request">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-xs font-semibold"><CheckIcon className="size-3.5 text-emerald-700" />I understood your trip</span>
+        {conversation.missing_fields.length ? <span className="text-[10px] text-amber-700">{conversation.missing_fields.length} details missing</span> : <span className="text-[10px] text-emerald-700">Ready to search</span>}
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-5">
+        <div><dt className="text-[10px] text-muted-foreground">Route</dt><dd className="mt-0.5 font-semibold">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
+        <div><dt className="text-[10px] text-muted-foreground">Date</dt><dd className="mt-0.5 font-medium">{intent.departure_date ? formatLocalDate(intent.departure_date, intent.departure_date) : "—"}</dd></div>
+        <div><dt className="text-[10px] text-muted-foreground">Travelers</dt><dd className="mt-0.5 font-medium">{intent.passenger_count ?? "—"}</dd></div>
+        <div><dt className="text-[10px] text-muted-foreground">Cabin</dt><dd className="mt-0.5 font-medium">{intent.cabin ? cabinLabel(intent.cabin) : "—"}</dd></div>
+        <div className="col-span-2 sm:col-span-1"><dt className="text-[10px] text-muted-foreground">Total limit</dt><dd className="mt-0.5 font-semibold tabular-nums">{intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : "—"}</dd></div>
+      </dl>
+      {conversation.missing_fields.length ? <p className="mt-2.5 border-t pt-2.5 text-[10px] text-muted-foreground">Still needed: {conversation.missing_fields.map((field) => missingFieldLabels[field]).join(", ")}.</p> : null}
+    </section>
+  );
+}
+
+function WorkingStatus({ state }: { state: TravelBotState }) {
+  const label = state === "AWAITING_OFFER_SELECTION"
+    ? "Locking the offer and preparing your review…"
+    : state === "AWAITING_AUTHORITY_CONFIRMATION"
+      ? "Validating the authorization and processing securely…"
+      : "Checking available flights on Google Flights…";
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3.5" aria-live="polite" role="status">
+      <span className="relative mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm">
+        <SearchIcon className="size-4" />
+        <i className="absolute -top-0.5 -right-0.5 size-2 animate-pulse rounded-full bg-blue-600 ring-2 ring-white" />
+      </span>
+      <div><strong className="block text-xs">{label}</strong><p className="mt-1 text-[11px] leading-5 text-muted-foreground">This may take a few seconds. You can stay on this screen.</p></div>
+    </div>
+  );
+}
+
 function OfferCard({
   offer,
+  passengerCount,
   disabled,
   onSelect,
 }: {
   offer: OfferCandidate;
+  passengerCount: number;
   disabled: boolean;
   onSelect: () => void;
 }) {
+  const fulfillment = offer.fulfillment;
+  const airline = fulfillment.airline_names?.join(" + ") ?? "Airline";
+  const partyTotal = offer.total.amount * passengerCount;
   return (
-    <article className="overflow-hidden rounded-lg border bg-card shadow-[0_6px_24px_rgb(0_0_0/0.06)]">
-      <header className="flex items-center justify-between border-b bg-panel px-4 py-3">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <PlaneIcon className="size-3.5 text-blue-700" />
-          VuelaYa
+    <article className="min-w-0 max-w-full overflow-hidden rounded-xl border bg-card shadow-[0_8px_30px_rgb(22_31_55/0.07)]">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-panel px-4 py-3">
+        <span className="flex min-w-0 items-center gap-2 text-[11px] font-medium">
+          <i className="size-2 rounded-full bg-emerald-600" aria-hidden="true" />
+          {offer.source === "GOOGLE_FLIGHTS" ? "Google Flights" : "VuelaYa"} · checked {freshnessLabel(offer.observed_at)}
         </span>
-        <span className="panel-label">Merchant offer</span>
+        <span className="panel-label">{offer.ranking === "BEST" ? "Best combination" : "Available option"}</span>
       </header>
-      <div className="grid gap-5 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-        <div>
-          <div className="flex items-center gap-3">
-            <strong className="font-serif text-3xl font-normal">{offer.fulfillment.origin}</strong>
-            <span className="h-px w-10 bg-border" aria-hidden="true" />
-            <PlaneIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-            <span className="h-px w-10 bg-border" aria-hidden="true" />
-            <strong className="font-serif text-3xl font-normal">{offer.fulfillment.destination}</strong>
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <strong className="block truncate text-sm">{airline}</strong>
+            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{fulfillment.flight_numbers?.join(" · ") ?? "Number confirmed at checkout"}</span>
           </div>
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><CalendarDaysIcon className="size-3" />{formatDate(offer.fulfillment.departure_at)}</span>
-            <span className="inline-flex items-center gap-1.5"><Clock3Icon className="size-3" />{formatTime(offer.fulfillment.departure_at)}–{formatTime(offer.fulfillment.arrival_at)}</span>
-            <span>{offer.fulfillment.cabin === "ECONOMY" ? "Economy" : offer.fulfillment.cabin}</span>
+          {offer.source === "GOOGLE_FLIGHTS" ? <a className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-blue-700 hover:underline" href={offer.source_url} rel="noreferrer" target="_blank">View source <ExternalLinkIcon className="size-3" /></a> : null}
+        </div>
+        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
+          <div className="min-w-0">
+            <strong className="font-serif text-3xl font-normal">{formatLocalTime(fulfillment.departure_local, fulfillment.departure_at)}</strong>
+            <span className="mt-0.5 block text-xs font-semibold">{fulfillment.origin}</span>
+          </div>
+          <div className="grid min-w-20 place-items-center text-center sm:min-w-24">
+            <span className="text-[9px] text-muted-foreground">{formatDuration(fulfillment.duration_minutes) ?? "Duration"}</span>
+            <span className="my-1 flex w-full items-center"><i className="h-px flex-1 bg-border" /><PlaneIcon className="mx-1.5 size-3.5 text-blue-700" /><i className="h-px flex-1 bg-border" /></span>
+            <span className="text-[9px] font-medium text-muted-foreground">{stopLabel(fulfillment.stops) ?? cabinLabel(fulfillment.cabin)}</span>
+          </div>
+          <div className="min-w-0 text-right">
+            <strong className="font-serif text-3xl font-normal">{formatLocalTime(fulfillment.arrival_local, fulfillment.arrival_at)}</strong>
+            <span className="mt-0.5 block text-xs font-semibold">{fulfillment.destination}</span>
           </div>
         </div>
-        <div className="flex items-center justify-between gap-5 border-t pt-4 sm:block sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5 sm:text-right">
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5"><CalendarDaysIcon className="size-3" />{formatLocalDate(fulfillment.departure_local, fulfillment.departure_at)}</span>
+          <span>{cabinLabel(fulfillment.cabin)}</span>
+          <span className="inline-flex items-center gap-1.5"><UsersIcon className="size-3" />{passengerCount} {passengerCount === 1 ? "traveler" : "travelers"}</span>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
-            <span className="block text-[10px] text-muted-foreground">Total per person</span>
-            <strong className="mt-0.5 block text-lg tabular-nums">{formatMoney(offer.total.amount, offer.total.currency)}</strong>
+            <span className="block text-[10px] text-muted-foreground">Total for {passengerCount}</span>
+            <strong className="mt-0.5 block text-xl tabular-nums">{formatMoney(partyTotal, offer.total.currency)}</strong>
+            {passengerCount > 1 ? <span className="text-[9px] text-muted-foreground">{formatMoney(offer.total.amount, offer.total.currency)} per person</span> : null}
           </div>
-          <Button className="mt-0 sm:mt-3" disabled={disabled} onClick={onSelect} size="sm">
-            Select <ChevronRightIcon />
+          <Button className="h-11 w-full px-4 sm:w-auto" disabled={disabled} onClick={onSelect}>
+            Choose flight <ChevronRightIcon />
           </Button>
         </div>
+        <p className="mt-3 flex items-start gap-1.5 text-[9px] leading-4 text-muted-foreground"><InfoIcon className="mt-0.5 size-3 shrink-0" />Observed price, subject to confirmation at checkout.</p>
       </div>
     </article>
   );
@@ -404,8 +515,10 @@ function ApprovalCard({
 }) {
   const approval = conversation.operation.pending_approval;
   if (!approval) return null;
+  const offer = conversation.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
+  const travelers = conversation.intent.passenger_count ?? 1;
   return (
-    <article className="overflow-hidden rounded-lg border border-blue-200 bg-card shadow-[0_6px_24px_rgb(0_0_0/0.06)]">
+    <article className="overflow-hidden rounded-xl border border-blue-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.08)]">
       <div className="h-1 bg-blue-600" />
       <div className="p-4 sm:p-5">
         <div className="flex items-start gap-3">
@@ -416,20 +529,63 @@ function ApprovalCard({
             <p className="panel-label">Your decision</p>
             <h2 className="mt-1 font-serif text-2xl">Authorize this purchase?</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              TravelBot is asking for permission to pay <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> to VuelaYa. Nothing will move without your confirmation.
+              Review the details below. TravelBot can pay <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> to VuelaYa only after your confirmation.
             </p>
           </div>
         </div>
-        <dl className="mt-5 grid gap-2 border-y py-3 text-xs sm:grid-cols-2">
-          <div><dt className="text-muted-foreground">Merchant</dt><dd className="mt-0.5 font-mono">{approval.merchant_id}</dd></div>
-          <div><dt className="text-muted-foreground">Mandate</dt><dd className="mt-0.5 font-mono">{shortId(approval.mandate_id)}</dd></div>
+        {offer ? (
+          <div className="mt-5 rounded-lg bg-panel p-3.5">
+            <div className="flex items-start justify-between gap-4">
+              <div><strong className="text-sm">{offer.fulfillment.origin} → {offer.fulfillment.destination}</strong><p className="mt-0.5 text-[10px] text-muted-foreground">{offer.fulfillment.airline_names?.join(" + ") ?? "VuelaYa"} · {offer.fulfillment.flight_numbers?.join(" · ")}</p></div>
+              <strong className="text-sm tabular-nums">{formatMoney(approval.amount, approval.currency)}</strong>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-3 border-t pt-3 text-[11px] sm:grid-cols-4">
+              <div><dt className="text-muted-foreground">Date</dt><dd className="mt-0.5 font-medium">{formatLocalDate(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
+              <div><dt className="text-muted-foreground">Local time</dt><dd className="mt-0.5 font-medium">{formatLocalTime(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}–{formatLocalTime(offer.fulfillment.arrival_local, offer.fulfillment.arrival_at)}</dd></div>
+              <div><dt className="text-muted-foreground">Travelers</dt><dd className="mt-0.5 font-medium">{travelers}</dd></div>
+              <div><dt className="text-muted-foreground">Cabin</dt><dd className="mt-0.5 font-medium">{cabinLabel(offer.fulfillment.cabin)}</dd></div>
+            </dl>
+          </div>
+        ) : null}
+        <dl className="mt-3 grid gap-2 border-y py-3 text-[10px] sm:grid-cols-2">
+          <div><dt className="text-muted-foreground">Recipient</dt><dd className="mt-0.5 font-mono">{approval.merchant_id}</dd></div>
+          <div><dt className="text-muted-foreground">Limited authority</dt><dd className="mt-0.5 font-mono">{shortId(approval.mandate_id)}</dd></div>
         </dl>
+        <p className="mt-3 flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><ShieldCheckIcon className="mt-0.5 size-3 shrink-0 text-emerald-700" />One-time use, limited to this flight and amount. No money has moved yet.</p>
         <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button disabled={disabled} onClick={() => onDecision(false)} variant="outline">Do not authorize</Button>
-          <Button disabled={disabled} onClick={() => onDecision(true)}>
+          <Button className="h-11" disabled={disabled} onClick={() => onDecision(false)} variant="outline">Do not authorize</Button>
+          <Button className="h-11" disabled={disabled} onClick={() => onDecision(true)}>
             <CheckIcon /> Authorize {formatMoney(approval.amount, approval.currency)}
           </Button>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation }) {
+  if (conversation.state !== "COMPLETED" || !conversation.operation.receipt_id) return null;
+  const offer = conversation.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
+  if (!offer) return null;
+  const travelers = conversation.intent.passenger_count ?? 1;
+  return (
+    <article className="overflow-hidden rounded-xl border border-emerald-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.07)]" aria-label="Purchase confirmed">
+      <div className="flex items-center gap-3 border-b border-emerald-100 bg-emerald-50/70 px-4 py-3.5">
+        <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-white"><CheckIcon className="size-4" /></span>
+        <div><strong className="block text-sm">Purchase confirmed</strong><span className="text-[10px] text-emerald-800">Receipt issued and saved in Bound</span></div>
+      </div>
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div><p className="panel-label">Your flight</p><h2 className="mt-1 font-serif text-2xl">{offer.fulfillment.origin} → {offer.fulfillment.destination}</h2><p className="mt-1 text-xs text-muted-foreground">{offer.fulfillment.airline_names?.join(" + ")} · {offer.fulfillment.flight_numbers?.join(" · ")}</p></div>
+          <ReceiptTextIcon className="size-5 text-emerald-700" />
+        </div>
+        <dl className="mt-4 grid grid-cols-2 gap-3 border-y py-3 text-xs sm:grid-cols-4">
+          <div><dt className="text-muted-foreground">Date</dt><dd className="mt-1 font-medium">{formatLocalDate(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
+          <div><dt className="text-muted-foreground">Departure</dt><dd className="mt-1 font-medium">{formatLocalTime(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
+          <div><dt className="text-muted-foreground">Travelers</dt><dd className="mt-1 font-medium">{travelers}</dd></div>
+          <div><dt className="text-muted-foreground">Total paid</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(offer.total.amount * travelers, offer.total.currency)}</dd></div>
+        </dl>
+        <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-muted-foreground"><span>Receipt</span><code className="truncate">{shortId(conversation.operation.receipt_id, 18, 8)}</code></div>
       </div>
     </article>
   );
@@ -440,7 +596,7 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
       <div className="min-w-0 flex-1">
-        <strong className="block text-xs">Could not complete</strong>
+        <strong className="block text-xs">{error.offline ? "Bound API unavailable" : "Could not complete"}</strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
@@ -494,9 +650,9 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
           {intent && conversation?.missing_fields.length !== 6 ? (
             <dl className="mt-3 grid gap-2.5 text-xs">
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Route</dt><dd className="font-medium">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Date</dt><dd className="font-medium">{intent.departure_date ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Date</dt><dd className="font-medium">{intent.departure_date ? formatLocalDate(intent.departure_date, intent.departure_date) : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Passengers</dt><dd className="font-medium">{intent.passenger_count ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Cabin</dt><dd className="font-medium">{intent.cabin ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Cabin</dt><dd className="font-medium">{intent.cabin ? cabinLabel(intent.cabin) : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Limit</dt><dd className="font-medium tabular-nums">{intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : "—"}</dd></div>
             </dl>
           ) : <p className="mt-3 text-xs leading-5 text-muted-foreground">Details appear here as you chat.</p>}
@@ -676,7 +832,7 @@ export function TrustedSurface() {
   const isBusy = busy !== null;
 
   return (
-    <SidebarProvider className="h-dvh min-h-[38rem] overflow-hidden" style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden" style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
       <Sidebar collapsible="offcanvas">
         <SidebarHeader className="border-b p-3">
           <div className="flex h-8 items-center justify-between px-1">
@@ -766,8 +922,8 @@ export function TrustedSurface() {
             </div>
           </header>
 
-          <Conversation className="min-h-0 bg-workspace">
-            <ConversationContent className={cn("mx-auto min-h-full w-full max-w-3xl gap-7 px-4 py-7 md:px-8 md:py-10", !conversation?.messages.length && "justify-center")}>
+          <Conversation aria-busy={busy === "sending"} className="min-h-0 min-w-0 overflow-x-hidden bg-workspace">
+            <ConversationContent className={cn("mx-auto min-h-full min-w-0 w-full max-w-3xl gap-7 overflow-x-hidden px-4 py-7 md:px-8 md:py-10", !conversation?.messages.length && "justify-center")}>
               {loadState === "loading" ? (
                 <div className="my-auto flex items-center justify-center"><Shimmer className="text-sm text-muted-foreground">Opening your secure conversation…</Shimmer></div>
               ) : null}
@@ -776,41 +932,49 @@ export function TrustedSurface() {
 
               {loadState === "ready" && conversation && !conversation.messages.length ? <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} /> : null}
 
-              {conversation?.messages.map((message) => message.role === "USER" ? <UserMessage key={message.message_id} message={message} /> : <AssistantMessage key={message.message_id} message={message} />)}
+              {conversation?.messages.map((message) => message.role === "USER" ? <UserMessage key={message.message_id} message={message} status="sent" /> : <AssistantMessage key={message.message_id} message={message} />)}
+
+              {conversation?.messages.length ? <IntentSummary conversation={conversation} /> : null}
 
               {pendingMessage && lastMessage?.content !== pendingMessage ? (
-                <UserMessage message={{ content: pendingMessage, created_at: new Date().toISOString() }} />
+                <UserMessage message={{ content: pendingMessage, created_at: new Date().toISOString() }} status="sending" />
               ) : null}
 
-              {busy === "sending" ? (
-                <div className="flex items-center gap-3 pl-1" aria-live="polite">
-                  <span className="grid size-7 place-items-center text-blue-700"><BotIcon className="size-4" /></span>
-                  <Shimmer className="text-xs text-muted-foreground">TravelBot is working…</Shimmer>
-                </div>
-              ) : null}
+              {busy === "sending" ? <WorkingStatus state={conversation?.state ?? "COLLECTING"} /> : null}
 
               {showOffers ? (
-                <div className="grid gap-3">
-                  {conversation.offers.map((offer) => <OfferCard disabled={isBusy} key={offer.offer_id} offer={offer} onSelect={() => void submitTurn(`I select offer ${offer.offer_id}.`)} />)}
-                </div>
+                <section className="grid gap-3" aria-label={`${conversation.offers.length} flight options`}>
+                  <div className="flex items-end justify-between gap-3 px-0.5"><div><p className="panel-label">Flights found</p><h2 className="mt-1 text-base font-semibold">{conversation.offers.length} {conversation.offers.length === 1 ? "option" : "options"} within your budget</h2></div><span className="hidden text-[10px] text-muted-foreground sm:block">Current prices</span></div>
+                  {conversation.offers.map((offer) => <OfferCard disabled={isBusy} key={offer.offer_id} offer={offer} passengerCount={conversation.intent.passenger_count ?? 1} onSelect={() => void submitTurn(`I choose flight ${offer.fulfillment.flight_numbers?.join("/") ?? offer.offer_id}, offer ${offer.offer_id}.`)} />)}
+                </section>
               ) : null}
 
               {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.")} /> : null}
+
+              {conversation ? <PurchaseReceipt conversation={conversation} /> : null}
 
               {error && conversation ? <ErrorNotice error={error} onRetry={failedTurn ? () => void submitTurn(failedTurn.text, failedTurn.identity) : undefined} /> : null}
             </ConversationContent>
             <ConversationScrollButton aria-label="Go to the end of the conversation" />
           </Conversation>
 
-          <footer className="shrink-0 border-t bg-panel px-3 py-2.5 md:px-6">
-            <div className="mx-auto max-w-3xl">
+          <footer className="min-w-0 shrink-0 overflow-hidden border-t bg-panel px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:px-6">
+            <div className="mx-auto min-w-0 max-w-3xl">
               <PromptInput onSubmit={handleSubmit}>
                 <PromptInputBody>
                   <PromptInputTextarea
                     className="min-h-12"
                     disabled={!conversation || isBusy || loadState !== "ready"}
                     onChange={(event) => setComposerValue(event.currentTarget.value)}
-                    placeholder={speech.listening ? "Listening…" : "Talk to TravelBot…"}
+                    placeholder={
+                      loadState === "loading"
+                        ? "Waiting for Bound…"
+                        : loadState === "error" && !conversation
+                          ? "Connect the API to begin…"
+                          : speech.listening
+                            ? "Listening…"
+                            : "Talk to TravelBot…"
+                    }
                     value={composerValue}
                   />
                 </PromptInputBody>

@@ -110,7 +110,19 @@ No real Yuno request, webhook or public reconciliation endpoint is present. Inte
 
 TravelBot is a backend-only OpenAI Agents SDK runtime behind `AgentRuntimePort`. PostgreSQL owns the sanitized messages, normalized intent, deterministic state, model-run correlation, tool executions, approvals and replayable SSE events. OpenAI response/session IDs are metadata only. The browser never receives `OPENAI_API_KEY` and never calls OpenAI.
 
-The flight inventory is the existing deterministic VuelaYa catalog returned by `GET /merchant/flights`: the MVP has one GRU → COR economy flight on 2026-09-15 for USD 137. TravelBot does not browse external travel sites. Its only available function tools are the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from the persisted state and every economic operation is revalidated by application services.
+Flight discovery uses live Google Flights results through SerpApi when `SERPAPI_API_KEY` is configured. The adapter requests structured one-way results for the validated route, date, cabin, currency and per-passenger ceiling, then normalizes at most five offers into the signed VuelaYa checkout contract. Identical searches are deduplicated and cached in-process for five minutes; SerpApi may also serve its own one-hour cache. Without the key, runtime search fails closed instead of inventing inventory. The deterministic fixture remains available only through injected test catalogs.
+
+`GET /merchant/flights` returns the catalog's currently observed offers without query parameters. It performs a live search when passed `origin`, `destination`, `date`, `passengers`, `cabin`, `currency` and `max_budget_minor`. TravelBot's available function tools remain the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from persisted state and every economic operation is revalidated by application services.
+
+Configure the backend-only flight provider variables:
+
+```text
+SERPAPI_API_KEY
+FLIGHT_SEARCH_TIMEOUT_MS=15000
+GOOGLE_FLIGHTS_DEEP_SEARCH=false
+```
+
+`GOOGLE_FLIGHTS_DEEP_SEARCH=true` asks SerpApi for browser-equivalent results at the cost of higher latency. Provider credentials and URLs containing them are never returned to the browser or written to application logs.
 
 Configure these backend-only environment names to enable OpenAI chat; `.env.example` intentionally contains no values:
 

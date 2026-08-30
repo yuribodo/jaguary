@@ -1,4 +1,5 @@
 export * from "./catalog.js";
+export * from "./google-flights.js";
 export * from "./merchant.js";
 export * from "./order-store.js";
 export * from "./routes.js";

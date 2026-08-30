@@ -318,16 +318,24 @@ export class TravelBotService {
             receipt_id: result.receipt_id ?? null,
             reason_code: result.reason_code ?? null,
           }));
-          state = purchase.status === "COMPLETED" ? "COMPLETED" : "FAILED";
-          operation = {
-            ...operation,
-            authorization_id: purchase.authorization_id ?? null,
-            receipt_id: purchase.receipt_id ?? null,
-            pending_approval: null,
-          };
-          assistantMessage = purchase.status === "COMPLETED"
-            ? `Purchase completed. Receipt ${purchase.receipt_id}.`
-            : `Purchase not completed (${purchase.reason_code ?? "rejected"}).`;
+          if (purchase.status === "FAILED" && purchase.reason_code === "checkout_stale") {
+            applied.intent.selected_offer_id = null;
+            applied.intent.confirmation = null;
+            operation = emptyOperation();
+            state = "AWAITING_OFFER_SELECTION";
+            assistantMessage = "The previous checkout became stale before payment. Nothing was charged; review and select the offer again to create a new authorization.";
+          } else {
+            state = purchase.status === "COMPLETED" ? "COMPLETED" : "FAILED";
+            operation = {
+              ...operation,
+              authorization_id: purchase.authorization_id ?? null,
+              receipt_id: purchase.receipt_id ?? null,
+              pending_approval: null,
+            };
+            assistantMessage = purchase.status === "COMPLETED"
+              ? `Purchase confirmed. Receipt ${purchase.receipt_id} was saved in Bound.`
+              : `The purchase was not completed. No new payment was made (${purchase.reason_code ?? "rejected"}).`;
+          }
         }
       } else if (
         conversation.state === "AWAITING_OFFER_SELECTION"
@@ -413,7 +421,7 @@ export class TravelBotService {
               },
             };
             state = "AWAITING_AUTHORITY_CONFIRMATION";
-            assistantMessage = `Explicitly confirm ${checkout.total.currency} ${(checkout.total.amount / 100).toFixed(2)} for ${checkout.merchant_id}.`;
+            assistantMessage = "The checkout is locked and the one-time authorization is ready. Review the flight, travelers, and total before deciding.";
           }
         }
       } else if (conversation.state === "AWAITING_AUTHORITY_CONFIRMATION") {
@@ -426,7 +434,7 @@ export class TravelBotService {
         state = "AWAITING_OFFER_SELECTION";
         assistantMessage = offers.length === 0
           ? "The offers are stale. Correct the details to search again."
-          : `Explicitly select ${offers[0]!.offer_id}.`;
+          : "Choose one of the current options below to continue.";
       } else {
         state = "READY_TO_SEARCH";
         offers = (await executeTool("find_offers", {
@@ -448,9 +456,17 @@ export class TravelBotService {
         ));
         if (offers.length > 0) {
           state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = `I found ${offers.length} offer. Select ${offers[0]!.offer_id}.`;
+          const selectedDate = (
+            offers[0]?.fulfillment.departure_local
+            ?? offers[0]?.fulfillment.departure_at
+            ?? ""
+          ).slice(0, 10).split("-").toReversed().join("/");
+          const flexibleDateNotice = /^\d{4}-\d{2}$/.test(applied.intent.departure_date!)
+            ? ` Because you provided only the month, I used the first date with flights matching your criteria: ${selectedDate}.`
+            : "";
+          assistantMessage = `I found ${offers.length} ${offers.length === 1 ? "flight" : "flights"} within your budget.${flexibleDateNotice} Compare times, stops, and the total before choosing.`;
         } else {
-          assistantMessage = "I found no flights matching this search. I can try another airport or date range.";
+          assistantMessage = "I found no flights matching these criteria. I can try another airport, date, or budget.";
         }
       }
 

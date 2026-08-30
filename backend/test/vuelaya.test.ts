@@ -17,6 +17,7 @@ import {
 } from "../src/contracts/v1/index.js";
 import {
   EphemeralEs256Signer,
+  VuelaYaCatalog,
   VuelaYaMerchant,
   verifyCheckoutIntegrity,
 } from "../src/modules/vuelaya/index.js";
@@ -132,6 +133,48 @@ test("a valid PurchaseIntent creates and reads the merchant-authoritative signed
   });
   assert.equal(readResponse.statusCode, 200);
   assert.deepEqual(readResponse.json(), checkout);
+});
+
+test("a live checkout remains byte-for-byte idempotent when retried later", async () => {
+  let now = new Date("2026-08-29T15:00:00.000Z");
+  const clock = { now: () => now };
+  const liveOffer = offerCandidateSchema.parse({
+    ...offerCandidateFixture,
+    offer_id: "offer_gf_idempotent_live",
+    available_until: "2026-08-29T15:15:00.000Z",
+    observed_at: "2026-08-29T15:00:00.000Z",
+    source: "GOOGLE_FLIGHTS",
+  });
+  const catalog = new VuelaYaCatalog(
+    { search: async () => [liveOffer] },
+    [liveOffer],
+    { clock, ttlMs: 300_000, maxEntries: 10 },
+  );
+  const merchant = new VuelaYaMerchant(new EphemeralEs256Signer(), clock, catalog);
+  const purchaseIntent = {
+    ...purchaseIntentFixture,
+    intent_id: "intent_live_checkout_retry",
+    offer_id: liveOffer.offer_id,
+  };
+
+  const first = await merchant.createCheckout(purchaseIntent);
+  now = new Date("2026-08-29T15:01:00.000Z");
+  const retried = await merchant.createCheckout(purchaseIntent);
+  const restartedCatalog = new VuelaYaCatalog(
+    { search: async () => [liveOffer] },
+    [liveOffer],
+    { clock, ttlMs: 300_000, maxEntries: 10 },
+  );
+  const recreatedAfterRestart = await new VuelaYaMerchant(
+    new EphemeralEs256Signer(),
+    clock,
+    restartedCatalog,
+  ).createCheckout(purchaseIntent);
+
+  assert.deepEqual(retried, first);
+  assert.equal(retried.checkout_hash, first.checkout_hash);
+  assert.deepEqual(recreatedAfterRestart.terms, first.terms);
+  assert.equal(recreatedAfterRestart.checkout_hash, first.checkout_hash);
 });
 
 test("VuelaYa recalculates quantity and rejects client-authored economic fields", async (t) => {
