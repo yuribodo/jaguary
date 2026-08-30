@@ -9,8 +9,10 @@ export const walletCards: DemoWalletCard[] = [
 export const demoPurchases = [
   { route: "São Paulo → Rio", amount: 600, date: "Aug 18, 2026", card: "•••• 0446", receipt: "vy_7B91K" },
   { route: "Mexico City → Bogotá", amount: 2300, date: "Aug 12, 2026", card: "•••• 5364", receipt: "vy_42MQA" },
-  { route: "São Paulo → Buenos Aires", amount: 1600, date: "Aug 03, 2026", card: "•••• 1855", receipt: "vy_9P3LD" },
+  { route: "São Paulo → Buenos Aires", amount: 1500, date: "Aug 03, 2026", card: "•••• 1855", receipt: "vy_9P3LD" },
   { route: "Buenos Aires → Mexico City", amount: 3700, date: "Jul 27, 2026", card: "•••• 0446", receipt: "vy_1H8RX" },
+  { route: "São Paulo → Bogotá", amount: 2700, date: "Aug 22, 2026", card: "•••• 0446", receipt: "vy_5BQ70" },
+  { route: "Mexico City → Buenos Aires", amount: 7300, date: "Aug 25, 2026", card: "•••• 5364", receipt: "vy_8MC20" },
 ];
 
 export const connectedStoreCount = 2;
