@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Instrument_Serif, Sora } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+import "react-19-credit-card/dist/es/index.css";
 import "./globals.css";
 
 const geist = Geist({
