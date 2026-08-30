@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif, Sora } from "next/font/google";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -18,15 +18,21 @@ const serif = Instrument_Serif({
   weight: "400",
 });
 
+const display = Sora({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "600", "700"],
+});
+
 const mono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
-  title: "Bound — converse, limite, autorize",
+  title: "Bound — the authority rail",
   description:
-    "Converse com um agente identificado e controle uma autoridade limitada e revogável.",
+    "Bound decides whether an agent may perform an economic action — identity, mandate, scope, and replay — before any payment.",
 };
 
 export default function RootLayout({
@@ -35,7 +41,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className={cn(geist.variable, serif.variable, mono.variable)} lang="pt-BR">
+    <html
+      className={cn(geist.variable, serif.variable, display.variable, mono.variable)}
+      lang="pt-BR"
+    >
       <body>
         <TooltipProvider>{children}</TooltipProvider>
       </body>

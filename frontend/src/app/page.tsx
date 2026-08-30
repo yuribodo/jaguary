@@ -1,5 +1,5 @@
-import { TrustedSurface } from "@/components/trusted-surface";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 export default function Home() {
-  return <TrustedSurface />;
+  return <LandingPage />;
 }

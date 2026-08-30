@@ -693,10 +693,17 @@ function AppSidebar({
     <Sidebar className="border-sidebar-border" collapsible="icon">
       <SidebarHeader className="gap-2 border-b border-sidebar-border p-2.5">
         <div className="flex h-9 items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-          <span className="grid size-6 shrink-0 place-items-center rounded bg-primary text-[10px] font-bold text-primary-foreground">B</span>
-          <strong className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-            Bound Control
-          </strong>
+          <Link
+            className="flex items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href="/"
+          >
+            <span className="grid size-6 shrink-0 place-items-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
+              B
+            </span>
+            <strong className="text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+              Bound Control
+            </strong>
+          </Link>
           <SidebarTrigger
             aria-label="Recolher barra lateral"
             className="ml-auto size-8 group-data-[collapsible=icon]:ml-0"
