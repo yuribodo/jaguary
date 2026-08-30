@@ -77,3 +77,29 @@ test("Google discovery rejects unapproved issuer and endpoint origins", async ()
   });
   await assert.rejects(() => provider.createAuthorizationRequest({ state: "state", nonce: "nonce", codeChallenge: "challenge", callbackUrl: "https://bound.example/callback" }), /OIDC discovery validation failed/);
 });
+
+test("Google OIDC accepts a platform-neutral HTTP response contract", async () => {
+  const provider = new GoogleOidcPrincipalProvider({
+    issuer: "https://accounts.google.com",
+    clientId: "bound-client",
+    clientSecret: "secret",
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        issuer: "https://accounts.google.com",
+        authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+        token_endpoint: "https://oauth2.googleapis.com/token",
+        jwks_uri: "https://www.googleapis.com/oauth2/v3/certs",
+      }),
+    }),
+  });
+
+  const authorization = await provider.createAuthorizationRequest({
+    state: "state",
+    nonce: "nonce",
+    codeChallenge: "challenge",
+    callbackUrl: "https://bound.example/callback",
+  });
+
+  assert.equal(new URL(authorization.url).origin, "https://accounts.google.com");
+});
