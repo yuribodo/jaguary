@@ -12,6 +12,7 @@
     "dev:frontend": "pnpm --filter @bound/frontend dev",
     "dev:backend": "pnpm --filter @bound/backend dev",
     "db:up": "docker compose up -d --wait postgres-dev",
+    "setup:demo": "pnpm db:up && pnpm --filter @bound/backend db:setup:demo",
     "db:test:up": "docker compose up -d --wait postgres-test",
     "db:test:reset": "docker compose rm -sf postgres-test && docker compose up -d --wait postgres-test",
     "db:down": "docker compose down -v",

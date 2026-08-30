@@ -221,3 +221,25 @@ Ordinary browser requests retain a ten-second deadline, while a conversation tur
 ### WHY
 
 Production evidence showed successful model turns at up to fifty seconds and a 12.7-second p95, while the previous browser deadline aborted them at ten seconds before the backend returned HTTP 200. Sixty seconds removes that false failure mode without weakening fast-endpoint feedback or risking duplicate turns. An asynchronous accepted-job protocol would be more resilient at larger scale, but it adds persisted job state and reconciliation that the current synchronous demo does not yet need.
+
+## 11. Generate local agent keys but never fabricate provider credentials
+
+### DECISION
+
+How should a contributor obtain the credentials needed to run the complete demo locally?
+
+### OPTIONS CONSIDERED (ONE PER LINE)
+
+Commit one shared TravelBot private key and provider credentials to the repository
+
+Require every contributor to construct all signing, encryption, identity, and database records manually
+
+Generate a matched local TravelBot identity while requiring real provider credentials to be supplied manually
+
+### WHAT WE CHOSE
+
+`pnpm setup:demo` generates a local P-256 signing key, build fingerprint, AES approval-state key, and logical credential template, then registers only the matching public agent material in PostgreSQL. OpenAI and SerpApi credentials remain manual provider-issued environment values.
+
+### WHY
+
+Checked-in private keys make every clone share reusable authority, while a fully manual cryptographic setup is fragile and difficult to review. Generating a coherent local identity makes onboarding reproducible without pretending Jaguary can issue third-party access. The command preserves complete existing material, rejects partial key sets, never prints secret values, and explicitly forbids reusing local keys in production.

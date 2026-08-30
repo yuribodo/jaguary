@@ -114,11 +114,37 @@ See [System architecture](docs/technical/architecture.md) for the request path, 
 
 ```bash
 pnpm install
-cp backend/.env.example backend/.env
-pnpm db:up
-pnpm db:migrate
+pnpm setup:demo
 pnpm dev
 ```
+
+`pnpm setup:demo` starts the development PostgreSQL container, copies
+`backend/.env.example` when needed, applies every migration, generates local-only
+TravelBot signing/encryption material, and idempotently registers the matching
+public agent identity and demo credential template. It preserves a complete
+existing local configuration and refuses to combine partial key material.
+
+The generated values are development credentials, not provider credentials:
+
+- `TRAVELBOT_AGENT_PRIVATE_JWK`
+- `TRAVELBOT_AGENT_KEY_ID`
+- `TRAVELBOT_AGENT_BUILD_FINGERPRINT`
+- `TRAVELBOT_DEMO_CREDENTIAL_ID`
+- `TRAVELBOT_APPROVAL_ENCRYPTION_KEY`
+
+To enable the complete live flight conversation, manually add these provider
+settings to `backend/.env` after setup:
+
+```dotenv
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=your-enabled-model
+SERPAPI_API_KEY=your-serpapi-api-key
+```
+
+OpenAI and SerpApi issue these credentials; Jaguary cannot generate them.
+Didit, Langfuse, Google OIDC, and Yuno settings are optional for the local demo.
+Never commit `backend/.env` or reuse the generated local TravelBot material in
+production.
 
 Open:
 
@@ -126,9 +152,9 @@ Open:
 - API: [http://localhost:3001](http://localhost:3001)
 - Health check: [http://localhost:3001/health](http://localhost:3001/health)
 
-The checked-in example configuration uses development authentication, local trust, PostgreSQL on port `55432`, and fake payment execution. OpenAI and live flight search fail closed until their backend-only variables are configured.
+The checked-in example configuration uses development authentication, local trust, PostgreSQL on port `55432`, and fake payment execution. OpenAI and live flight search fail closed until their manually supplied backend-only variables are configured. Provider secrets must never use a `NEXT_PUBLIC_` prefix.
 
-To exercise the full conversational flight path, configure the OpenAI/TravelBot and SerpApi variables listed in [`backend/.env.example`](backend/.env.example), and register the matching public TravelBot identity and logical payment credential. Didit and Langfuse are optional. Provider secrets must remain in the backend environment and must never use a `NEXT_PUBLIC_` prefix.
+Docker Compose intentionally runs only the development and test PostgreSQL services. Frontend and backend run as local Node.js processes through `pnpm dev`; the repository does not claim to provide a containerized full application stack.
 
 For detailed database, provider, Postman, and integration-test instructions, use the [backend guide](backend/README.md).
 
@@ -137,6 +163,7 @@ For detailed database, provider, Postman, and integration-test instructions, use
 | Command | Purpose |
 | --- | --- |
 | `pnpm dev` | Run frontend and backend together |
+| `pnpm setup:demo` | Start PostgreSQL, migrate, generate local TravelBot keys, and seed its public identity |
 | `pnpm dev:frontend` | Run only the Next.js application |
 | `pnpm dev:backend` | Run only the Fastify API |
 | `pnpm db:up` | Start the development PostgreSQL container |

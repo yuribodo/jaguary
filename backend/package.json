@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:test": "tsx src/db/migrate.ts --test",
+    "db:setup:demo": "tsx src/db/setup-demo.ts",
     "db:demo:reset": "tsx src/db/reset-demo.ts",
     "db:kya:purge": "tsx src/db/purge-kya.ts",
     "lint": "eslint .",
