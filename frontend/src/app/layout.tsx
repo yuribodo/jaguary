@@ -30,9 +30,9 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bound — the authority rail",
+  title: "Jaguary — the authority rail",
   description:
-    "Bound decides whether an agent may perform an economic action — identity, mandate, scope, and replay — before any payment.",
+    "Jaguary decides whether an agent may perform an economic action — identity, mandate, scope, and replay — before any payment.",
 };
 
 export default function RootLayout({

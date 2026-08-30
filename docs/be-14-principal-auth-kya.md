@@ -14,7 +14,7 @@ Agent assurance is isolated behind `AgentAttestationProviderPort`, `AgentTrustRe
 
 Provider output is evidence, never `ALLOW`. Verify, mandate creation, TravelBot conversation creation, signed agent-request verification and the transactional reservation all use the same eligibility decision. Reservation reloads and locks the agent and trust snapshot in its transaction, so a committed revocation or exact-boundary expiry prevents authorization. No Didit request is made from Verify, payment, mandate, TravelBot or a database transaction.
 
-Didit contributes only `OPERATOR_IDENTITY`. It does not certify TravelBot, its key or its build. Bound creates hosted sessions server-side with opaque `vendor_data`; validates the official API and hosted origins; normalizes every documented Didit status; authenticates webhook V2 HMAC signatures with a five-minute freshness window; hashes the authenticated event ID for deduplication; ignores older/terminal-regression events; and reconciles through the decision endpoint with bounded timeout/retry. Raw webhook bodies, documents, selfies, biometrics, addresses, signed URLs, provider tokens and full decision payloads are not persisted.
+Didit contributes only `OPERATOR_IDENTITY`. It does not certify TravelBot, its key or its build. Bound creates hosted sessions server-side with opaque `vendor_data`; validates the official API and hosted origins; normalizes every documented Didit status; authenticates V3 destination webhooks with the recommended `X-Signature-V2` HMAC and a five-minute freshness window; hashes the authenticated event ID for deduplication; ignores older/terminal-regression events; and reconciles through the decision endpoint with bounded timeout/retry. Raw webhook bodies, documents, selfies, biometrics, addresses, signed URLs, provider tokens and full decision payloads are not persisted.
 
 After valid binding, Bound issues a short-lived ES256 Agent Passport. It contains only agent/key/build bindings, a principal hash, normalized assurance, provider/evidence hashes, issuer, audience/purpose and validity. Local verification checks signature, audience, expiry and the current Bound state without calling Didit. Expiry/revocation, binding changes and operational suspension/revocation invalidate it. Public verification material is available at `GET /trust/v1/passports/.well-known/jwks.json`.
 
@@ -33,15 +33,17 @@ Production requires HTTPS issuer/callback configuration and refuses demo mode at
 
 ## Didit setup and real-validation checklist
 
-Use only the [official Didit documentation](https://docs.didit.me/). Create a workflow and configure its signed webhook to:
+Use only the [official Didit documentation](https://docs.didit.me/). In the Didit Business Console, create an Application and a published KYC workflow. Under **API & Webhooks**, create a V3 webhook destination subscribed to `status.updated` whose public HTTPS URL is:
 
 ```text
 https://<backend-origin>/trust/v1/attestations/webhooks/didit
 ```
 
-Set `KYA_MODE=EXTERNAL_OPTIONAL` or `EXTERNAL_REQUIRED`, `KYA_PROVIDER=didit`, `KYA_API_BASE_URL=https://verification.didit.me`, `KYA_API_KEY`, `KYA_WORKFLOW_ID`, `KYA_WEBHOOK_SECRET`, timeout and TTL. The hosted callback is the allowlisted frontend `/trust/callback`; the API key and webhook secret stay backend-only.
+The destination must answer directly without a redirect; Didit does not deliver webhooks to localhost or private URLs. Copy the Application API key, the published workflow UUID, and the destination's one-time `secret_shared_key`, then set `KYA_MODE=EXTERNAL_OPTIONAL` or `EXTERNAL_REQUIRED`, `KYA_PROVIDER=didit`, `KYA_API_BASE_URL=https://verification.didit.me`, `KYA_API_KEY`, `KYA_WORKFLOW_ID`, `KYA_WEBHOOK_SECRET`, timeout and TTL. The hosted callback is the allowlisted frontend `/trust/callback`; the API key and destination secret stay backend-only.
 
-External KYA may be called validated only after all three have happened in the same environment: a real hosted Didit session completed, a fresh signed webhook accepted/deduplicated, and a Bound Passport issued and locally verified. The repository contains deterministic HTTP-fake coverage, but no Google/Didit credential names were available in the current environment, so real sandbox validation remains intentionally unclaimed.
+Before completing a real identity check, use Didit's **Try Webhook** action with a `status.updated` scenario and confirm a `2xx` delivery. Start with `EXTERNAL_OPTIONAL` while validating the provider path, then switch to `EXTERNAL_REQUIRED` only after the full flow succeeds.
+
+External KYA may be called fully validated only after all three have happened in the same environment: a real hosted Didit session completed, a fresh signed webhook accepted/deduplicated, and a Jaguary Agent Passport issued and locally verified. Local external validation completed a real Google OIDC login and a real Didit hosted session through an approved decision reconciled by the backend. Signed public-webhook delivery and passport issuance remain residual deployment checks because the local callback is not publicly reachable. Provider credentials stay environment-only and are never committed.
 
 ## Retention and revocation
 

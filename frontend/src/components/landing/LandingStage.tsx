@@ -10,7 +10,7 @@ const STATUSES = [
   "Marta describes GRU → COR and a US$150 ceiling.",
   "The mandate is visible: merchant, amount, validity.",
   "TravelBot only acts inside the active letter.",
-  "VuelaYa publishes checkout. Bound does not invent the price.",
+  "VuelaYa publishes checkout. Jaguary does not invent the price.",
   "Payment waits for ALLOW. Revoke cuts the rail.",
 ] as const;
 

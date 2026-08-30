@@ -542,7 +542,7 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
     <article className="overflow-hidden rounded-xl border border-emerald-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.07)]" aria-label="Purchase confirmed">
       <div className="flex items-center gap-3 border-b border-emerald-100 bg-emerald-50/70 px-4 py-3.5">
         <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-white"><CheckIcon className="size-4" /></span>
-        <div><strong className="block text-sm">Purchase confirmed</strong><span className="text-[10px] text-emerald-800">Receipt issued and saved in Bound</span></div>
+        <div><strong className="block text-sm">Purchase confirmed</strong><span className="text-[10px] text-emerald-800">Receipt issued and saved in Jaguary</span></div>
       </div>
       <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
@@ -566,7 +566,7 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
       <div className="min-w-0 flex-1">
-        <strong className="block text-xs">{error.offline ? "Bound API unavailable" : "Could not complete"}</strong>
+        <strong className="block text-xs">{error.offline ? "Jaguary API unavailable" : "Could not complete"}</strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
@@ -847,7 +847,7 @@ export function TrustedSurface() {
                 <div className="my-auto flex items-center justify-center"><Shimmer className="text-sm text-muted-foreground">Opening your secure conversation…</Shimmer></div>
               ) : null}
 
-              {loadState === "error" && !conversation ? <ErrorNotice error={error ?? new BoundApiError({ message: "The Bound API did not respond.", offline: true })} onRetry={() => void createConversation()} /> : null}
+              {loadState === "error" && !conversation ? <ErrorNotice error={error ?? new BoundApiError({ message: "The Jaguary API did not respond.", offline: true })} onRetry={() => void createConversation()} /> : null}
 
               {loadState === "ready" && conversation && !conversation.messages.length ? <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} /> : null}
 
@@ -882,7 +882,7 @@ export function TrustedSurface() {
                     onChange={(event) => setComposerValue(event.currentTarget.value)}
                     placeholder={
                       loadState === "loading"
-                        ? "Waiting for Bound…"
+                        ? "Waiting for Jaguary…"
                         : loadState === "error" && !conversation
                           ? "Connect the API to begin…"
                           : speech.listening

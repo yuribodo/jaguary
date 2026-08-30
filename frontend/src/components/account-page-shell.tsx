@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AppSidebar, type AccountPage } from "@/components/app-sidebar";
+import { AuthenticatedPage } from "@/components/authenticated-page";
 import {
   SidebarInset,
   SidebarProvider,
@@ -19,13 +20,19 @@ import type { TravelBotConversation } from "@/lib/contracts";
 const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
 
-export function AccountPageShell({
-  activePage,
-  children,
-}: {
+type AccountPageShellProps = {
   activePage: AccountPage;
   children: ReactNode;
-}) {
+};
+
+export function AccountPageShell(props: AccountPageShellProps) {
+  return <AuthenticatedPage><AuthenticatedAccountPageShell {...props} /></AuthenticatedPage>;
+}
+
+function AuthenticatedAccountPageShell({
+  activePage,
+  children,
+}: AccountPageShellProps) {
   const router = useRouter();
   const [recents, setRecents] = useState<TravelBotConversation[]>([]);
   const [recentMessage, setRecentMessage] = useState("Loading conversations…");

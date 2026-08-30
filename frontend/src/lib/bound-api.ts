@@ -98,13 +98,13 @@ async function request<T>(
       && requestController.signal.reason.name === "TimeoutError"
     ) {
       throw new BoundApiError({
-        message: "The Bound API took more than 10 seconds to respond. Check that the backend is running and try again.",
+        message: "The Jaguary API took more than 10 seconds to respond. Check that the backend is running and try again.",
         code: "api_timeout",
         offline: true,
       });
     }
     throw new BoundApiError({
-      message: "Could not reach the Bound API.",
+      message: "Could not reach the Jaguary API.",
       code: "api_offline",
       offline: true,
     });

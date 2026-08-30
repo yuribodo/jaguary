@@ -42,6 +42,7 @@ test("Google OIDC uses discovery, authorization code + PKCE and validates its ID
   const url = new URL(authorization.url);
   assert.equal(url.searchParams.get("response_type"), "code");
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(url.searchParams.get("prompt"), "select_account");
   const identity = await provider.verifyCallback({ code: "authorization-code", codeVerifier: "verifier-123", expectedNonce: "nonce-expected", callbackUrl: "https://bound.example/auth/v1/login/google/callback" });
   assert.deepEqual(identity, { provider: "google", issuer: "https://accounts.google.com", subject: "google-subject-123", displayName: "Marta", verifiedEmail: "marta@example.com", assurance: "OIDC" });
   const tokenCall = http.calls.find((call) => call.url === "https://oauth2.googleapis.com/token")!;

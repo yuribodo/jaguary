@@ -25,7 +25,7 @@ export interface DiditAgentAttestationProviderOptions {
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, sortJson((value as Record<string, unknown>)[key])]));
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort((left, right) => left.localeCompare(right)).map((key) => [key, sortJson((value as Record<string, unknown>)[key])]));
   }
   return value;
 }
@@ -95,7 +95,7 @@ export class DiditAgentAttestationProvider implements AgentAttestationProviderPo
     const response = await this.#request("/v3/session/", {
       method: "POST",
       headers: { "x-api-key": this.options.apiKey, "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ workflow_id: this.options.workflowId, vendor_data: input.vendorData, callback: input.callbackUrl, callback_method: "redirect" }),
+      body: JSON.stringify({ workflow_id: this.options.workflowId, vendor_data: input.vendorData, callback: input.callbackUrl, callback_method: "both" }),
     });
     if (response.status !== 201) throw new Error("Didit session creation failed");
     const value = await response.json() as Record<string, unknown>;

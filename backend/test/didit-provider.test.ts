@@ -18,7 +18,7 @@ test("Didit creates a backend-only hosted session without sending PII", async ()
   const result = await provider.createAssessment({ attestationId: "attestation_1", agentId: "agent_travelbot", principalId: "principal_marta", vendorData: "opaque-bound-reference", callbackUrl: "https://bound.example/trust/callback" });
   assert.equal(result.status, "PENDING");
   assert.equal(result.hostedUrl, "https://verify.didit.me/en/session/opaque-token");
-  assert.deepEqual(requestBody, { workflow_id: baseOptions.workflowId, vendor_data: "opaque-bound-reference", callback: "https://bound.example/trust/callback", callback_method: "redirect" });
+  assert.deepEqual(requestBody, { workflow_id: baseOptions.workflowId, vendor_data: "opaque-bound-reference", callback: "https://bound.example/trust/callback", callback_method: "both" });
   assert.equal(JSON.stringify(requestBody).includes("principal_marta"), false);
 });
 
@@ -36,8 +36,8 @@ test("Didit normalizes all ten official statuses without ever producing ALLOW", 
   }
 });
 
-test("Didit verifies V2 signature and freshness before normalizing a webhook", async () => {
-  const body = { event_id: "550e8400-e29b-41d4-a716-446655440099", webhook_type: "status.updated", timestamp: Math.floor(now.getTime() / 1000), created_at: Math.floor(now.getTime() / 1000), session_id: "550e8400-e29b-41d4-a716-446655440001", status: "Approved", vendor_user_id: "provider-subject" };
+test("Didit verifies a V3 destination X-Signature-V2 and freshness before normalizing a webhook", async () => {
+  const body = { event_id: "550e8400-e29b-41d4-a716-446655440099", webhook_type: "status.updated", timestamp: Math.floor(now.getTime() / 1000), created_at: Math.floor(now.getTime() / 1000), application_id: "550e8400-e29b-41d4-a716-446655440098", environment: "sandbox", session_id: "550e8400-e29b-41d4-a716-446655440001", status: "Approved", vendor_user_id: "provider-subject", metadata: { label: "Operação", risk_view: {} }, decision: { liveness_checks: [{ score: 95.4 }], reviews: [] } };
   const rawBody = JSON.stringify(body);
   const signature = createHmac("sha256", baseOptions.webhookSecret).update(diditCanonicalJson(body)).digest("hex");
   const provider = new DiditAgentAttestationProvider(baseOptions);
