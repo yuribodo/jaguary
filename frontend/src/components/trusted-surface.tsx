@@ -16,14 +16,10 @@ import {
   CircleAlertIcon,
   CircleIcon,
   CopyIcon,
-  CreditCardIcon,
-  HandshakeIcon,
-  HistoryIcon,
   InfoIcon,
   MicIcon,
   MicOffIcon,
   PlaneIcon,
-  PlusIcon,
   ReceiptTextIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -36,6 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { AppSidebar } from "@/components/app-sidebar";
 import {
   Conversation,
   ConversationContent,
@@ -54,19 +51,8 @@ import {
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Button } from "@/components/ui/button";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
@@ -76,6 +62,12 @@ import {
   createRequestIdentity,
 } from "@/lib/bound-api";
 import { cn } from "@/lib/utils";
+import {
+  conversationStateLabels,
+  conversationTitle,
+  readRecentConversationIds,
+  writeRecentConversationIds,
+} from "@/lib/conversation-history";
 import type {
   AgentIdentity,
   OfferCandidate,
@@ -87,7 +79,6 @@ import type {
 
 const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
-const RECENT_CONVERSATIONS_KEY = "bound.recent-conversations.v1";
 const STARTER_PROMPTS = [
   "I want to travel from GRU to COR on September 15, 2026, one passenger, economy, up to US$150.",
   "Find a flight from São Paulo to Córdoba on September 15 for up to US$150.",
@@ -133,17 +124,6 @@ function asApiError(error: unknown) {
     message: "An unexpected error occurred in this conversation.",
     code: "unexpected_error",
   });
-}
-
-function readRecentIds(): string[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(RECENT_CONVERSATIONS_KEY) ?? "[]");
-    return Array.isArray(value)
-      ? value.filter((id): id is string => typeof id === "string").slice(0, 8)
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 function formatMoney(amount: number, currency: string) {
@@ -214,17 +194,6 @@ function shortId(value: string, start = 10, end = 6) {
   return `${value.slice(0, start)}…${end ? value.slice(-end) : ""}`;
 }
 
-const stateLabels: Record<TravelBotState, string> = {
-  COLLECTING: "Collecting details",
-  READY_TO_SEARCH: "Ready to search",
-  AWAITING_OFFER_SELECTION: "Preparing the best option",
-  AWAITING_AUTHORITY_CONFIRMATION: "Confirmation required",
-  READY_TO_PURCHASE: "Purchase authorized",
-  EXECUTING: "Executing purchase",
-  COMPLETED: "Operation completed",
-  FAILED: "Operation interrupted",
-};
-
 const missingFieldLabels: Record<RequiredTravelIntentField, string> = {
   origin_iata: "origin",
   destination_iata: "destination",
@@ -233,16 +202,6 @@ const missingFieldLabels: Record<RequiredTravelIntentField, string> = {
   cabin: "cabin",
   max_total_budget: "budget",
 };
-
-function conversationTitle(conversation: TravelBotConversation) {
-  const { origin_iata: origin, destination_iata: destination } = conversation.intent;
-  if (origin && destination) return `${origin} → ${destination}`;
-  const firstMessage = conversation.messages.find(({ role }) => role === "USER");
-  if (!firstMessage) return "New conversation";
-  return firstMessage.content.length > 34
-    ? `${firstMessage.content.slice(0, 34)}…`
-    : firstMessage.content;
-}
 
 function messageCorrelationId(conversation?: TravelBotConversation) {
   return conversation?.messages.at(-1)?.correlation_id;
@@ -638,7 +597,7 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b p-4">
-          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progress</h2><span className="text-[10px] text-muted-foreground">{stateLabels[state]}</span></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progress</h2><span className="text-[10px] text-muted-foreground">{conversationStateLabels[state]}</span></div>
           <ol>
             {steps.map((step, index) => (
               <li className="relative grid grid-cols-[18px_1fr] gap-2.5 pb-4 last:pb-0" key={step.label}>
@@ -716,7 +675,7 @@ export function TrustedSurface() {
       const updated = [next, ...current.filter(({ conversation_id }) => conversation_id !== next.conversation_id)]
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
         .slice(0, 8);
-      localStorage.setItem(RECENT_CONVERSATIONS_KEY, JSON.stringify(updated.map(({ conversation_id }) => conversation_id)));
+      writeRecentConversationIds(updated.map(({ conversation_id }) => conversation_id));
       return updated;
     });
   }, []);
@@ -759,7 +718,11 @@ export function TrustedSurface() {
         setAgent(agentResult.data);
         setLastCorrelationId(agentResult.correlationId ?? healthResult.correlationId);
 
-        const ids = readRecentIds();
+        const requestedConversationId = new URL(window.location.href).searchParams.get("conversation");
+        const recentIds = readRecentConversationIds();
+        const ids = requestedConversationId
+          ? [requestedConversationId, ...recentIds.filter((id) => id !== requestedConversationId)]
+          : recentIds;
         const loaded = await Promise.allSettled(ids.map((id) => boundApi.getConversation(id, controller.signal)));
         const conversations = loaded
           .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof boundApi.getConversation>>> => result.status === "fulfilled")
@@ -767,9 +730,10 @@ export function TrustedSurface() {
           .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
         if (conversations.length) {
           setRecents(conversations);
-          setConversation(conversations[0]);
-          setLastCorrelationId(messageCorrelationId(conversations[0]) ?? agentResult.correlationId ?? healthResult.correlationId);
-          localStorage.setItem(RECENT_CONVERSATIONS_KEY, JSON.stringify(conversations.map(({ conversation_id }) => conversation_id)));
+          const selectedConversation = conversations.find(({ conversation_id }) => conversation_id === requestedConversationId) ?? conversations[0];
+          setConversation(selectedConversation);
+          setLastCorrelationId(messageCorrelationId(selectedConversation) ?? agentResult.correlationId ?? healthResult.correlationId);
+          writeRecentConversationIds(conversations.map(({ conversation_id }) => conversation_id));
           setLoadState("ready");
           return;
         }
@@ -847,72 +811,13 @@ export function TrustedSurface() {
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden" style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
-      <Sidebar collapsible="offcanvas">
-        <SidebarHeader className="border-b p-3">
-          <div className="flex h-8 items-center justify-between px-1">
-            <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-md bg-foreground text-background"><ShieldCheckIcon className="size-3.5" /></span><strong className="text-sm">Bound</strong></div>
-          </div>
-          <Button className="mt-2 justify-start" disabled={isBusy || loadState === "loading"} onClick={() => void createConversation()} variant="outline">
-            <PlusIcon /> New conversation
-          </Button>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Your account</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/payment-methods" />} tooltip="Payment methods">
-                    <CreditCardIcon />
-                    <span>Payment methods</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/purchases" />} tooltip="Purchases">
-                    <HistoryIcon />
-                    <span>Purchases</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/connected-merchants" />} tooltip="Connected merchants">
-                    <HandshakeIcon />
-                    <span>Connected merchants</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>Recent</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {recents.length ? recents.map((recent) => (
-                  <SidebarMenuItem key={recent.conversation_id}>
-                    <SidebarMenuButton
-                      className="h-auto items-start py-2.5"
-                      isActive={recent.conversation_id === conversation?.conversation_id}
-                      onClick={() => void selectConversation(recent.conversation_id)}
-                    >
-                      <BotIcon className="mt-0.5 size-3.5 shrink-0" />
-                      <span className="grid min-w-0 gap-0.5">
-                        <span className="truncate text-xs font-medium">{conversationTitle(recent)}</span>
-                        <span className="truncate text-[10px] text-muted-foreground">{stateLabels[recent.state]}</span>
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )) : <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">Your current conversation will appear here.</p>}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="border-t p-3">
-          <div className="flex items-center gap-2.5 rounded-md p-1">
-            <span className="grid size-8 place-items-center rounded-full border bg-background text-xs font-semibold">M</span>
-            <div className="min-w-0"><strong className="block truncate text-xs">Marta</strong><span className="block truncate text-[10px] text-muted-foreground">Mandate principal</span></div>
-          </div>
-        </SidebarFooter>
-        <SidebarRail />
-      </Sidebar>
+      <AppSidebar
+        activeConversationId={conversation?.conversation_id}
+        conversations={recents}
+        newConversationDisabled={isBusy || loadState === "loading"}
+        onNewConversation={() => void createConversation()}
+        onSelectConversation={(conversationId) => void selectConversation(conversationId)}
+      />
 
       <SidebarInset className="h-dvh min-w-0 flex-row overflow-hidden">
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -924,7 +829,7 @@ export function TrustedSurface() {
                 <strong className="block truncate text-xs">{conversation ? conversationTitle(conversation) : "TravelBot"}</strong>
                 <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                   <i className={cn("size-1.5 rounded-full", loadState === "ready" ? "bg-emerald-600" : loadState === "error" ? "bg-destructive" : "animate-pulse bg-amber-500")} />
-                  {loadState === "ready" ? stateLabels[conversation?.state ?? "COLLECTING"] : loadState === "error" ? "API unavailable" : "Connecting"}
+                  {loadState === "ready" ? conversationStateLabels[conversation?.state ?? "COLLECTING"] : loadState === "error" ? "API unavailable" : "Connecting"}
                 </span>
               </div>
             </div>
