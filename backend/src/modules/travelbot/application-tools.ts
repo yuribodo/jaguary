@@ -90,7 +90,6 @@ function assertCompleteIntent(conversation: TravelBotConversation) {
     || intent.departure_date === null
     || intent.passenger_count === null
     || intent.cabin === null
-    || intent.max_total_budget === null
   ) throw new Error("TravelBot tool received an incomplete intent");
   return intent as typeof intent & {
     origin_iata: string;
@@ -98,7 +97,7 @@ function assertCompleteIntent(conversation: TravelBotConversation) {
     departure_date: string;
     passenger_count: number;
     cabin: NonNullable<typeof intent.cabin>;
-    max_total_budget: NonNullable<typeof intent.max_total_budget>;
+    max_total_budget: typeof intent.max_total_budget;
   };
 }
 
@@ -145,6 +144,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
     });
     const now = this.options.clock.now();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1_000);
+    const authorityLimit = intent.max_total_budget ?? input.checkout.total;
     const { mandate } = await this.options.mandates.createDraft({
       mandate_id: mandateId,
       principal_id: input.conversation.principal_id,
@@ -153,8 +153,8 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
       allowed_merchant_categories: [],
       route: { origin: intent.origin_iata, destination: intent.destination_iata },
       cabin: intent.cabin,
-      max_per_purchase: intent.max_total_budget,
-      max_aggregate: intent.max_total_budget,
+      max_per_purchase: authorityLimit,
+      max_aggregate: authorityLimit,
       max_uses: 1,
       valid_from: now.toISOString(),
       expires_at: expiresAt.toISOString(),

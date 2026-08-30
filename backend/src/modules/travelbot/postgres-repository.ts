@@ -166,8 +166,6 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
           "origin_iata",
           "destination_iata",
           "departure_date",
-          "passenger_count",
-          "cabin",
           "max_total_budget",
         ] },
         createdAt: now,
@@ -451,7 +449,7 @@ export class PostgresTravelBotRepository implements TravelBotRepositoryPort {
         status: execution.status,
         result: execution.result,
         errorCode: execution.error_code,
-        idempotencyKey: `${execution.tool_name}_${runId}`,
+        idempotencyKey: `${execution.tool_name}_${runId}_${sha256CanonicalJson(execution.tool_call_id).slice(0, 16)}`,
         startedAt: now,
         completedAt: now,
       }).onConflictDoNothing({ target: [travelToolExecutions.runId, travelToolExecutions.toolCallId] });

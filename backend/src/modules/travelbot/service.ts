@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { PublicApiError } from "../../contracts/v1/index.js";
 import { AgentRuntimeInvalidOutputError, AgentRuntimeUnavailableError } from "./errors.js";
 import {
+  applyConversationConventions,
   applyTravelIntentProposal,
   deterministicClarification,
   missingTravelIntentFields,
@@ -91,6 +92,10 @@ export class TravelBotService {
     const claimed = await this.options.repository.claimTurn(command, this.options.clock.now());
     if (claimed.kind === "REPLAY") return view(claimed.conversation);
     const { run_id: runId, conversation } = claimed.claim;
+    const recentConversationText = [
+      ...conversation.messages.slice(-10).map(({ content }) => content),
+      command.content,
+    ];
     const telemetry = this.options.telemetry ?? new NoopLlmTelemetry();
     emitBestEffort(telemetry, {
       name: "turn.started",
@@ -137,6 +142,10 @@ export class TravelBotService {
           model: this.options.model ?? "fake-test-model",
           state: conversation.state,
           intent: conversation.intent,
+          conversation_history: conversation.messages
+            .slice(0, -1)
+            .slice(-10)
+            .map(({ role, content }) => ({ role, content })),
           user_message: command.content,
           available_tools: legalTools(conversation.state),
         });
@@ -150,10 +159,20 @@ export class TravelBotService {
           assistant_message: deterministicClarification(
             missingTravelIntentFields(conversation.intent),
             [],
+            recentConversationText,
           ),
         }, this.options.clock.now());
         return view(completed);
       }
+      runtimeResult = {
+        ...runtimeResult,
+        proposal: applyConversationConventions(
+          conversation.intent,
+          runtimeResult.proposal,
+          recentConversationText,
+          this.options.clock.now(),
+        ),
+      };
       const applied = applyTravelIntentProposal(
         conversation.intent,
         runtimeResult.proposal,
@@ -179,7 +198,11 @@ export class TravelBotService {
       let assistantMessage = runtimeResult.assistant_message;
 
       if (missing.length > 0 || applied.invalid_fields.length > 0) {
-        assistantMessage = deterministicClarification(missing, applied.invalid_fields);
+        assistantMessage = deterministicClarification(
+          missing,
+          applied.invalid_fields,
+          recentConversationText,
+        );
       } else if (conversation.state === "COMPLETED") {
         state = "COMPLETED";
         if (
@@ -415,14 +438,19 @@ export class TravelBotService {
           && offer.fulfillment.destination === applied.intent.destination_iata
           && offer.fulfillment.departure_at.startsWith(applied.intent.departure_date!)
           && offer.fulfillment.cabin === applied.intent.cabin
-          && offer.total.currency === applied.intent.max_total_budget!.currency
-          && offer.total.amount * applied.intent.passenger_count! <= applied.intent.max_total_budget!.amount
+          && (
+            applied.intent.max_total_budget === null
+            || (
+              offer.total.currency === applied.intent.max_total_budget.currency
+              && offer.total.amount * applied.intent.passenger_count! <= applied.intent.max_total_budget.amount
+            )
+          )
         ));
         if (offers.length > 0) {
           state = "AWAITING_OFFER_SELECTION";
           assistantMessage = `Encontrei ${offers.length} oferta. Selecione ${offers[0]!.offer_id}.`;
         } else {
-          assistantMessage = "Não encontrei oferta compatível. Corrija rota, data, cabine, passageiros ou orçamento.";
+          assistantMessage = "Não encontrei voos compatíveis com essa busca. Posso tentar outro aeroporto ou período.";
         }
       }
 

@@ -69,6 +69,229 @@ test("a complete one-message request automatically reaches offer selection", asy
   assert.equal(runtimeRequests.length, 1);
 });
 
+test("delegated airport and month choices are retained without asking for an exact day", async () => {
+  let turn = 0;
+  let searchedDate: string | null | undefined;
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        turn += 1;
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: turn === 1 ? { amount: 300000, currency: "BRL" } : null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: turn === 1
+              ? [
+                  { field: "destination_iata" as const, reason: "AMBIGUOUS" as const },
+                  { field: "passenger_count" as const, reason: "AMBIGUOUS" as const },
+                ]
+              : [
+                  { field: "origin_iata" as const, reason: "AMBIGUOUS" as const },
+                  { field: "destination_iata" as const, reason: "AMBIGUOUS" as const },
+                  { field: "departure_date" as const, reason: "AMBIGUOUS" as const },
+                ],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "Preciso de mais dados.",
+        };
+      },
+    },
+    tools: {
+      findOffers: async (intent) => {
+        searchedDate = intent.departure_date;
+        return [];
+      },
+    },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_context_create_001",
+    correlation_id: "corr_context_create_001",
+  });
+
+  const first = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Quero um voo para o Rio de Janeiro de até 3 mil reais.",
+    idempotency_key: "idem_context_first_001",
+    correlation_id: "corr_context_first_001",
+  });
+  assert.equal(first.intent.passenger_count, 1);
+  assert.equal(first.intent.cabin, "ECONOMY");
+  assert.doesNotMatch(first.messages.at(-1)?.content ?? "", /passageir|cabine/i);
+
+  const second = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Tanto faz, escolhe o melhor do Rio. Vou sair de São Paulo e pode ser até no máximo o último dia de setembro.",
+    idempotency_key: "idem_context_second_001",
+    correlation_id: "corr_context_second_001",
+  });
+
+  assert.equal(second.intent.origin_iata, "GRU");
+  assert.equal(second.intent.destination_iata, "GIG");
+  assert.equal(second.intent.passenger_count, 1);
+  assert.equal(second.intent.cabin, "ECONOMY");
+  assert.deepEqual(second.intent.max_total_budget, { amount: 300000, currency: "BRL" });
+  assert.equal(second.intent.departure_date, "2026-09");
+  assert.equal(searchedDate, "2026-09");
+  assert.deepEqual(second.missing_fields, []);
+  assert.equal(
+    second.messages.at(-1)?.content,
+    "Não encontrei voos compatíveis com essa busca. Posso tentar outro aeroporto ou período.",
+  );
+});
+
+test("a broad destination is chosen automatically while budget remains required", async () => {
+  let turn = 0;
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        turn += 1;
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: turn === 1
+              ? [{ field: "destination_iata" as const, reason: "AMBIGUOUS" as const }]
+              : [
+                  { field: "destination_iata" as const, reason: "AMBIGUOUS" as const },
+                  { field: "departure_date" as const, reason: "AMBIGUOUS" as const },
+                ],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "Preciso de mais dados.",
+        };
+      },
+    },
+    tools: { findOffers: async () => assert.fail("budget is required before search") },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_thailand_create_001",
+    correlation_id: "corr_thailand_create_001",
+  });
+
+  const first = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "lets go to Thailandia",
+    idempotency_key: "idem_thailand_first_001",
+    correlation_id: "corr_thailand_first_001",
+  });
+  assert.equal(first.intent.passenger_count, 1);
+  assert.equal(first.intent.cabin, "ECONOMY");
+  assert.equal(first.intent.destination_iata, "BKK");
+  assert.deepEqual(first.missing_fields, ["origin_iata", "departure_date", "max_total_budget"]);
+  assert.doesNotMatch(first.messages.at(-1)?.content ?? "", /cidade|aeroporto|passageir|cabine/i);
+
+  const second = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "eu vou sair do aeroporto de GRU Brazil e vou para qualquer um da thailandia. quero ir no mes de setembro",
+    idempotency_key: "idem_thailand_second_001",
+    correlation_id: "corr_thailand_second_001",
+  });
+
+  assert.deepEqual(second.missing_fields, ["max_total_budget"]);
+  assert.equal(second.intent.origin_iata, "GRU");
+  assert.equal(second.intent.destination_iata, "BKK");
+  assert.equal(second.intent.departure_date, "2026-09");
+  assert.equal(second.intent.passenger_count, 1);
+  assert.equal(second.intent.cabin, "ECONOMY");
+  assert.equal(second.intent.max_total_budget, null);
+  assert.equal(
+    second.messages.at(-1)?.content,
+    "Para continuar, me diga quanto pretende gastar e em qual moeda.",
+  );
+});
+
+test("natural month expressions complete a pending travel search", async () => {
+  const cases = [
+    { phrase: "quero viajar esse mes", expected: "2026-08" },
+    { phrase: "Esse mes", expected: "2026-08" },
+    { phrase: "sETEMBRO", expected: "2026-09" },
+    { phrase: "dia 10 de setembro", expected: "2026-09-10" },
+  ];
+
+  for (const [index, scenario] of cases.entries()) {
+    let turn = 0;
+    let searched = false;
+    const repository = new InMemoryTravelBotRepository();
+    const service = new TravelBotService({
+      repository,
+      runtime: {
+        async run() {
+          turn += 1;
+          return {
+            proposal: {
+              origin_iata: turn === 1 ? "GRU" : null,
+              destination_iata: turn === 1 ? "GIG" : null,
+              departure_date: null,
+              passenger_count: null,
+              cabin: null,
+              max_total_budget: turn === 1 ? { amount: 300000, currency: "BRL" } : null,
+              selected_offer_id: null,
+              explicit_confirmation: null,
+              ambiguities: turn === 1
+                ? []
+                : [{ field: "departure_date" as const, reason: "AMBIGUOUS" as const }],
+              requested_action: "NONE" as const,
+            },
+            assistant_message: "Preciso da data.",
+          };
+        },
+      },
+      tools: {
+        findOffers: async (intent) => {
+          searched = true;
+          assert.equal(intent.departure_date, scenario.expected);
+          return [];
+        },
+      },
+      clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+    });
+    const conversation = await service.createConversation({
+      principal_id: "principal_marta",
+      agent_id: "agent_travelbot",
+      idempotency_key: `idem_natural_date_create_00${index}`,
+      correlation_id: `corr_natural_date_create_00${index}`,
+    });
+    await service.postMessage({
+      conversation_id: conversation.conversation_id,
+      content: "Quero ir para o Rio, tanto faz o aeroporto. Saio de São Paulo GRU.",
+      idempotency_key: `idem_natural_date_context_00${index}`,
+      correlation_id: `corr_natural_date_context_00${index}`,
+    });
+    const result = await service.postMessage({
+      conversation_id: conversation.conversation_id,
+      content: scenario.phrase,
+      idempotency_key: `idem_natural_date_phrase_00${index}`,
+      correlation_id: `corr_natural_date_phrase_00${index}`,
+    });
+
+    assert.equal(result.intent.departure_date, scenario.expected, scenario.phrase);
+    assert.deepEqual(result.missing_fields, [], scenario.phrase);
+    assert.equal(searched, true, scenario.phrase);
+  }
+});
+
 test("invalid or refused model output falls back without changing business state", async () => {
   const repository = new InMemoryTravelBotRepository();
   const service = new TravelBotService({
@@ -97,7 +320,8 @@ test("invalid or refused model output falls back without changing business state
 
   assert.equal(result.state, "COLLECTING");
   assert.deepEqual(result.intent, conversation.intent);
-  assert.equal(result.messages.at(-1)?.content.includes("origem e destino"), true);
+  assert.equal(result.messages.at(-1)?.content.includes("de onde você quer sair"), true);
+  assert.equal(result.messages.at(-1)?.content.includes("cidade ou aeroporto"), true);
   assert.equal(result.messages.at(-1)?.content.includes("sk-sensitive"), false);
 });
 

@@ -37,6 +37,15 @@ export class StateGuardedAgentToolExecutor implements AgentToolExecutorPort {
             result = { status: "OK", reference_id: offers[0]?.offer_id ?? null, reason_code: null };
             break;
           }
+          case "create_checkout": {
+            const offerId = input.arguments.offer_id;
+            const persisted = typeof offerId === "string"
+              && conversation.offers.some(({ offer_id: candidate }) => candidate === offerId);
+            result = persisted
+              ? { status: "OK", reference_id: offerId, reason_code: null }
+              : { status: "REJECTED", reference_id: null, reason_code: "offer_unavailable" };
+            break;
+          }
           case "get_receipt": {
             if (this.tools.getReceipt === undefined) throw new Error("tool_not_configured");
             const receipt = await this.tools.getReceipt(conversation);

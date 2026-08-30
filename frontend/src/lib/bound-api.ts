@@ -6,6 +6,7 @@ import type {
   NormalizedCheckout,
   OfferCandidate,
   PurchaseIntent,
+  TravelBotConversation,
 } from "@/lib/contracts";
 
 const DEFAULT_API_URL = "http://localhost:3001";
@@ -127,6 +128,46 @@ export const boundApi = {
 
   listOffers(signal?: AbortSignal) {
     return request<OfferCandidate[]>("/merchant/flights", { signal });
+  },
+
+  createConversation(
+    input: { principal_id: string; agent_id: string },
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<TravelBotConversation>("/v1/conversations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: JSON.stringify(input),
+    });
+  },
+
+  getConversation(conversationId: string, signal?: AbortSignal) {
+    return request<TravelBotConversation>(`/v1/conversations/${conversationId}`, {
+      signal,
+    });
+  },
+
+  postConversationMessage(
+    conversationId: string,
+    content: string,
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<TravelBotConversation>(
+      `/v1/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": requestIdentity.idempotencyKey,
+          "X-Correlation-Id": requestIdentity.correlationId,
+        },
+        body: JSON.stringify({ content }),
+      },
+    );
   },
 
   createCheckout(
