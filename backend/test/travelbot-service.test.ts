@@ -322,6 +322,68 @@ test("an English compact budget defaults to USD without asking for the amount ag
   assert.equal(searched, true);
 });
 
+test("a Portuguese flexible month is retained across turns without asking for a day", async () => {
+  let searchedDate: string | null | undefined;
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [{ field: "departure_date" as const, reason: "AMBIGUOUS" as const }],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "Preciso de mais detalhes.",
+        };
+      },
+    },
+    tools: {
+      findOffers: async (intent) => {
+        searchedDate = intent.departure_date;
+        return [];
+      },
+    },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_portuguese_month_create_001",
+    correlation_id: "corr_portuguese_month_create_001",
+  });
+
+  const first = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Quero comprar um voo em setembro para o Rio de Janeiro e gastar no máximo 1000.",
+    idempotency_key: "idem_portuguese_month_first_001",
+    correlation_id: "corr_portuguese_month_first_001",
+  });
+
+  assert.equal(first.intent.departure_date, "2026-09");
+  assert.deepEqual(first.missing_fields, ["origin_iata"]);
+  assert.equal(first.messages.at(-1)?.content, "To continue, tell me where you want to depart from.");
+
+  const second = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "I want to leave from São Paulo (GRU).",
+    idempotency_key: "idem_portuguese_month_second_001",
+    correlation_id: "corr_portuguese_month_second_001",
+  });
+
+  assert.equal(second.intent.departure_date, "2026-09");
+  assert.deepEqual(second.missing_fields, []);
+  assert.equal(searchedDate, "2026-09");
+});
+
 test("a Portuguese compact budget defaults to BRL", async () => {
   const repository = new InMemoryTravelBotRepository();
   const service = new TravelBotService({
