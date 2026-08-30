@@ -26,10 +26,11 @@ type AccountPageShellProps = {
 };
 
 export function AccountPageShell(props: AccountPageShellProps) {
-  return <AuthenticatedPage><AuthenticatedAccountPageShell {...props} /></AuthenticatedPage>;
+  if (process.env.NODE_ENV === "development") return <WorkspaceAccountPageShell {...props} />;
+  return <AuthenticatedPage><WorkspaceAccountPageShell {...props} /></AuthenticatedPage>;
 }
 
-function AuthenticatedAccountPageShell({
+function WorkspaceAccountPageShell({
   activePage,
   children,
 }: AccountPageShellProps) {
