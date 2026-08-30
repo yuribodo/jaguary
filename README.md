@@ -22,12 +22,29 @@ Every supported purchase follows the same authority rail:
 HUMAN → MANDATE → AGENT → CHECKOUT → BOUND VERIFY → PAYMENT → RECEIPT
 ```
 
+[![Jaguary authority rail: the supported path from human mandate to payment and audit evidence](docs/diagrams/readme-authority-rail.svg)](docs/diagrams/readme-authority-rail.html)
+
+_Blue is the authorized economic path; the dashed route is a blocked attempt to bypass Bound. Open the image for the self-contained HTML source._
+
 - The human defines revocable limits, scope, validity, merchant, and payment reference.
 - The agent can propose tools only when the persisted workflow state allows them.
 - The merchant authors price, items, fulfillment, total, and checkout expiry.
 - Bound verifies signatures, bindings, trust, scope, limits, nonce, replay, and current state.
 - Only a transactionally reserved `ALLOW` can reach the payment boundary.
 - The ledger correlates the decision, payment result, order, and receipt.
+
+## Example journey
+
+Suppose a traveler asks for a flight from São Paulo to Córdoba within a fixed budget:
+
+1. **TravelBot** uses OpenAI to turn the conversation into strict intent and propose only tools allowed by the current workflow state.
+2. **Flight Search** queries SerpApi's Google Flights engine, validates the response, and normalizes itineraries into stable internal offers.
+3. **VuelaYa** converts the selected offer into merchant-authored, signed UCP-style checkout terms. The model never authors price or total.
+4. **The human** reviews those terms and approves an immutable, revocable mandate aligned with the AP2 authorization model.
+5. **Bound Verify** checks identity, signatures, checkout binding, scope, limits, nonce, replay, and state before transactionally reserving `ALLOW`.
+6. **Payment** runs only from that reservation; the outcome, receipt, and correlated evidence are written to the ledger.
+
+The integration guides explain each boundary and its failure behavior: [OpenAI](docs/technical/openai-travelbot.md), [Google Flights](docs/technical/google-flights-search.md), [Didit](docs/technical/didit-trust.md), [UCP](docs/technical/ucp-commerce.md), and [AP2 / Bound](docs/technical/ap2-bound.md).
 
 ## What is implemented
 
@@ -160,4 +177,13 @@ For detailed database, provider, Postman, and integration-test instructions, use
 5. Provider calls happen outside database transactions and converge through stable idempotency keys.
 6. Raw credentials, PAN, CVV, provider secrets, and sensitive payloads do not enter public contracts or logs.
 
-Before opening a change, run `pnpm check`. Documentation changes should follow [Documentation conventions](docs/technical/documentation-conventions.md), and architectural decisions with durable consequences should be recorded as ADRs.
+## Contributing and support
+
+Contributions should stay small enough to review and preserve the authority boundary. Before opening a pull request:
+
+1. Start from an existing issue, or open one to align on user-visible features and protocol changes.
+2. Add or update tests for authorization, money movement, identity, and external-contract behavior.
+3. Run `pnpm check` and document any check that could not run locally.
+4. Update the relevant technical guide; record decisions with durable consequences as an ADR.
+
+Use [GitHub Issues](https://github.com/yuribodo/jaguary/issues) for reproducible bugs, implementation gaps, and scoped proposals. Documentation changes should follow [Documentation conventions](docs/technical/documentation-conventions.md); the current backlog starts in [Known implementation gaps](docs/technical/known-gaps.md).

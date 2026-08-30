@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jaguary authority rail</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{--paper:#f4f0e7;--paper2:#faf8f2;--ink:#141511;--muted:#5e6158;--rule:rgba(20,21,17,.16);--accent:#334de8;--accent-tint:rgba(51,77,232,.08)}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Geist,sans-serif}.page{max-width:1040px;margin:0 auto;padding:40px}.diagram{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--paper2)}svg{display:block;min-width:960px;width:100%;height:auto}.zone{fill:rgba(20,21,17,.018);stroke:rgba(20,21,17,.14);stroke-width:1}.node{fill:var(--paper2);stroke:var(--ink);stroke-width:1}.external{fill:rgba(20,21,17,.025);stroke:rgba(20,21,17,.3);stroke-width:1}.store{fill:rgba(20,21,17,.05);stroke:var(--muted);stroke-width:1}.focal{fill:var(--accent-tint);stroke:var(--accent);stroke-width:2}.tag-bg{fill:var(--paper)}.eyebrow,.tag{fill:var(--muted);font:500 8px Geist Mono,monospace;letter-spacing:.14em}.title{fill:var(--ink);font:400 28px Instrument Serif,serif}.intro{fill:var(--muted);font:400 11px Geist,sans-serif}.name{fill:var(--ink);font:600 12px Geist,sans-serif}.sub{fill:var(--muted);font:400 9px Geist Mono,monospace}.edge{fill:none;stroke:var(--muted);stroke-width:2}.approved{fill:none;stroke:var(--accent);stroke-width:2}.blocked{fill:none;stroke:var(--ink);stroke-width:2;stroke-dasharray:8 8}.edge-label,.legend{fill:var(--muted);font:500 8px Geist Mono,monospace;letter-spacing:.06em}.stop{fill:var(--paper);stroke:var(--ink);stroke-width:2}
+  </style>
+</head>
+<body>
+<main class="page">
+  <div class="diagram">
+    <svg viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rail-title rail-desc">
+      <title id="rail-title">The Jaguary authority rail</title>
+      <desc id="rail-desc">A secure paved road from a human mandate through TravelBot and Bound Verify to payment and the audit ledger. OpenAI, SerpApi, VuelaYa, and Didit provide proposals, merchant terms, and trust evidence but cannot bypass Bound to reach payment.</desc>
+      <defs>
+        <marker id="rail-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5e6158"/></marker>
+        <marker id="rail-arrow-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#334de8"/></marker>
+      </defs>
+
+      <rect width="960" height="600" fill="#f4f0e7"/>
+      <text class="eyebrow" x="40" y="40">AUTHORITY RAIL · CURRENT IMPLEMENTATION</text>
+      <text class="title" x="40" y="72">Only one path can move money</text>
+      <text class="intro" x="40" y="96">Providers contribute proposals, terms, and evidence. Bound is the deterministic gate before any economic effect.</text>
+
+      <rect class="zone" x="40" y="132" width="240" height="348" rx="8"/>
+      <rect class="zone" x="320" y="132" width="360" height="348" rx="8"/>
+      <rect class="zone" x="720" y="132" width="200" height="348" rx="8"/>
+      <rect class="tag-bg" x="52" y="128" width="116" height="16" rx="4"/><text class="tag" x="60" y="140">HUMAN + PROVIDERS</text>
+      <rect class="tag-bg" x="332" y="128" width="124" height="16" rx="4"/><text class="tag" x="340" y="140">JAGUARY · PRIVATE</text>
+      <rect class="tag-bg" x="732" y="128" width="112" height="16" rx="4"/><text class="tag" x="740" y="140">EFFECT + EVIDENCE</text>
+
+      <!-- Connectors are drawn before nodes so they never cross labels. -->
+      <path class="approved" d="M244 204 H356" marker-end="url(#rail-arrow-accent)"/>
+      <rect x="276" y="182" width="52" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="302" y="190" text-anchor="middle">MANDATE</text>
+
+      <path class="edge" d="M244 322 H292 Q304 322 304 310 V238 Q304 226 316 226 H356" marker-end="url(#rail-arrow)"/>
+      <rect x="264" y="292" width="80" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="304" y="300" text-anchor="middle">TOOLS + TERMS</text>
+
+      <path class="edge" d="M356 246 H332 Q320 246 320 258 V342 Q320 354 308 354 H244" marker-end="url(#rail-arrow)"/>
+      <rect x="280" y="340" width="48" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="304" y="348" text-anchor="middle">CALLS</text>
+
+      <path class="approved" d="M452 246 V292 Q452 304 464 304 H488" marker-end="url(#rail-arrow-accent)"/>
+      <rect x="428" y="266" width="72" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="464" y="274" text-anchor="middle">EXACT REQUEST</text>
+
+      <path class="edge" d="M244 426 H460 Q472 426 472 414 V352 Q472 340 488 340" marker-end="url(#rail-arrow)"/>
+      <rect x="340" y="404" width="72" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="376" y="412" text-anchor="middle">TRUST EVIDENCE</text>
+
+      <path class="approved" d="M632 320 H756" marker-end="url(#rail-arrow-accent)"/>
+      <rect x="664" y="298" width="60" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="694" y="306" text-anchor="middle">ALLOW ONLY</text>
+
+      <path class="edge" d="M560 360 V426 Q560 438 572 438 H756" marker-end="url(#rail-arrow)"/>
+      <rect x="620" y="416" width="56" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="648" y="424" text-anchor="middle">DECISION</text>
+
+      <path class="edge" d="M820 352 V408" marker-end="url(#rail-arrow)"/>
+      <rect x="832" y="374" width="44" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="854" y="382">RESULT</text>
+
+      <!-- Forbidden direct payment path terminates before the effect zone. -->
+      <path class="blocked" d="M548 204 H700"/>
+      <circle class="stop" cx="708" cy="204" r="8"/><line x1="704" y1="200" x2="712" y2="208" stroke="#141511" stroke-width="2"/><line x1="712" y1="200" x2="704" y2="208" stroke="#141511" stroke-width="2"/>
+      <rect x="608" y="182" width="76" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="646" y="190" text-anchor="middle">NO DIRECT PAY</text>
+
+      <!-- Nodes -->
+      <rect class="external" x="72" y="172" width="172" height="64" rx="8"/><text class="tag" x="84" y="188">AUTHORITY</text><text class="name" x="158" y="208" text-anchor="middle">Human mandate</text><text class="sub" x="158" y="224" text-anchor="middle">scope · limit · expiry</text>
+      <rect class="external" x="72" y="282" width="172" height="80" rx="8"/><text class="tag" x="84" y="298">DISCOVERY + COMMERCE</text><text class="name" x="158" y="322" text-anchor="middle">External providers</text><text class="sub" x="158" y="340" text-anchor="middle">OpenAI · SerpApi · VuelaYa</text>
+      <rect class="external" x="72" y="394" width="172" height="64" rx="8"/><text class="tag" x="84" y="410">IDENTITY</text><text class="name" x="158" y="430" text-anchor="middle">Didit trust</text><text class="sub" x="158" y="446" text-anchor="middle">operator evidence</text>
+
+      <rect class="node" x="356" y="172" width="192" height="74" rx="8"/><text class="tag" x="368" y="188">ISOLATED RUNTIME</text><text class="name" x="452" y="212" text-anchor="middle">TravelBot</text><text class="sub" x="452" y="230" text-anchor="middle">proposes · never authorizes</text>
+      <rect class="focal" x="488" y="280" width="144" height="80" rx="8"/><text class="tag" x="500" y="296">PRIVILEGED GATE</text><text class="name" x="560" y="322" text-anchor="middle">Bound Verify</text><text class="sub" x="560" y="340" text-anchor="middle">policy + reservation</text>
+
+      <rect class="node" x="756" y="288" width="128" height="64" rx="8"/><text class="tag" x="768" y="304">EFFECT</text><text class="name" x="820" y="324" text-anchor="middle">Payment</text><text class="sub" x="820" y="340" text-anchor="middle">reserved ALLOW</text>
+      <rect class="store" x="756" y="408" width="128" height="56" rx="8"/><text class="tag" x="768" y="424">AUDIT</text><text class="name" x="820" y="446" text-anchor="middle">Ledger + receipt</text>
+
+      <line x1="40" y1="516" x2="920" y2="516" stroke="rgba(20,21,17,.16)"/>
+      <text class="tag" x="40" y="544">LEGEND</text>
+      <line class="approved" x1="124" y1="540" x2="168" y2="540" marker-end="url(#rail-arrow-accent)"/><text class="legend" x="180" y="544">authorized economic path</text>
+      <line class="edge" x1="384" y1="540" x2="428" y2="540" marker-end="url(#rail-arrow)"/><text class="legend" x="440" y="544">evidence or result</text>
+      <line class="blocked" x1="604" y1="540" x2="648" y2="540"/><text class="legend" x="660" y="544">blocked bypass</text>
+      <text class="legend" x="40" y="576">Human intent becomes spend authority only through an explicit, revocable mandate.</text>
+    </svg>
+  </div>
+</main>
+</body>
+</html>

@@ -2,6 +2,7 @@
 
 ## Guias técnicos focados
 
+- [Trilho de autoridade resumido para o README](readme-authority-rail.html) ([SVG](readme-authority-rail.svg))
 - [Contexto do sistema e fronteiras de confiança](system-context.html)
 - [Sequência OpenAI + TravelBot](openai-travelbot-sequence.html)
 - [Sequência de busca Google Flights via SerpApi](google-flights-search-sequence.html)

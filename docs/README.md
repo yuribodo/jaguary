@@ -10,7 +10,7 @@ This directory separates current behavior, operating instructions, architecture 
 | See how the complete system fits together | [System architecture](technical/architecture.md) |
 | Understand OpenAI, Google Flights search, Didit, UCP, or AP2 | [Integration guides](technical/README.md#integration-guides) |
 | Review missing or incorrect implementation work | [Known implementation gaps](technical/known-gaps.md) |
-| Run the repository locally | [Root README](../README.md#development-setup) |
+| Run the repository locally | [Root README](../README.md#run-locally) |
 | Deploy the current applications | [Deployment guide](deployment.md) |
 | Understand why an architectural choice was made | [Architecture decision records](#architecture-decision-records) |
 | Explore visual system maps | [Diagram index](diagrams/README.md) |
