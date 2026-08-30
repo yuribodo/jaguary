@@ -44,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       className={cn(geist.variable, serif.variable, display.variable, mono.variable)}
-      lang="pt-BR"
+      lang="en"
     >
       <body>
         <TooltipProvider><EnglishUi />{children}</TooltipProvider>
