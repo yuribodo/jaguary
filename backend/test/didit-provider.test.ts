@@ -24,7 +24,13 @@ test("Didit creates a backend-only hosted session without sending PII", async ()
     assert.equal(String(input), "https://verification.didit.me/v3/session/");
     assert.equal((init?.headers as Record<string, string>)["x-api-key"], "api-secret");
     requestBody = JSON.parse(String(init?.body));
-    return new Response(JSON.stringify({ session_id: "550e8400-e29b-41d4-a716-446655440001", url: "https://verify.didit.me/en/session/opaque-token", status: "Not Started" }), { status: 201 });
+    return {
+      ok: true,
+      status: 201,
+      headers: { get: () => null },
+      json: async () => ({ session_id: "550e8400-e29b-41d4-a716-446655440001", url: "https://verify.didit.me/en/session/opaque-token", status: "Not Started" }),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    };
   } });
   const result = await provider.createAssessment({ attestationId: "attestation_1", agentId: "agent_travelbot", principalId: "principal_marta", vendorData: "opaque-bound-reference", callbackUrl: "https://bound.example/trust/callback" });
   assert.equal(result.status, "PENDING");

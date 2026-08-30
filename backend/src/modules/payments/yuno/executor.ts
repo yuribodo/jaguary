@@ -70,8 +70,23 @@ export interface YunoCredentialResolver {
   resolve(credentialId: string): Promise<YunoPaymentCredential | undefined>;
 }
 
+interface YunoHttpResponse {
+  readonly status: number;
+  json(): Promise<unknown>;
+}
+
+type YunoFetch = (
+  input: string,
+  init: {
+    method: "POST";
+    headers: Record<string, string>;
+    body: string;
+    signal: AbortSignal;
+  },
+) => Promise<YunoHttpResponse>;
+
 export interface YunoPaymentExecutorDependencies {
-  fetch: typeof fetch;
+  fetch: YunoFetch;
   credentialResolver: YunoCredentialResolver;
   now?: () => Date;
 }
@@ -177,7 +192,7 @@ export class YunoPaymentExecutor implements PaymentExecutor {
     }
 
     const orderId = merchantOrderId(payment.authorization.authorization_id);
-    let response: Response;
+    let response: YunoHttpResponse;
     try {
       response = await this.dependencies.fetch(`${config.baseUrl}/v1/payments`, {
         method: "POST",

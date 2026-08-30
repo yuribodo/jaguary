@@ -19,9 +19,22 @@ export interface DiditAgentAttestationProviderOptions {
   webhookSecret: string;
   timeoutMs: number;
   allowedCallbackUrls: readonly string[];
-  fetch?: typeof globalThis.fetch;
+  fetch?: DiditFetch;
   now?: () => Date;
 }
+
+interface DiditHttpResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly headers: { get(name: string): string | null };
+  json(): Promise<unknown>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+type DiditFetch = (
+  input: string | URL,
+  init: RequestInit,
+) => Promise<DiditHttpResponse>;
 
 export interface CreateBiometricAuthenticationInput {
   referenceAssessmentId: string;
@@ -105,18 +118,20 @@ function safeAssessment(value: Record<string, unknown>, fallbackNow: Date): Prov
 }
 
 export class DiditAgentAttestationProvider implements AgentAttestationProviderPort {
-  readonly #fetch: typeof globalThis.fetch;
+  readonly #fetch: DiditFetch;
   readonly #baseUrl: string;
   readonly #callbacks: Set<string>;
   constructor(private readonly options: DiditAgentAttestationProviderOptions) {
     const base = new URL(options.baseUrl);
     if (base.protocol !== "https:" || base.hostname !== "verification.didit.me" || base.port !== "" || !["", "/"].includes(base.pathname)) throw new Error("Didit base URL is not allowlisted");
     this.#baseUrl = base.origin;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? ((input, init) => (
+      globalThis.fetch(input, init) as unknown as Promise<DiditHttpResponse>
+    ));
     this.#callbacks = new Set(options.allowedCallbackUrls);
   }
 
-  async #request(path: string, init: RequestInit): Promise<Response> {
+  async #request(path: string, init: RequestInit): Promise<DiditHttpResponse> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const response = await this.#fetch(`${this.#baseUrl}${path}`, { ...init, redirect: "error", signal: AbortSignal.timeout(this.options.timeoutMs) });

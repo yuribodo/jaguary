@@ -204,6 +204,16 @@ test("YunoPaymentExecutor keeps a provider error economically unknown", async ()
   });
 });
 
+test("YunoPaymentExecutor accepts a platform-neutral HTTP response contract", async () => {
+  const executor = new YunoPaymentExecutor(config, {
+    fetch: async () => ({ status: 503, json: async () => ({}) }),
+    credentialResolver: sanitizedCredentialResolver,
+    now: () => fallbackNow,
+  });
+
+  assert.equal((await executor.pay(authorizedPaymentFixture, idempotencyKey)).status, "UNKNOWN");
+});
+
 test("YunoPaymentExecutor treats a malformed success response as unknown", async () => {
   const executor = createExecutor(async () => new Response(
     JSON.stringify(await fixture("payment-malformed")),
