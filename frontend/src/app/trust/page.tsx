@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRightIcon, BadgeCheckIcon, FingerprintIcon, LockKeyholeIcon, RefreshCwIcon } from "lucide-react";
 
 import { AccountPageShell } from "@/components/account-page-shell";
+import { PendingVerificationControls } from "@/components/trust/PendingVerificationControls";
 import { Button } from "@/components/ui/button";
 import {
   boundApi,
@@ -18,7 +19,7 @@ import {
 const AGENT_ID = "agent_travelbot";
 
 const statusContent: Record<string, { badge: string; title: string; description: string }> = {
-  PENDING: { badge: "PENDING", title: "Identity verification in progress", description: "Didit is reviewing the submitted evidence. This page updates automatically when the decision arrives." },
+  PENDING: { badge: "PENDING", title: "Identity verification not complete", description: "Finish the open Didit check. If the verification page did not open or was closed, restart it here." },
   VERIFIED: { badge: "VERIFIED", title: "Operator identity verified", description: "The principal can operate TravelBot with verified identity." },
   REJECTED: { badge: "REJECTED", title: "Identity could not be verified", description: "The provider could not approve the submitted evidence. Start a new verification to try again." },
   EXPIRED: { badge: "EXPIRED", title: "Identity verification expired", description: "A new identity check is required before TravelBot can operate with verified authority." },
@@ -255,9 +256,22 @@ export default function TrustPage() {
                 </Button>
               </div>
             ) : pending ? (
-              <Button className="min-h-11 w-full px-4 sm:w-auto" variant="outline" disabled={busy} onClick={() => void refresh(session)}>
-                <RefreshCwIcon className={busy ? "animate-spin" : ""} /> {busy ? "Refreshing…" : "Check status"}
-              </Button>
+              <PendingVerificationControls
+                busy={busy}
+                consent={consent}
+                restarting={showReverification}
+                onCancel={() => {
+                  setConsent(false);
+                  setShowReverification(false);
+                }}
+                onConsentChange={setConsent}
+                onRefresh={() => void refresh(session)}
+                onRestart={() => {
+                  setConsent(false);
+                  setShowReverification(true);
+                }}
+                onStart={() => void beginVerification(session)}
+              />
             ) : (
               <Button className="min-h-11 w-full px-4 sm:w-auto" disabled={!consent || busy} onClick={() => void beginVerification(session)}>{busy ? "Opening Didit…" : "Verify with Didit"}</Button>
             )}
