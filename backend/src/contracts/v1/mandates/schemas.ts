@@ -205,3 +205,24 @@ export const mandateSchema = z
   });
 
 export type Mandate = z.infer<typeof mandateSchema>;
+
+export const mandateBiometricConsentStatusSchema = z.enum([
+  "PREPARING",
+  "PENDING",
+  "VERIFIED",
+  "REJECTED",
+  "EXPIRED",
+  "ERROR",
+  "CONSUMED",
+]);
+
+export const mandateBiometricConsentSchema = z.object({
+  consent_id: identifierSchema,
+  mandate_id: identifierSchema,
+  status: mandateBiometricConsentStatusSchema,
+  terms_hash: sha256Schema,
+  expires_at: utcRfc3339Schema,
+  hosted_verification_url: z.url().nullable(),
+}).strict();
+
+export type MandateBiometricConsent = z.infer<typeof mandateBiometricConsentSchema>;

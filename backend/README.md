@@ -112,7 +112,7 @@ The backend now owns opaque principal sessions, Google OIDC Authorization Code +
 
 Authentication routes are `/auth/v1/login/:provider/start`, callback, session and logout; demo adds `/auth/v1/demo/session`. Trust routes create/reconcile attestation sessions, expose sanitized assurance and passports, receive provider webhooks, verify passports and publish JWKS. KYA initiation requires the authenticated owner, Origin, session-bound CSRF, `Idempotency-Key` and `X-Correlation-Id`. Only the signed webhook route is exempt from the global client idempotency header and deduplicates by its authenticated provider event ID.
 
-`KYA_MODE=LOCAL` and `KYA_PROVIDER=fake` are credential-free and make no external request. Any external mode fails startup unless all Didit settings are present and its API origin is the official HTTPS origin. Verify and purchase paths consume the persisted trust snapshot and never call a provider.
+`KYA_MODE=LOCAL` and `KYA_PROVIDER=fake` are credential-free and make no external request. Any external mode fails startup unless all Didit settings are present and its API origin is the official HTTPS origin. Set `KYA_BIOMETRIC_WORKFLOW_ID` to a published Didit Biometric Authentication workflow to require a live selfie before mandate activation. The consent is bound to the exact immutable terms and consumed atomically during activation; no biometric media is persisted. Verify and purchase paths consume persisted trust/consent snapshots and never call a provider.
 
 ## TravelBot chat (BE-13)
 

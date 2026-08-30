@@ -15,11 +15,31 @@ export interface DiditAgentAttestationProviderOptions {
   baseUrl: string;
   apiKey: string;
   workflowId: string;
+  biometricWorkflowId?: string;
   webhookSecret: string;
   timeoutMs: number;
   allowedCallbackUrls: readonly string[];
-  fetch?: typeof globalThis.fetch;
+  fetch?: DiditFetch;
   now?: () => Date;
+}
+
+interface DiditHttpResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly headers: { get(name: string): string | null };
+  json(): Promise<unknown>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+type DiditFetch = (
+  input: string | URL,
+  init: RequestInit,
+) => Promise<DiditHttpResponse>;
+
+export interface CreateBiometricAuthenticationInput {
+  referenceAssessmentId: string;
+  vendorData: string;
+  callbackUrl: string;
 }
 
 function sortJson(value: unknown): unknown {
@@ -46,6 +66,37 @@ function providerDate(value: unknown, fallback: Date): Date {
   if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return new Date(value);
   return fallback;
 }
+
+function findPortraitImage(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const portrait = findPortraitImage(item);
+      if (portrait !== undefined) return portrait;
+    }
+    return undefined;
+  }
+  if (value === null || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["portrait_image", "portrait_image_url"]) {
+    if (typeof record[key] === "string" && record[key].length > 0) return record[key];
+  }
+  for (const child of Object.values(record)) {
+    const portrait = findPortraitImage(child);
+    if (portrait !== undefined) return portrait;
+  }
+  return undefined;
+}
+
+function isDiditPortraitHost(hostname: string): boolean {
+  return /^service-didit-verification(?:-[a-z0-9][a-z0-9-]{0,62})?\.s3(?:\.[a-z0-9-]+)?\.amazonaws\.com$/i.test(hostname);
+}
+
+function isSupportedPortrait(bytes: Uint8Array): boolean {
+  const hex = Buffer.from(bytes.subarray(0, 12)).toString("hex");
+  return hex.startsWith("ffd8ff")
+    || hex.startsWith("89504e470d0a1a0a")
+    || (hex.startsWith("52494646") && Buffer.from(bytes.subarray(8, 12)).toString("ascii") === "WEBP");
+}
 function safeAssessment(value: Record<string, unknown>, fallbackNow: Date): ProviderAssessmentResult {
   if (typeof value.session_id !== "string") throw new Error("Didit response is unavailable");
   const normalized = normalizeStatus(value.status);
@@ -67,18 +118,20 @@ function safeAssessment(value: Record<string, unknown>, fallbackNow: Date): Prov
 }
 
 export class DiditAgentAttestationProvider implements AgentAttestationProviderPort {
-  readonly #fetch: typeof globalThis.fetch;
+  readonly #fetch: DiditFetch;
   readonly #baseUrl: string;
   readonly #callbacks: Set<string>;
   constructor(private readonly options: DiditAgentAttestationProviderOptions) {
     const base = new URL(options.baseUrl);
     if (base.protocol !== "https:" || base.hostname !== "verification.didit.me" || base.port !== "" || !["", "/"].includes(base.pathname)) throw new Error("Didit base URL is not allowlisted");
     this.#baseUrl = base.origin;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? ((input, init) => (
+      globalThis.fetch(input, init) as unknown as Promise<DiditHttpResponse>
+    ));
     this.#callbacks = new Set(options.allowedCallbackUrls);
   }
 
-  async #request(path: string, init: RequestInit): Promise<Response> {
+  async #request(path: string, init: RequestInit): Promise<DiditHttpResponse> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const response = await this.#fetch(`${this.#baseUrl}${path}`, { ...init, redirect: "error", signal: AbortSignal.timeout(this.options.timeoutMs) });
@@ -98,6 +151,65 @@ export class DiditAgentAttestationProvider implements AgentAttestationProviderPo
       body: JSON.stringify({ workflow_id: this.options.workflowId, vendor_data: input.vendorData, callback: input.callbackUrl, callback_method: "both" }),
     });
     if (response.status !== 201) throw new Error("Didit session creation failed");
+    const value = await response.json() as Record<string, unknown>;
+    if (typeof value.session_id !== "string" || typeof value.url !== "string" || value.status !== "Not Started") throw new Error("Didit session response is invalid");
+    const hostedUrl = new URL(value.url);
+    if (hostedUrl.protocol !== "https:" || hostedUrl.hostname !== "verify.didit.me" || hostedUrl.username !== "" || hostedUrl.password !== "") throw new Error("Didit hosted URL is invalid");
+    return { provider: "didit", assessmentId: value.session_id, status: "PENDING", hostedUrl: hostedUrl.toString() };
+  }
+
+  async createBiometricAuthentication(input: CreateBiometricAuthenticationInput): Promise<ProviderAssessmentSession> {
+    if (this.options.biometricWorkflowId === undefined) throw new Error("Didit biometric workflow is unavailable");
+    if (!this.#callbacks.has(input.callbackUrl)) throw new Error("Didit callback is not allowlisted");
+    if (!/^[0-9a-f-]{36}$/i.test(input.referenceAssessmentId)) throw new Error("Didit assessment reference is invalid");
+
+    const decisionResponse = await this.#request(`/v3/session/${encodeURIComponent(input.referenceAssessmentId)}/decision/`, {
+      method: "GET",
+      headers: { "x-api-key": this.options.apiKey, accept: "application/json" },
+    });
+    if (!decisionResponse.ok) throw new Error("Didit provider unavailable");
+    const decision = await decisionResponse.json() as Record<string, unknown>;
+    if (normalizeStatus(decision.status).status !== "VERIFIED") throw new Error("Didit onboarding assessment is not approved");
+    const portraitReference = findPortraitImage(decision);
+    if (portraitReference === undefined) throw new Error("Didit onboarding portrait is unavailable");
+
+    let portraitBytes: Uint8Array;
+    if (/^https:/i.test(portraitReference)) {
+      const portraitUrl = new URL(portraitReference);
+      if (!isDiditPortraitHost(portraitUrl.hostname) || portraitUrl.username !== "" || portraitUrl.password !== "") {
+        throw new Error("Didit onboarding portrait URL is invalid");
+      }
+      const portraitResponse = await this.#fetch(portraitUrl, {
+        method: "GET",
+        redirect: "error",
+        signal: AbortSignal.timeout(this.options.timeoutMs),
+      });
+      const contentLength = Number(portraitResponse.headers.get("content-length"));
+      if (!portraitResponse.ok || (Number.isFinite(contentLength) && contentLength > 2_097_152)) {
+        throw new Error("Didit onboarding portrait is unavailable");
+      }
+      portraitBytes = new Uint8Array(await portraitResponse.arrayBuffer());
+    } else {
+      try { portraitBytes = Buffer.from(portraitReference.replace(/^data:image\/(?:jpeg|png|webp);base64,/, ""), "base64"); }
+      catch { throw new Error("Didit onboarding portrait is invalid"); }
+    }
+    if (portraitBytes.byteLength === 0 || portraitBytes.byteLength > 2_097_152 || !isSupportedPortrait(portraitBytes)) {
+      throw new Error("Didit onboarding portrait is invalid");
+    }
+
+    const response = await this.#request("/v3/session/", {
+      method: "POST",
+      headers: { "x-api-key": this.options.apiKey, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        workflow_id: this.options.biometricWorkflowId,
+        vendor_data: input.vendorData,
+        callback: input.callbackUrl,
+        callback_method: "both",
+        portrait_image: Buffer.from(portraitBytes).toString("base64"),
+      }),
+    });
+    portraitBytes.fill(0);
+    if (response.status !== 201) throw new Error("Didit biometric session creation failed");
     const value = await response.json() as Record<string, unknown>;
     if (typeof value.session_id !== "string" || typeof value.url !== "string" || value.status !== "Not Started") throw new Error("Didit session response is invalid");
     const hostedUrl = new URL(value.url);

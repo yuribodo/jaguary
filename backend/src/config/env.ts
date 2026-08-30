@@ -97,6 +97,7 @@ const envSchema = z.object({
   KYA_API_BASE_URL: diditBaseUrlSchema.optional(),
   KYA_API_KEY: secretSchema.optional(),
   KYA_WORKFLOW_ID: z.uuid().optional(),
+  KYA_BIOMETRIC_WORKFLOW_ID: z.uuid().optional(),
   KYA_WEBHOOK_SECRET: secretSchema.optional(),
   KYA_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(250).max(30_000).default(5_000),
   KYA_ATTESTATION_TTL_SECONDS: z.coerce.number().int().min(60).max(63_072_000).default(31_536_000),
@@ -258,6 +259,7 @@ export type KyaConfig = {
   baseUrl?: string;
   apiKey?: string;
   workflowId?: string;
+  biometricWorkflowId?: string;
   webhookSecret?: string;
 };
 
@@ -321,6 +323,7 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
     KYA_API_BASE_URL,
     KYA_API_KEY,
     KYA_WORKFLOW_ID,
+    KYA_BIOMETRIC_WORKFLOW_ID,
     KYA_WEBHOOK_SECRET,
     KYA_REQUEST_TIMEOUT_MS,
     KYA_ATTESTATION_TTL_SECONDS,
@@ -372,6 +375,7 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
     ...(KYA_API_BASE_URL === undefined ? {} : { baseUrl: KYA_API_BASE_URL.replace(/\/$/, "") }),
     ...(KYA_API_KEY === undefined ? {} : { apiKey: KYA_API_KEY }),
     ...(KYA_WORKFLOW_ID === undefined ? {} : { workflowId: KYA_WORKFLOW_ID }),
+    ...(KYA_BIOMETRIC_WORKFLOW_ID === undefined ? {} : { biometricWorkflowId: KYA_BIOMETRIC_WORKFLOW_ID }),
     ...(KYA_WEBHOOK_SECRET === undefined ? {} : { webhookSecret: KYA_WEBHOOK_SECRET }),
   };
   if (!YUNO_ENABLED) return { ...environment, yuno: { enabled: false }, openai, travelbot, langfuse, flightSearch, auth, kya };

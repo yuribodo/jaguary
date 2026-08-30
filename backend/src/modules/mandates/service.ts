@@ -22,6 +22,7 @@ import {
   PostgresAuditEventRepository,
   type AuditLedgerPort,
 } from "../ledger/index.js";
+import type { MandateBiometricConsentGate } from "./biometric-consent.js";
 
 type MandateRow = typeof mandates.$inferSelect;
 
@@ -148,6 +149,7 @@ export class MandateService {
       new PostgresAuditEventRepository(database.db),
     ),
     private readonly eligibility?: AgentEligibilityPort,
+    private readonly biometricConsent?: MandateBiometricConsentGate,
   ) {}
 
   async createDraft(
@@ -328,6 +330,14 @@ export class MandateService {
       const terms = rowTerms(stored.row);
       const canonicalTerms = canonicalizeJson(terms);
       const termsHash = sha256CanonicalJson(terms);
+      const biometricProof = this.biometricConsent === undefined ? undefined : await this.biometricConsent.consumeInTransaction(transaction, {
+        mandateId,
+        principalId: terms.principal_id,
+        agentId: terms.agent_id,
+        termsHash,
+        correlationId,
+        now,
+      });
       const signature = await this.signer.sign(new TextEncoder().encode(canonicalTerms));
       const updated = (await transaction
         .update(mandates)
@@ -353,6 +363,10 @@ export class MandateService {
           from_status: "DRAFT",
           to_status: "ACTIVE",
           terms_hash: termsHash,
+          ...(biometricProof === undefined ? {} : {
+            biometric_consent_id: biometricProof.consentId,
+            biometric_evidence_hash: biometricProof.evidenceHash,
+          }),
           occurred_at: now.toISOString(),
         },
         recordedAt: now,

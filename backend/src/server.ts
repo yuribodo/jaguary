@@ -70,6 +70,10 @@ async function start(): Promise<void> {
       ...(env.kya.baseUrl === undefined ? {} : { baseUrl: env.kya.baseUrl }),
       ...(env.kya.apiKey === undefined ? {} : { apiKey: env.kya.apiKey }),
       ...(env.kya.workflowId === undefined ? {} : { workflowId: env.kya.workflowId }),
+      ...(env.kya.biometricWorkflowId === undefined ? {} : {
+        biometricWorkflowId: env.kya.biometricWorkflowId,
+        biometricCallbackUrl: new URL("/biometric-callback", env.CORS_ORIGIN).toString(),
+      }),
       ...(env.kya.webhookSecret === undefined ? {} : { webhookSecret: env.kya.webhookSecret }),
     },
     ...(env.openai.enabled && env.travelbot.enabled ? {

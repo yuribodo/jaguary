@@ -64,6 +64,13 @@
       "when": 1788053162972,
       "tag": "0008_tiny_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788061505133,
+      "tag": "0009_dizzy_stingray",
+      "breakpoints": true
     }
   ]
 }

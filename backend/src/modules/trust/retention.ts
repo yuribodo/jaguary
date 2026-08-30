@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 
 import { PublicApiError } from "../../contracts/v1/index.js";
 import type { DatabaseConnection } from "../../db/database.js";
-import { agentAttestationEvents, agentAttestations } from "../../db/schema.js";
+import { agentAttestationEvents, agentAttestations, mandateBiometricConsents } from "../../db/schema.js";
 
 /**
  * Removes local provider references and event evidence after an attestation is
@@ -18,6 +18,7 @@ export async function purgeTerminalAgentAttestationEvidence(database: DatabaseCo
     }
     const ids = rows.map(({ id }) => id);
     if (ids.length === 0) return 0;
+    await transaction.delete(mandateBiometricConsents).where(inArray(mandateBiometricConsents.onboardingAttestationId, ids));
     await transaction.delete(agentAttestationEvents).where(inArray(agentAttestationEvents.attestationId, ids));
     await transaction.delete(agentAttestations).where(inArray(agentAttestations.attestationId, ids));
     return ids.length;

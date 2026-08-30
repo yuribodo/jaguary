@@ -14,11 +14,29 @@ interface Discovery {
   token_endpoint: string;
   jwks_uri: string;
 }
+
+interface OidcHttpResponse {
+  readonly ok: boolean;
+  json(): Promise<unknown>;
+}
+
+interface OidcHttpRequestInit {
+  method?: "POST";
+  headers: Record<string, string>;
+  body?: URLSearchParams;
+  signal: AbortSignal;
+}
+
+type OidcFetch = (
+  input: string | URL,
+  init: OidcHttpRequestInit,
+) => Promise<OidcHttpResponse>;
+
 export interface GoogleOidcPrincipalProviderOptions {
   issuer: string;
   clientId: string;
   clientSecret: string;
-  fetch?: typeof globalThis.fetch;
+  fetch?: OidcFetch;
   requestTimeoutMs?: number;
   now?: () => Date;
 }
@@ -26,11 +44,13 @@ export interface GoogleOidcPrincipalProviderOptions {
 const GOOGLE_ENDPOINT_HOSTS = new Set(["accounts.google.com", "oauth2.googleapis.com", "www.googleapis.com"]);
 
 export class GoogleOidcPrincipalProvider implements PrincipalIdentityProviderPort {
-  readonly #fetch: typeof globalThis.fetch;
+  readonly #fetch: OidcFetch;
   readonly #timeoutMs: number;
   #discovery?: Promise<Discovery>;
   constructor(private readonly options: GoogleOidcPrincipalProviderOptions) {
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? ((input, init) => (
+      globalThis.fetch(input, init) as unknown as Promise<OidcHttpResponse>
+    ));
     this.#timeoutMs = options.requestTimeoutMs ?? 5_000;
   }
 
