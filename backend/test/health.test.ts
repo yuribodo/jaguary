@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 
 test("GET /health reports that the API is ready", async (t) => {
   const app = await buildApp({ logger: false });

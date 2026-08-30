@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import {
   emptyTravelIntent,
   InMemoryTravelBotRepository,

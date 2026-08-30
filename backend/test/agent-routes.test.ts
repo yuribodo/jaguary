@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Writable } from "node:stream";
 import test from "node:test";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import {
   canonicalizeJson,
   PublicApiError,
