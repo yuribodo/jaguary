@@ -550,7 +550,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["merchant", "flights"]
             },
-            "description": "Lists the deterministic GRU to COR offer for USD 137."
+            "description": "Lists the currently observed sanitized flight offers. A credential-free backend may return an empty list."
           },
           "response": [],
           "event": [
@@ -559,14 +559,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Flight offer is deterministic\", function () {",
+                  "pm.test(\"Flight offer list is sanitized\", function () {",
                   "  pm.response.to.have.status(200);",
                   "  const offers = pm.response.json();",
-                  "  pm.expect(offers).to.have.lengthOf(1);",
-                  "  pm.expect(offers[0].offer_id).to.equal(\"offer_vy_471_gru_cor\");",
-                  "  pm.expect(offers[0].total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
-                  "  pm.expect(offers[0].fulfillment.origin).to.equal(\"GRU\");",
-                  "  pm.expect(offers[0].fulfillment.destination).to.equal(\"COR\");",
+                  "  pm.expect(offers).to.be.an(\"array\");",
+                  "  pm.expect(offers.length).to.be.at.most(5);",
+                  "  pm.expect(JSON.stringify(offers)).not.to.include(\"api_key\");",
                   "});"
                 ]
               }
@@ -604,7 +602,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout"]
             },
-            "description": "Sends only PurchaseIntent. VuelaYa recalculates and signs the authoritative checkout."
+            "description": "Credential-free mode fails closed because no live provider offer is available. Signed checkout success is covered by deterministic integration tests."
           },
           "response": [],
           "event": [
@@ -613,14 +611,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Checkout has frozen canonical hash and merchant signature\", function () {",
-                  "  pm.response.to.have.status(201);",
-                  "  const checkout = pm.response.json();",
-                  "  pm.expect(checkout.checkout_hash).to.equal(pm.collectionVariables.get(\"checkoutHash\"));",
-                  "  pm.expect(checkout.terms.total).to.deep.equal({ amount: 13700, currency: \"USD\" });",
-                  "  pm.expect(checkout.merchant_signature.algorithm).to.equal(\"ES256\");",
-                  "  pm.collectionVariables.set(\"checkoutId\", checkout.terms.checkout_id);",
-                  "  pm.collectionVariables.set(\"checkoutJson\", JSON.stringify(checkout));",
+                  "pm.test(\"Checkout fails closed without a current offer\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -637,7 +630,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout", "{{checkoutId}}"]
             },
-            "description": "Reads the server-side checkout by stable identifier."
+            "description": "Credential-free mode has no persisted checkout for the deterministic fixture identifier."
           },
           "response": [],
           "event": [
@@ -646,9 +639,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Stored checkout is readable\", function () {",
-                  "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.json().terms.checkout_id).to.equal(pm.collectionVariables.get(\"checkoutId\"));",
+                  "pm.test(\"Missing checkout fails closed\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
                   "});"
                 ]
               }
@@ -691,7 +684,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ucp", "v1", "checkout", "{{checkoutId}}", "complete"]
             },
-            "description": "Completion fails closed unless PostgreSQL contains the matching authorization and approved payment."
+            "description": "Completion fails closed before authority/payment lookup when no valid credential-free checkout exists."
           },
           "response": [],
           "event": [
@@ -700,9 +693,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Completion fails closed without persisted authority and payment\", function () {",
-                  "  pm.response.to.have.status(404);",
-                  "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                  "pm.test(\"Completion fails closed without a valid checkout\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.equal(\"validation_error\");",
                   "});"
                 ]
               }
