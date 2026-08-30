@@ -12,8 +12,10 @@ import {
   type AuthorizationUsage,
   type NormalizedCheckout,
   type PolicyEvaluation,
+  type AgentEligibilityDecision,
 } from "../../contracts/v1/index.js";
 import type { DatabaseClient, DatabaseConnection } from "../../db/database.js";
+import type { TransactionClient } from "../../db/database.js";
 import {
   authorizations,
   auditEvents,
@@ -376,6 +378,7 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
     private readonly ledger: AuditLedgerPort = new AuditLedgerService(
       new PostgresAuditEventRepository(database.db),
     ),
+    private readonly eligibility?: { evaluateInTransaction(transaction: TransactionClient, agentId: string, principalId: string | undefined, now: Date): Promise<AgentEligibilityDecision> },
   ) {}
 
   async inspect(command: ReservationInspectionCommand): Promise<ReservationInspection> {
@@ -433,6 +436,12 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
         command.correlation_id,
       );
       const agent = await loadAgentIdentity(transaction, command.agent_request.agent_id);
+      const eligibility = await this.eligibility?.evaluateInTransaction(
+        transaction,
+        command.agent_request.agent_id,
+        authorization.principal_id,
+        command.now,
+      );
       const usage = await aggregateUsage(
         transaction,
         authorization.mandate_id,
@@ -457,6 +466,8 @@ export class PostgresAuthorizationReservationStore implements AuthorizationReser
         now: command.now.toISOString(),
         usage,
         nonce_status: replayed ? "USED" : "UNUSED",
+        agent_trust: eligibility?.trust,
+        agent_eligibility_reason: eligibility?.reason,
       });
       if (evaluation.decision !== "ALLOW") {
         await appendDecisionAudit(this.ledger, transaction, command, evaluation);

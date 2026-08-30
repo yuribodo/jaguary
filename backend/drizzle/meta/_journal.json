@@ -57,6 +57,13 @@
       "when": 1788043273295,
       "tag": "0007_fat_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788053162972,
+      "tag": "0008_tiny_clint_barton",
+      "breakpoints": true
     }
   ]
 }

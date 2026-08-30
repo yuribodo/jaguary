@@ -45,6 +45,32 @@ async function start(): Promise<void> {
       ttlMs: 5 * 60_000,
       maxEntries: 100,
     }),
+    principalAuth: {
+      mode: env.auth.mode,
+      nodeEnvironment: env.NODE_ENV,
+      allowedOrigin: env.CORS_ORIGIN,
+      secureCookies: !["localhost", "127.0.0.1", "::1"].includes(new URL(env.CORS_ORIGIN).hostname),
+      sessionTtlSeconds: env.auth.sessionTtlSeconds,
+      loginTransactionTtlSeconds: env.auth.loginTransactionTtlSeconds,
+      ...(env.auth.mode === "oidc" ? {
+        issuer: env.auth.issuer,
+        clientId: env.auth.clientId,
+        clientSecret: env.auth.clientSecret,
+        callbackUrl: env.auth.callbackUrl,
+      } : {}),
+    },
+    agentTrust: {
+      mode: env.kya.mode,
+      provider: env.kya.provider,
+      requestTimeoutMs: env.kya.requestTimeoutMs,
+      attestationTtlSeconds: env.kya.attestationTtlSeconds,
+      callbackUrl: new URL("/trust/callback", env.CORS_ORIGIN).toString(),
+      passportIssuer: new URL(env.auth.mode === "oidc" ? env.auth.callbackUrl : `http://localhost:${env.PORT}`).origin,
+      ...(env.kya.baseUrl === undefined ? {} : { baseUrl: env.kya.baseUrl }),
+      ...(env.kya.apiKey === undefined ? {} : { apiKey: env.kya.apiKey }),
+      ...(env.kya.workflowId === undefined ? {} : { workflowId: env.kya.workflowId }),
+      ...(env.kya.webhookSecret === undefined ? {} : { webhookSecret: env.kya.webhookSecret }),
+    },
     ...(env.openai.enabled && env.travelbot.enabled ? {
       openAI: {
         apiKey: env.openai.apiKey,

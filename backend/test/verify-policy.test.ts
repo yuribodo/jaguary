@@ -17,6 +17,7 @@ import {
   VERIFY_POLICY_VERSION,
   type VerifyPolicyInput,
 } from "../src/modules/verify/index.js";
+import { agentBindingHash } from "../src/modules/trust/index.js";
 
 function canonicalInput(): VerifyPolicyInput {
   return {
@@ -68,8 +69,28 @@ test("canonical VuelaYa checkout is allowed with deterministic evidence inputs",
       uses: 0,
       nonce_status: "UNUSED",
       human_approval_required: false,
+      trust_snapshot: null,
     },
   });
+});
+
+test("Verify v2 denies from the centralized trust decision and binds its snapshot into evidence", () => {
+  const input = canonicalInput();
+  const trustSnapshot = {
+    mode: "EXTERNAL_REQUIRED" as const, agent_id: "agent_travelbot", principal_id: "principal_marta", operational_status: "ACTIVE" as const,
+    attestation_status: "PENDING" as const, attestation_id: "attestation_pending_001", key_id: travelBotFixture.verification_key.key_id,
+    build_fingerprint: travelBotFixture.build_fingerprint, provider: "didit" as const, assurance_claims: [], assurance_level: "LOCAL_CRYPTOGRAPHIC" as const,
+    binding_hash: agentBindingHash({ agentId: "agent_travelbot", principalId: "principal_marta", keyId: travelBotFixture.verification_key.key_id, buildFingerprint: travelBotFixture.build_fingerprint }),
+    evidence_reference_hash: "a".repeat(64), issued_at: null, expires_at: null,
+  };
+  input.agent_trust = trustSnapshot;
+  input.agent_eligibility_reason = "agent_attestation_pending";
+
+  const result = evaluate(input);
+  assert.equal(VERIFY_POLICY_VERSION, "bound.verify.v2");
+  assert.equal(result.decision, "DENY");
+  assert.deepEqual(result.reasons, ["agent_attestation_pending"]);
+  assert.deepEqual(result.evidence_inputs.trust_snapshot, trustSnapshot);
 });
 
 test("an agent different from the mandate binding is denied", () => {

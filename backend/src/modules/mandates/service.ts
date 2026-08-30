@@ -8,6 +8,7 @@ import {
   PublicApiError,
   sha256CanonicalJson,
   type ActiveMandate,
+  type AgentEligibilityPort,
   type ClockPort,
   type CreateMandateDraftInput,
   type Mandate,
@@ -146,6 +147,7 @@ export class MandateService {
     private readonly ledger: AuditLedgerPort = new AuditLedgerService(
       new PostgresAuditEventRepository(database.db),
     ),
+    private readonly eligibility?: AgentEligibilityPort,
   ) {}
 
   async createDraft(
@@ -176,12 +178,13 @@ export class MandateService {
         throw new PublicApiError(409, "idempotency_conflict", "Mandate ID already exists");
       }
 
-      const agent = (await transaction
-        .select({ status: agents.status })
-        .from(agents)
-        .where(and(eq(agents.agentId, input.agent_id), eq(agents.principalId, input.principal_id))))[0];
-      if (agent === undefined || agent.status !== "ACTIVE") {
-        throw new PublicApiError(400, "invalid_request", "Mandate agent is unknown or inactive");
+      if (this.eligibility !== undefined) {
+        const decision = await this.eligibility.evaluate(input.agent_id, input.principal_id, this.clock.now());
+        if (!decision.eligible) throw new PublicApiError(403, decision.reason ?? "agent_not_active", "Mandate agent is not eligible");
+      } else {
+        const agent = (await transaction.select({ status: agents.status }).from(agents)
+          .where(and(eq(agents.agentId, input.agent_id), eq(agents.principalId, input.principal_id))))[0];
+        if (agent === undefined || agent.status !== "ACTIVE") throw new PublicApiError(400, "invalid_request", "Mandate agent is unknown or inactive");
       }
       const credential = (await transaction
         .select({ display: paymentCredentials.display })

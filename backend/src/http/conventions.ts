@@ -24,6 +24,9 @@ export function configureHttpConventions(app: FastifyInstance): void {
   app.addHook("onRequest", async (request) => {
     if (!MUTABLE_METHODS.has(request.method)) return;
 
+    const pathname = request.url.split("?", 1)[0];
+    const providerWebhook = request.method === "POST" && /^\/trust\/v1\/attestations\/webhooks\/[a-z][a-z0-9_-]{1,31}$/.test(pathname ?? "");
+    if (providerWebhook) return;
     const idempotencyKey = request.headers["idempotency-key"];
     if (idempotencyKey === undefined) {
       throw new PublicApiError(
