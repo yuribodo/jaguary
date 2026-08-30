@@ -31,11 +31,10 @@ export function LandingGate() {
   const isPinned = useMediaQuery("(min-width: 768px)", true) && !isReduced;
   const sectionRef = useRef<HTMLElement>(null);
   const fillRef = useRef<HTMLSpanElement>(null);
-  const [phase, setPhase] = useState(0);
+  const [animatedPhase, setPhase] = useState(0);
 
   useEffect(() => {
     if (isReduced) {
-      setPhase(GATES.length - 1);
       if (fillRef.current) fillRef.current.style.clipPath = "inset(0 0 0 0)";
       return;
     }
@@ -108,6 +107,7 @@ export function LandingGate() {
     };
   }, [isPinned, isReduced]);
 
+  const phase = isReduced ? GATES.length - 1 : animatedPhase;
   const gate = GATES[phase];
 
   return (
