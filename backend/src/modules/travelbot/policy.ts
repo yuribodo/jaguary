@@ -83,7 +83,7 @@ function destinationRegionFrom(
     for (const region of brazilianRegions) {
       const normalizedRegion = normalizedText(region).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const destination = new RegExp(
-        `(?:\\bto|\\btoward|\\bdestination(?: is|:)?)\\s+(?:the\\s+)?(?:state\\s+of\\s+)?${normalizedRegion}\\b`,
+        `(?:\\bto|\\btoward|\\bpara(?:\\s+(?:o|a))?|\\bpro|\\bpra|\\bdestination(?: is|:)?|\\bdestino(?:\\s+(?:e|:))?)\\s+(?:the\\s+)?(?:state\\s+of\\s+)?${normalizedRegion}\\b`,
       );
       if (destination.test(normalized)) return region;
     }

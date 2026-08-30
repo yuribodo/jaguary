@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AppSidebar, type AccountPage } from "@/components/app-sidebar";
@@ -38,7 +38,30 @@ export function useAccountActivity() {
 }
 
 export function AccountPageShell(props: AccountPageShellProps) {
+  const accountActivity = useContext(AccountActivityContext);
+  if (accountActivity !== null) return props.children;
+
   return <AuthenticatedPage><WorkspaceAccountPageShell {...props} /></AuthenticatedPage>;
+}
+
+const activePageByPathname: Record<string, AccountPage> = {
+  "/connected-agents": "agents",
+  "/dashboard": "dashboard",
+  "/opportunities": "opportunities",
+  "/payment-methods": "payment-methods",
+  "/purchases": "purchases",
+  "/trilha-de-auditoria": "audit",
+};
+
+export function AccountRoutesLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const activePage = activePageByPathname[pathname] ?? "dashboard";
+
+  return (
+    <AuthenticatedPage>
+      <WorkspaceAccountPageShell activePage={activePage}>{children}</WorkspaceAccountPageShell>
+    </AuthenticatedPage>
+  );
 }
 
 function WorkspaceAccountPageShell({

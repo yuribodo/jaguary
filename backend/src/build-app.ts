@@ -415,7 +415,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await app.register(verifyRoutes, { orchestrator: verifyOrchestrator });
   }
   if (ledger !== undefined) {
-    await app.register(auditRoutes, { ledger, receipts: receiptStore });
+    await app.register(auditRoutes, {
+      ledger,
+      receipts: receiptStore,
+      ...(configuredAuth === undefined ? {} : { auth: configuredAuth.service }),
+    });
   }
   const paymentExecutor = options.paymentExecutor ?? new FakePaymentExecutor({
     outcome: "APPROVED",

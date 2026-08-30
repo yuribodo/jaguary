@@ -27,8 +27,10 @@ import {
   InfoIcon,
   MicIcon,
   MicOffIcon,
+  PencilIcon,
   PlaneIcon,
   ReceiptTextIcon,
+  ReplyIcon,
   RefreshCwIcon,
   RouteIcon,
   ShieldCheckIcon,
@@ -73,6 +75,10 @@ import {
 import { writePendingBiometricConsent } from "@/lib/biometric-consent";
 import { cn } from "@/lib/utils";
 import {
+  travelQuickReplyGroup,
+  type TravelQuickReplyGroup,
+} from "@/lib/travel-quick-replies";
+import {
   conversationStateLabels,
   conversationTitle,
   readRecentConversationIds,
@@ -93,6 +99,17 @@ import type {
 
 const TRAVELBOT_ID = "agent_travelbot";
 const SHOW_DEVELOPMENT_SIMULATOR = process.env.NODE_ENV === "development";
+
+function updateConversationUrl(conversationId: string, mode: "push" | "replace") {
+  const url = new URL(window.location.href);
+  url.searchParams.set("conversation", conversationId);
+  window.history[mode === "push" ? "pushState" : "replaceState"](
+    null,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 const STARTER_PROMPTS = [
   {
     description: "3 days · flexible dates",
@@ -447,6 +464,63 @@ function UserMessage({
   );
 }
 
+function QuickReplies({
+  disabled,
+  group,
+  onCustomAnswer,
+  onSelect,
+}: {
+  disabled: boolean;
+  group: TravelQuickReplyGroup;
+  onCustomAnswer: () => void;
+  onSelect: (value: string) => void;
+}) {
+  const headingId = `quick-replies-${group.field}`;
+
+  return (
+    <section aria-labelledby={headingId} className="ml-10 max-w-2xl">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div>
+          <p className="panel-label flex items-center gap-1.5 text-blue-700">
+            <ReplyIcon aria-hidden="true" className="size-3" />
+            Quick answer
+          </p>
+          <h2 className="mt-1 text-sm font-semibold tracking-[-0.01em]" id={headingId}>{group.question}</h2>
+        </div>
+        <button
+          className="min-h-7 rounded-md px-1.5 text-[11px] text-muted-foreground underline-offset-4 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          disabled={disabled}
+          onClick={onCustomAnswer}
+          type="button"
+        >
+          or type your own answer below
+        </button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3" role="group" aria-label={`Suggested answers: ${group.question}`}>
+        {group.options.map((option) => (
+          <Button
+            className="group h-auto min-h-14 justify-start gap-3 whitespace-normal rounded-xl border-foreground/15 bg-background px-3.5 py-2.5 text-left shadow-[0_1px_0_rgb(20_21_17/0.03)] transition-[border-color,background-color,box-shadow,transform] hover:-translate-y-px hover:border-blue-700/35 hover:bg-blue-50/45 hover:shadow-[0_5px_16px_rgb(49_87_250/0.08)] focus-visible:border-blue-700 motion-reduce:transform-none"
+            disabled={disabled}
+            key={option.value}
+            onClick={() => onSelect(option.value)}
+            type="button"
+            variant="outline"
+          >
+            <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full border border-foreground/20 bg-panel transition-colors group-hover:border-blue-600 group-hover:bg-blue-600/8">
+              <i className="size-1.5 rounded-full bg-blue-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-foreground">{option.label}</span>
+              <span className="mt-0.5 block truncate font-mono text-[9px] tracking-[0.08em] text-muted-foreground uppercase">{option.description}</span>
+            </span>
+            <ArrowRightIcon aria-hidden="true" className="size-3.5 shrink-0 -translate-x-1 text-blue-700 opacity-0 transition-[opacity,transform] group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100 motion-reduce:transform-none" />
+          </Button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 type ChatPresenceItemProps = {
   children: ReactNode;
   className?: string;
@@ -544,7 +618,7 @@ function Welcome({
       >
         <PromptInputBody>
           <PromptInputTextarea
-            className="min-h-28 px-5 pt-5 text-[15px] leading-6 placeholder:text-muted-foreground/75"
+            className="min-h-28 px-5 pt-5 text-base leading-6 placeholder:text-muted-foreground/75 sm:text-[15px]"
             disabled={disabled}
             onChange={(event) => onComposerChange(event.currentTarget.value)}
             placeholder="Describe your trip — destination, dates, travelers, budget…"
@@ -617,30 +691,97 @@ function Welcome({
   );
 }
 
-function IntentSummary({ conversation }: { conversation: TravelBotConversation }) {
+function TripDetail({
+  className,
+  complete,
+  label,
+  value,
+}: {
+  className?: string;
+  complete: boolean;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <div className={cn("min-w-0 px-3.5 py-3", className)}>
+      <dt className="flex items-center gap-1.5 text-[9px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+        {complete
+          ? <CheckIcon aria-hidden="true" className="size-3 text-emerald-700" />
+          : <CircleIcon aria-hidden="true" className="size-2.5 text-foreground/25" />}
+        {label}
+      </dt>
+      <dd className={cn("mt-1 truncate text-xs font-semibold", !complete && "font-medium text-muted-foreground")}>{value ?? "Not set"}</dd>
+    </div>
+  );
+}
+
+function IntentSummary({
+  conversation,
+  onEdit,
+}: {
+  conversation: TravelBotConversation;
+  onEdit: () => void;
+}) {
   const { intent } = conversation;
   if (!intent.origin_iata && !intent.destination_iata && !intent.departure_date) return null;
+  const capturedDetails = 6 - conversation.missing_fields.length;
   const summaryStatus = conversation.missing_fields.length
-    ? `${conversation.missing_fields.length} details missing`
+    ? `${capturedDetails} of 6 captured`
     : conversation.state === "AWAITING_AUTHORITY_CONFIRMATION"
       ? "Flight selected"
       : conversation.state === "COMPLETED"
         ? "Purchase completed"
         : "Ready to search";
+  const missingLabel = conversation.missing_fields
+    .map((field) => missingFieldLabels[field])
+    .join(", ");
+
   return (
-    <section className="rounded-xl border bg-panel/70 p-3.5" aria-label="Understood trip request">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-xs font-semibold"><CheckIcon className="size-3.5 text-emerald-700" />I understood your trip</span>
-        <span className={cn("text-[10px]", conversation.missing_fields.length ? "text-amber-700" : "text-emerald-700")}>{summaryStatus}</span>
+    <section className="overflow-hidden rounded-xl border border-foreground/12 bg-panel/75 shadow-[0_1px_0_rgb(20_21_17/0.025)]" aria-label="Current trip details">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background text-blue-700 shadow-xs">
+            <RouteIcon aria-hidden="true" className="size-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="panel-label">Trip brief</p>
+            <h2 className="mt-0.5 truncate text-sm font-semibold tracking-[-0.015em]">Your trip so far</h2>
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-medium", conversation.missing_fields.length ? "text-amber-700" : "text-emerald-700")}>
+            <i aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+            {summaryStatus}
+          </span>
+          <button
+            aria-label="Change trip details in chat"
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onEdit}
+            type="button"
+          >
+            <PencilIcon aria-hidden="true" className="size-3" />
+            Change
+          </button>
+        </div>
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-5">
-        <div><dt className="text-[10px] text-muted-foreground">Route</dt><dd className="mt-0.5 font-semibold">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
-        <div><dt className="text-[10px] text-muted-foreground">Date</dt><dd className="mt-0.5 font-medium">{intent.departure_date ? formatLocalDate(intent.departure_date, intent.departure_date) : "—"}</dd></div>
-        <div><dt className="text-[10px] text-muted-foreground">Travelers</dt><dd className="mt-0.5 font-medium">{intent.passenger_count ?? "—"}</dd></div>
-        <div><dt className="text-[10px] text-muted-foreground">Cabin</dt><dd className="mt-0.5 font-medium">{intent.cabin ? cabinLabel(intent.cabin) : "—"}</dd></div>
-        <div className="col-span-2 sm:col-span-1"><dt className="text-[10px] text-muted-foreground">Total limit</dt><dd className="mt-0.5 font-semibold tabular-nums">{intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : "—"}</dd></div>
+      <dl className="grid grid-cols-2 border-t bg-background/45 sm:grid-cols-[1.35fr_1fr_.72fr_1fr_1fr]">
+        <TripDetail
+          className="col-span-2 sm:col-span-1"
+          complete={Boolean(intent.origin_iata && intent.destination_iata)}
+          label="Route"
+          value={intent.origin_iata || intent.destination_iata ? `${intent.origin_iata ?? "Origin"} → ${intent.destination_iata ?? "Destination"}` : undefined}
+        />
+        <TripDetail className="border-t sm:border-t-0 sm:border-l" complete={Boolean(intent.departure_date)} label="Date" value={intent.departure_date ? formatLocalDate(intent.departure_date, intent.departure_date) : undefined} />
+        <TripDetail className="border-t border-l" complete={Boolean(intent.passenger_count)} label="Travelers" value={intent.passenger_count ? String(intent.passenger_count) : undefined} />
+        <TripDetail className="border-t sm:border-t-0 sm:border-l" complete={Boolean(intent.cabin)} label="Cabin" value={intent.cabin ? cabinLabel(intent.cabin) : undefined} />
+        <TripDetail className="border-t border-l" complete={Boolean(intent.max_total_budget)} label="Total limit" value={intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : undefined} />
       </dl>
-      {conversation.missing_fields.length ? <p className="mt-2.5 border-t pt-2.5 text-[10px] text-muted-foreground">Still needed: {conversation.missing_fields.map((field) => missingFieldLabels[field]).join(", ")}.</p> : null}
+      {conversation.missing_fields.length ? (
+        <p className="flex items-start gap-2 border-t px-3.5 py-2.5 text-[10px] leading-4 text-muted-foreground">
+          <ArrowRightIcon aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-amber-700" />
+          <span><strong className="font-medium text-foreground">Still needed:</strong> {missingLabel}.</span>
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -1416,6 +1557,7 @@ export function TrustedSurface() {
   const [lastCorrelationId, setLastCorrelationId] = useState<string>();
   const [arrivingAssistantMessageId, setArrivingAssistantMessageId] = useState<string>();
   const [enteringConversationId, setEnteringConversationId] = useState<string>();
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const activeConversationId = conversation?.conversation_id;
   const recentConversationIds = recents.map(({ conversation_id }) => conversation_id).join("|");
 
@@ -1449,6 +1591,7 @@ export function TrustedSurface() {
       if (signal?.aborted) return;
       setEnteringConversationId(result.data.conversation_id);
       rememberConversation(result.data);
+      updateConversationUrl(result.data.conversation_id, signal ? "replace" : "push");
       setLastCorrelationId(result.correlationId ?? identity.correlationId);
       setComposerValue("");
       setPendingMessage(undefined);
@@ -1493,6 +1636,7 @@ export function TrustedSurface() {
           const selectedConversation = conversations.find(({ conversation_id }) => conversation_id === requestedConversationId) ?? conversations[0];
           setEnteringConversationId(selectedConversation.conversation_id);
           setConversation(selectedConversation);
+          if (!requestedConversationId) updateConversationUrl(selectedConversation.conversation_id, "replace");
           setLastCorrelationId(messageCorrelationId(selectedConversation) ?? agentResult.correlationId ?? healthResult.correlationId);
           writeRecentConversationIds(principalId, conversations.map(({ conversation_id }) => conversation_id));
           setLoadState("ready");
@@ -1585,7 +1729,7 @@ export function TrustedSurface() {
     };
   }, [rememberWatch, simulation?.polling, simulation?.watchId]);
 
-  const selectConversation = useCallback(async (conversationId: string) => {
+  const selectConversation = useCallback(async (conversationId: string, updateUrl = true) => {
     if (conversationId === conversation?.conversation_id || busy) return;
     setBusy("switching");
     setError(undefined);
@@ -1594,6 +1738,7 @@ export function TrustedSurface() {
       const result = await boundApi.getConversation(conversationId);
       setEnteringConversationId(result.data.conversation_id);
       rememberConversation(result.data);
+      if (updateUrl) updateConversationUrl(result.data.conversation_id, "push");
       setLastCorrelationId(messageCorrelationId(result.data) ?? result.correlationId);
       setComposerValue("");
       setPendingMessage(undefined);
@@ -1604,6 +1749,21 @@ export function TrustedSurface() {
       setBusy(null);
     }
   }, [busy, conversation?.conversation_id, rememberConversation]);
+
+  useEffect(() => {
+    const handleHistoryNavigation = () => {
+      const conversationId = new URL(window.location.href).searchParams.get("conversation");
+      if (conversationId && conversationId !== activeConversationId) {
+        if (busy && activeConversationId) {
+          updateConversationUrl(activeConversationId, "replace");
+          return;
+        }
+        void selectConversation(conversationId, false);
+      }
+    };
+    window.addEventListener("popstate", handleHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleHistoryNavigation);
+  }, [activeConversationId, busy, selectConversation]);
 
   const discardConversation = useCallback(async (conversationId: string) => {
     if (busy) throw new Error("Wait for the current action to finish before discarding a conversation.");
@@ -1822,6 +1982,10 @@ export function TrustedSurface() {
     || conversation?.intent.departure_date,
   );
   const isBusy = busy !== null;
+  const latestMessage = conversation?.messages.at(-1);
+  const quickReplyGroup = conversation?.state === "COLLECTING" && latestMessage?.role === "ASSISTANT"
+    ? travelQuickReplyGroup(conversation.missing_fields, new Date(), conversation.intent)
+    : undefined;
   const showDockedComposer = Boolean(conversation?.messages.length || pendingMessage || busy === "sending");
   const visibleWatch = watch?.conversation_id === conversation?.conversation_id ? watch : null;
   const canOfferTravelWatch = Boolean(
@@ -1928,12 +2092,26 @@ export function TrustedSurface() {
                     <WorkingStatus state={conversation?.state ?? "COLLECTING"} />
                   </ChatPresenceItem>
                 ) : null}
+
+                {quickReplyGroup ? (
+                  <ChatPresenceItem
+                    delay={arrivingAssistantMessageId ? 0.14 : 0}
+                    key={`quick-replies-${activeConversationId}-${quickReplyGroup.field}`}
+                  >
+                    <QuickReplies
+                      disabled={isBusy}
+                      group={quickReplyGroup}
+                      onCustomAnswer={() => composerRef.current?.focus()}
+                      onSelect={(value) => void submitTurn(value)}
+                    />
+                  </ChatPresenceItem>
+                ) : null}
               </AnimatePresence>
 
               <AnimatePresence initial={false} mode="popLayout">
                 {conversation && hasIntentSummary ? (
                   <ChatPresenceItem delay={arrivingAssistantMessageId ? 0.12 : 0} key={`intent-summary-${conversation.conversation_id}-${conversation.updated_at}`}>
-                    <IntentSummary conversation={conversation} />
+                    <IntentSummary conversation={conversation} onEdit={() => composerRef.current?.focus()} />
                   </ChatPresenceItem>
                 ) : null}
               </AnimatePresence>
@@ -2003,8 +2181,9 @@ export function TrustedSurface() {
                           ? "Connect the API to begin…"
                           : speech.listening
                             ? "Listening…"
-                            : "Talk to TravelBot…"
+                            : quickReplyGroup?.inputPlaceholder ?? "Talk to TravelBot…"
                     }
+                    ref={composerRef}
                     value={composerValue}
                   />
                 </PromptInputBody>

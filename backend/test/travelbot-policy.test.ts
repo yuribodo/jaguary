@@ -2,11 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyConversationConventions,
   applyTravelIntentProposal,
   deterministicClarification,
   emptyTravelIntent,
   missingTravelIntentFields,
 } from "../src/modules/travelbot/policy.js";
+
+function noChangeProposal() {
+  return {
+    origin_iata: null,
+    destination_iata: null,
+    departure_date: null,
+    passenger_count: null,
+    cabin: null,
+    max_total_budget: null,
+    selected_offer_id: null,
+    explicit_confirmation: null,
+    ambiguities: [],
+    requested_action: "NONE" as const,
+  };
+}
 
 test("a complete request in one turn produces a complete normalized travel intent", () => {
   const result = applyTravelIntentProposal(emptyTravelIntent(), {
@@ -65,6 +81,18 @@ test("the Rio de Janeiro clarification uses natural English", () => {
     ),
     "To continue, tell me which city or airport in Rio de Janeiro you prefer.",
   );
+});
+
+test("Portuguese destination phrasing resolves Rio de Janeiro instead of asking again", () => {
+  const proposal = applyConversationConventions(
+    emptyTravelIntent(),
+    noChangeProposal(),
+    ["Quero ir pro Rio de Janeiro"],
+    new Date("2026-08-30T12:00:00.000Z"),
+  );
+
+  assert.equal(proposal.destination_iata, "GIG");
+  assert.equal(proposal.ambiguities.some(({ field }) => field === "destination_iata"), false);
 });
 
 test("a correction after offer selection invalidates the selected offer", () => {

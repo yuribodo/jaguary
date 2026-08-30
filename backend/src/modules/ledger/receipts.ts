@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import {
   orderReceiptSchema,
@@ -6,7 +6,7 @@ import {
   type OrderReceipt,
 } from "../../contracts/v1/index.js";
 import type { DatabaseConnection } from "../../db/database.js";
-import { auditEvents, orders } from "../../db/schema.js";
+import { auditEvents, authorizations, orders } from "../../db/schema.js";
 
 import type { AuditLedgerService } from "./service.js";
 import type { StoredAuditEvent } from "./types.js";
@@ -55,6 +55,22 @@ export class PostgresReceiptStore {
     const receipt = await this.read(eq(orders.receiptId, receiptId));
     if (receipt === undefined) throw new PublicApiError(404, "not_found", "Receipt not found");
     return receipt;
+  }
+
+  async listReceipts(principalId: string): Promise<OrderReceipt[]> {
+    const rows = await this.database.db
+      .select({ order: orders })
+      .from(orders)
+      .innerJoin(authorizations, eq(authorizations.authorizationId, orders.authorizationId))
+      .where(eq(authorizations.principalId, principalId))
+      .orderBy(desc(orders.issuedAt));
+
+    return Promise.all(rows.map(async ({ order }) => {
+      const chain = await this.ledger.validateSubject(order.authorizationId);
+      const event = chain.find(({ eventId }) => eventId === order.auditEventId);
+      if (event === undefined) throw new Error("Receipt audit evidence is not in its validated chain");
+      return receiptFrom(order, event);
+    }));
   }
 
   async findById(orderId: string): Promise<OrderReceipt | undefined> {

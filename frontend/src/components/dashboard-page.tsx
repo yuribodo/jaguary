@@ -137,8 +137,7 @@ function DashboardOverview({ watchesByConversation }: { watchesByConversation: R
         <Card><div className="flex justify-between"><h2 className="text-2xl [font-family:var(--font-display)]">Opportunities</h2><Link className="text-sm text-[#3157fa]" href="/opportunities">View all opportunities</Link></div><Offer title="São Paulo → Córdoba" price="R$742.00" /><Offer title="Mexico City → Bogotá" price="R$2,300.00" /></Card>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-3">
-        <Card><h2 className="text-xl [font-family:var(--font-display)]">Approval Center</h2><p className="mt-4 text-sm">Flight requires your approval</p><strong className="mt-2 block text-2xl">R$879.00</strong><Link className="mt-5 inline-flex rounded-md bg-[#151c30] px-4 py-2 text-sm text-white" href="/approval-center">Review approval</Link></Card>
+      <section className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card><h2 className="text-xl [font-family:var(--font-display)]">Wallet</h2><strong className="mt-4 block text-2xl">{brl.format(limit - used)}</strong><p className="text-sm text-muted-foreground">of {brl.format(limit)} available</p><Link className="mt-5 inline-flex items-center gap-2 text-sm text-[#3157fa]" href="/payment-methods"><CreditCardIcon className="size-4" />Manage payment methods</Link></Card>
         <Card><h2 className="text-xl [font-family:var(--font-display)]">Start a conversation</h2><p className="mt-3 text-sm text-muted-foreground">Tell Jaguary what you’re looking for.</p><Link className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#151c30] px-4 py-2 text-sm text-white" href="/demo"><SparklesIcon className="size-4" />Chat with Jaguary</Link></Card>
       </section>
