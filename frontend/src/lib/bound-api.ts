@@ -16,6 +16,7 @@ import type {
 
 const DEFAULT_API_URL = "http://localhost:3001";
 const REQUEST_TIMEOUT_MS = 10_000;
+const CONVERSATION_TURN_TIMEOUT_MS = 60_000;
 const UCP_CAPABILITIES = [
   "dev.ucp.shopping.checkout",
   "dev.ucp.common.payment.ap2_mandate",
@@ -78,6 +79,7 @@ export function createRequestIdentity(prefix: string): {
 async function request<T>(
   path: string,
   init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<ApiResult<T>> {
   let response: Response;
   const requestController = new AbortController();
@@ -85,7 +87,7 @@ async function request<T>(
   const forwardCallerAbort = () => requestController.abort(callerSignal?.reason);
   const timeout = setTimeout(() => {
     requestController.abort(new DOMException("Request timed out", "TimeoutError"));
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
 
   if (callerSignal?.aborted) forwardCallerAbort();
   else callerSignal?.addEventListener("abort", forwardCallerAbort, { once: true });
@@ -108,9 +110,8 @@ async function request<T>(
       && requestController.signal.reason.name === "TimeoutError"
     ) {
       throw new BoundApiError({
-        message: "The Jaguary API took more than 10 seconds to respond. Check that the backend is running and try again.",
+        message: "The request is taking longer than expected. Try again in a moment.",
         code: "api_timeout",
-        offline: true,
       });
     }
     throw new BoundApiError({
@@ -376,6 +377,7 @@ export const boundApi = {
         },
         body: JSON.stringify({ content }),
       },
+      CONVERSATION_TURN_TIMEOUT_MS,
     );
   },
 

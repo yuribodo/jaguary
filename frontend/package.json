@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.tsx"
+    "test": "tsx --test src/**/*.test.{ts,tsx}"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

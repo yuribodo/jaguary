@@ -199,3 +199,25 @@ The backend grounds 78 major airports across 72 countries, including Portuguese 
 ### WHY
 
 This makes coverage predictable and testable while keeping token use proportional to the user's request. The accepted cost is directory maintenance and a primary-gateway choice for broad country names; a dedicated aviation data service is the future path for complete global coverage.
+
+## 10. Give conversational turns an endpoint-specific client deadline
+
+### DECISION
+
+How should the browser handle an AI turn that legitimately takes longer than an ordinary API request?
+
+### OPTIONS CONSIDERED (ONE PER LINE)
+
+Apply the same ten-second timeout to every endpoint and report a timeout as an outage
+
+Replace the synchronous turn immediately with a queue, job-status API, and recovery protocol
+
+Keep the synchronous contract for the demo but give conversation turns a measured, explicit deadline
+
+### WHAT WE CHOSE
+
+Ordinary browser requests retain a ten-second deadline, while a conversation turn gets sixty seconds. A deadline expiry is reported as a slow request, not as an unavailable API, and retry preserves the turn's idempotency identity.
+
+### WHY
+
+Production evidence showed successful model turns at up to fifty seconds and a 12.7-second p95, while the previous browser deadline aborted them at ten seconds before the backend returned HTTP 200. Sixty seconds removes that false failure mode without weakening fast-endpoint feedback or risking duplicate turns. An asynchronous accepted-job protocol would be more resilient at larger scale, but it adds persisted job state and reconciliation that the current synchronous demo does not yet need.

@@ -1339,11 +1339,16 @@ function TravelWatchCard({ conversation, watch, disabled, simulationMessage, sim
 
 function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () => void }) {
   const needsIdentityVerification = error.code === "principal_attestation_required" || error.code === "agent_attestation_required";
+  const title = error.code === "api_timeout"
+    ? "Request taking longer"
+    : error.offline
+      ? "Jaguary API unavailable"
+      : "Could not complete";
   return (
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
       <div className="min-w-0 flex-1">
-        <strong className="block text-xs">{error.offline ? "Jaguary API unavailable" : "Could not complete"}</strong>
+        <strong className="block text-xs">{title}</strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
