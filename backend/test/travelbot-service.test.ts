@@ -12,7 +12,7 @@ import {
   type AgentRuntimeRequest,
 } from "../src/modules/travelbot/index.js";
 
-test("a complete one-message request automatically reaches offer selection", async () => {
+test("a complete one-message request automatically reaches authorization review", async () => {
   const runtimeRequests: AgentRuntimeRequest[] = [];
   const runtime: AgentRuntimePort = {
     async run(request) {
@@ -44,6 +44,13 @@ test("a complete one-message request automatically reaches offer selection", asy
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
     tools: {
       findOffers: async () => [offerCandidateFixture],
+      createCheckout: async () => ({
+        checkout_id: "checkout_auto_001",
+        checkout_hash: "a".repeat(64),
+        merchant_id: offerCandidateFixture.merchant_id,
+        total: offerCandidateFixture.total,
+      }),
+      prepareAuthority: async () => ({ mandate_id: "mandate_auto_001", status: "DRAFT" }),
     },
     telemetry: { emit: async () => { throw new Error("langfuse unavailable"); } },
   });
@@ -61,9 +68,11 @@ test("a complete one-message request automatically reaches offer selection", asy
     correlation_id: "corr_chat_message_001",
   });
 
-  assert.equal(result.state, "AWAITING_OFFER_SELECTION");
+  assert.equal(result.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.equal(result.offers.length, 1);
   assert.equal(result.offers[0]?.offer_id, offerCandidateFixture.offer_id);
+  assert.equal(result.intent.selected_offer_id, offerCandidateFixture.offer_id);
+  assert.equal(result.operation.pending_approval?.checkout_hash, "a".repeat(64));
   assert.deepEqual(result.missing_fields, []);
   assert.deepEqual(runtimeRequests[0]?.available_tools, []);
   assert.equal(runtimeRequests.length, 1);
@@ -327,7 +336,16 @@ test("a flexible month reports the exact earliest date selected by the provider"
         };
       },
     },
-    tools: { findOffers: async () => [monthlyOffer] },
+    tools: {
+      findOffers: async () => [monthlyOffer],
+      createCheckout: async () => ({
+        checkout_id: "checkout_monthly_001",
+        checkout_hash: "b".repeat(64),
+        merchant_id: monthlyOffer.merchant_id,
+        total: monthlyOffer.total,
+      }),
+      prepareAuthority: async () => ({ mandate_id: "mandate_monthly_001", status: "DRAFT" }),
+    },
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
   });
   const conversation = await service.createConversation({
@@ -344,7 +362,7 @@ test("a flexible month reports the exact earliest date selected by the provider"
     correlation_id: "corr_monthly_offer_message_001",
   });
 
-  assert.equal(result.state, "AWAITING_OFFER_SELECTION");
+  assert.equal(result.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.match(result.messages.at(-1)?.content ?? "", /first date.*01\/09\/2026/i);
 });
 
@@ -479,7 +497,7 @@ test("rate limit preserves state and the same idempotency key retries without du
   assert.equal(attempts, 2);
 });
 
-test("offer selection creates a bound approval and duplicate confirmation never repeats purchase", async () => {
+test("the automatically selected offer creates a bound approval and duplicate confirmation never repeats purchase", async () => {
   let purchases = 0;
   let resumes = 0;
   const protector = new Aes256GcmApprovalStateProtector(Buffer.alloc(32, 9).toString("base64"));
@@ -510,17 +528,6 @@ test("offer selection creates a bound approval and duplicate confirmation never 
             requested_action: "FIND_OFFERS",
           },
           assistant_message: "Searching.",
-        };
-      }
-      if (request.user_message === "I select the offer") {
-        assert.deepEqual(request.available_tools, ["create_checkout"]);
-        return {
-          proposal: {
-            ...empty,
-            selected_offer_id: offerCandidateFixture.offer_id,
-            requested_action: "CREATE_CHECKOUT",
-          },
-          assistant_message: "Preparing.",
         };
       }
       assert.deepEqual(request.available_tools, []);
@@ -590,17 +597,11 @@ test("offer selection creates a bound approval and duplicate confirmation never 
     idempotency_key: "idem_bound_create_001",
     correlation_id: "corr_bound_create_001",
   });
-  await service.postMessage({
+  const selected = await service.postMessage({
     conversation_id: conversation.conversation_id,
     content: "complete request",
     idempotency_key: "idem_bound_complete_001",
     correlation_id: "corr_bound_complete_001",
-  });
-  const selected = await service.postMessage({
-    conversation_id: conversation.conversation_id,
-    content: "I select the offer",
-    idempotency_key: "idem_bound_selection_001",
-    correlation_id: "corr_bound_selection_001",
   });
   assert.equal(selected.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.equal(selected.operation.pending_approval?.checkout_hash, "a".repeat(64));

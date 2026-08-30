@@ -1,10 +1,12 @@
 import type {
   AgentIdentity,
+  AuditTimeline,
   CreateMandateDraftInput,
   Mandate,
   MerchantCapabilities,
   NormalizedCheckout,
   OfferCandidate,
+  OrderReceipt,
   PurchaseIntent,
   TravelBotConversation,
 } from "@/lib/contracts";
@@ -157,9 +159,11 @@ export const boundApi = {
   createConversation(
     input: { principal_id: string; agent_id: string },
     requestIdentity: ReturnType<typeof createRequestIdentity>,
+    signal?: AbortSignal,
   ) {
     return request<TravelBotConversation>("/v1/conversations", {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": requestIdentity.idempotencyKey,
@@ -173,6 +177,14 @@ export const boundApi = {
     return request<TravelBotConversation>(`/v1/conversations/${conversationId}`, {
       signal,
     });
+  },
+
+  getReceipt(receiptId: string, signal?: AbortSignal) {
+    return request<OrderReceipt>(`/receipts/${receiptId}`, { signal });
+  },
+
+  getAuditTimeline(correlationId: string, signal?: AbortSignal) {
+    return request<AuditTimeline>(`/audit/${correlationId}`, { signal });
   },
 
   postConversationMessage(

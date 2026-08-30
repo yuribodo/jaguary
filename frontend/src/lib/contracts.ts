@@ -199,6 +199,41 @@ export type TravelBotMessage = {
   created_at: string;
 };
 
+export type AuditEvidence = {
+  event_id: string;
+  correlation_id: string;
+  event_type: string;
+  subject_id: string;
+  payload_hash: string;
+  previous_hash: string | null;
+  event_hash: string;
+  recorded_at: string;
+};
+
+export type OrderReceipt = {
+  receipt_id: string;
+  order_id: string;
+  checkout_id: string;
+  authorization_id: string;
+  payment_id: string;
+  merchant_id: string;
+  status: "CONFIRMED" | "CANCELLED";
+  items: CommerceItem[];
+  total: Money;
+  fulfillment: FlightFulfillment;
+  issued_at: string;
+  evidence: AuditEvidence;
+};
+
+export type AuditTimelineEvent = AuditEvidence & {
+  payload: Record<string, unknown> | null;
+};
+
+export type AuditTimeline = {
+  correlation_id: string;
+  events: AuditTimelineEvent[];
+};
+
 export type PendingTravelApproval = {
   approval_id: string;
   merchant_id: string;
