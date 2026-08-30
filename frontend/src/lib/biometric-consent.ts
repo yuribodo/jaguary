@@ -4,6 +4,7 @@ const STORAGE_KEY = "bound.pending-biometric-consent.v1";
 
 export type PendingBiometricConsent = {
   conversationId: string;
+  watchId?: string;
   mandateId: string;
   consentId: string;
   refreshIdentity: ReturnType<typeof createRequestIdentity>;
@@ -21,6 +22,7 @@ export function readPendingBiometricConsent(): PendingBiometricConsent | undefin
     const value = JSON.parse(raw) as Partial<PendingBiometricConsent>;
     if (
       typeof value.conversationId !== "string"
+      || (value.watchId !== undefined && typeof value.watchId !== "string")
       || typeof value.mandateId !== "string"
       || typeof value.consentId !== "string"
       || typeof value.refreshIdentity?.correlationId !== "string"

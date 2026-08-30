@@ -15,6 +15,7 @@ import {
   ArrowRightIcon,
   BotIcon,
   BriefcaseBusinessIcon,
+  FlaskConicalIcon,
   CheckIcon,
   CheckCheckIcon,
   ChevronRightIcon,
@@ -87,9 +88,11 @@ import type {
   TravelBotConversation,
   TravelBotMessage,
   TravelBotState,
+  TravelWatch,
 } from "@/lib/contracts";
 
 const TRAVELBOT_ID = "agent_travelbot";
+const SHOW_DEVELOPMENT_SIMULATOR = process.env.NODE_ENV === "development";
 const STARTER_PROMPTS = [
   {
     description: "3 days · flexible dates",
@@ -112,7 +115,7 @@ const STARTER_PROMPTS = [
 ];
 
 type LoadState = "loading" | "ready" | "error";
-type BusyState = "authorizing" | "creating" | "deleting" | "switching" | "sending" | "verifying" | null;
+type BusyState = "authorizing" | "creating" | "deleting" | "simulating" | "switching" | "sending" | "verifying" | "watching" | null;
 type TurnMode = "authority" | "chat";
 type FailedTurn = {
   text: string;
@@ -234,6 +237,19 @@ function formatDateTime(value: string) {
     minute: "2-digit",
     timeZone: "America/Sao_Paulo",
   }).format(new Date(value));
+}
+
+function watchExpiryForDeparture(departure: string) {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(departure);
+  const month = /^(\d{4})-(\d{2})$/.exec(departure);
+  if (day) return `${departure}T23:59:59.999Z`;
+  if (month) {
+    const year = Number(month[1]);
+    const monthNumber = Number(month[2]);
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    return `${departure}-${String(lastDay).padStart(2, "0")}T23:59:59.999Z`;
+  }
+  throw new BoundApiError({ message: "The departure date is not valid for monitoring.", code: "invalid_departure_date" });
 }
 
 function formatTicketDuration(minutes?: number) {
@@ -860,58 +876,61 @@ type PurchaseEvidence = {
 
 const purchaseEvidenceRequests = new Map<string, Promise<PurchaseEvidence>>();
 
-function loadPurchaseEvidence(receiptId: string, correlationId: string) {
-  const key = `${receiptId}:${correlationId}`;
+function loadPurchaseEvidence(receiptId: string, correlationId?: string) {
+  const key = `${receiptId}:${correlationId ?? "receipt"}`;
   const cached = purchaseEvidenceRequests.get(key);
   if (cached) return cached;
-  const request = Promise.allSettled([
-    boundApi.getReceipt(receiptId),
-    boundApi.getAuditTimeline(correlationId),
-  ]).then(([receiptResult, timelineResult]) => {
-    const receipt = receiptResult.status === "fulfilled" ? receiptResult.value.data : undefined;
-    const timeline = timelineResult.status === "fulfilled" ? timelineResult.value.data : undefined;
+  const request = (async () => {
+    const receiptResult = await boundApi.getReceipt(receiptId).catch(() => undefined);
+    const receipt = receiptResult?.data;
+    const resolvedCorrelationId = correlationId ?? receipt?.evidence.correlation_id;
+    const timelineResult = resolvedCorrelationId
+      ? await boundApi.getAuditTimeline(resolvedCorrelationId).catch(() => undefined)
+      : undefined;
+    const timeline = timelineResult?.data;
     return {
       receipt,
       timeline,
       error: receipt && timeline ? undefined : "Some audit evidence could not be loaded. The saved receipt remains available.",
     };
-  });
+  })();
   purchaseEvidenceRequests.set(key, request);
   return request;
 }
 
-function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation }) {
+function PurchaseReceipt({ conversation, watch }: { conversation?: TravelBotConversation; watch?: TravelWatch }) {
   const reduceMotion = useReducedMotion();
-  const receiptId = conversation.operation.receipt_id;
-  const auditCorrelationId = conversation.messages.filter(({ role }) => role === "USER").at(-1)?.correlation_id;
+  const completed = watch ? watch.status === "COMPLETED" : conversation?.state === "COMPLETED";
+  const receiptId = watch?.receipt_id ?? conversation?.operation.receipt_id;
+  const auditCorrelationId = conversation?.messages.filter(({ role }) => role === "USER").at(-1)?.correlation_id;
   const [evidence, setEvidence] = useState<{
     key?: string;
     receipt?: OrderReceipt;
     timeline?: AuditTimeline;
     error?: string;
   }>({});
-  const expectedEvidenceKey = receiptId && auditCorrelationId ? `${receiptId}:${auditCorrelationId}` : undefined;
+  const expectedEvidenceKey = receiptId ? `${receiptId}:${auditCorrelationId ?? "receipt"}` : undefined;
   const evidenceLoading = Boolean(expectedEvidenceKey && evidence.key !== expectedEvidenceKey);
   const currentEvidence = evidence.key === expectedEvidenceKey ? evidence : {};
 
   useEffect(() => {
-    if (conversation.state !== "COMPLETED" || !receiptId || !auditCorrelationId) return;
+    if (!completed || !receiptId) return;
     const completedReceiptId = receiptId;
-    const completedCorrelationId = auditCorrelationId;
-    const key = `${completedReceiptId}:${completedCorrelationId}`;
+    const key = `${completedReceiptId}:${auditCorrelationId ?? "receipt"}`;
     let cancelled = false;
-    void loadPurchaseEvidence(completedReceiptId, completedCorrelationId).then((result) => {
+    void loadPurchaseEvidence(completedReceiptId, auditCorrelationId).then((result) => {
       if (!cancelled) setEvidence({ key, ...result });
     });
     return () => { cancelled = true; };
-  }, [auditCorrelationId, conversation.state, receiptId]);
+  }, [auditCorrelationId, completed, receiptId]);
 
-  if (conversation.state !== "COMPLETED" || !receiptId) return null;
-  const offer = conversation.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
+  if (!completed || !receiptId) return null;
+  const offer = watch?.matched_offer
+    ?? conversation?.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
   if (!offer) return null;
   const receipt = currentEvidence.receipt;
   const fulfillment = receipt?.fulfillment ?? offer.fulfillment;
-  const travelers = conversation.intent.passenger_count ?? 1;
+  const travelers = watch?.criteria.passenger_count ?? conversation?.intent.passenger_count ?? 1;
   const total = receipt?.total ?? { amount: offer.total.amount * travelers, currency: offer.total.currency };
   const events = currentEvidence.timeline?.events.filter(({ event_type: type }) => type !== "agent.registered") ?? [];
   const lastEvent = events.at(-1);
@@ -1044,7 +1063,7 @@ function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation
           </summary>
           <dl className="grid gap-3 border-t border-[#d9dcda] bg-[#f7f8f7] p-4 text-[9px] sm:grid-cols-2">
             <div><dt className="text-[#777b82]">Receipt</dt><dd className="mt-0.5 break-all font-mono">{receiptId}</dd></div>
-            <div><dt className="text-[#777b82]">Correlation</dt><dd className="mt-0.5 break-all font-mono">{currentEvidence.timeline?.correlation_id ?? auditCorrelationId ?? "Unavailable"}</dd></div>
+            <div><dt className="text-[#777b82]">Correlation</dt><dd className="mt-0.5 break-all font-mono">{currentEvidence.timeline?.correlation_id ?? receipt?.evidence.correlation_id ?? auditCorrelationId ?? "Unavailable"}</dd></div>
             <div><dt className="text-[#777b82]">Receipt evidence hash</dt><dd className="mt-0.5 break-all font-mono">{receipt?.evidence.event_hash ?? "Loading…"}</dd></div>
             <div><dt className="text-[#777b82]">Latest chain hash</dt><dd className="mt-0.5 break-all font-mono">{lastEvent?.event_hash ?? "Loading…"}</dd></div>
           </dl>
@@ -1112,6 +1131,150 @@ function AuthoritySurface({
   );
 }
 
+const watchStatusCopy: Record<TravelWatch["status"], { label: string; title: string; detail: string }> = {
+  AWAITING_LIVENESS: { label: "One step left", title: "Confirm once to start watching", detail: "Take a live selfie now to approve these exact trip details. You will not need another selfie when it is time to buy." },
+  ACTIVE: { label: "Watching prices", title: "We’re looking for the right fare", detail: "Jaguary is checking in the background and will buy only when every detail below matches." },
+  CHECKING: { label: "Checking now", title: "Comparing current fares", detail: "We’re checking the latest flights against your route, date and maximum total price." },
+  MATCHED: { label: "Match found", title: "A fare matches your request", detail: "We found an eligible flight and are completing the final safety checks before payment." },
+  EXECUTING: { label: "Buying now", title: "Completing your purchase", detail: "The flight passed every check. Jaguary is paying with the approval you already gave." },
+  COMPLETED: { label: "Purchased", title: "Your flight was purchased", detail: "A fare matched every detail and the single approved purchase is complete." },
+  EXPIRED: { label: "Ended", title: "The price watch has ended", detail: "No matching fare appeared before your approved travel window ended." },
+  CANCELLED: { label: "Cancelled", title: "The price watch is off", detail: "Jaguary has stopped checking and cannot make this purchase." },
+  FAILED: { label: "Needs attention", title: "The price watch stopped", detail: "We could not continue after a flight provider or purchase error. You can safely start a new watch." },
+};
+
+function TravelWatchCard({ conversation, watch, disabled, simulationMessage, simulationRunning, onCreate, onAuthorize, onCancel, onSimulate }: {
+  conversation: TravelBotConversation;
+  watch: TravelWatch | null;
+  disabled: boolean;
+  simulationMessage?: string;
+  simulationRunning: boolean;
+  onCreate: () => void;
+  onAuthorize: (watch: TravelWatch) => void;
+  onCancel: (watch: TravelWatch) => void;
+  onSimulate: (watch: TravelWatch) => void;
+}) {
+  const criteria = watch?.criteria ?? conversation.intent;
+  const budget = criteria.max_total_budget;
+  const copy = watch ? watchStatusCopy[watch.status] : {
+    label: "No matching fare right now",
+    title: "Want Jaguary to keep looking?",
+    detail: "Approve your trip and maximum price once. We’ll check in the background and buy automatically only when a flight matches every detail.",
+  };
+  const running = Boolean(watch && ["ACTIVE", "CHECKING", "MATCHED", "EXECUTING"].includes(watch.status));
+  const canRestart = Boolean(watch && ["CANCELLED", "EXPIRED", "FAILED"].includes(watch.status));
+  const completed = watch?.status === "COMPLETED";
+  const departure = criteria.departure_date
+    ? formatLocalDate(criteria.departure_date, criteria.departure_date)
+    : "Date not set";
+  const travelerLabel = criteria.passenger_count === 1 ? "1 traveler" : `${criteria.passenger_count ?? "—"} travelers`;
+  const statusTone = completed
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : watch?.status === "FAILED"
+      ? "border-red-200 bg-red-50 text-red-800"
+      : watch && ["MATCHED", "EXECUTING"].includes(watch.status)
+        ? "border-blue-200 bg-blue-50 text-blue-800"
+        : "border-amber-200 bg-amber-50 text-amber-900";
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_55px_-42px_rgb(15_23_42/0.55)] lg:-mx-6 xl:-mx-8" aria-label="Automatic flight price watch" aria-live="polite">
+      <div className="px-4 py-5 sm:px-6 sm:py-6">
+        <header className="flex items-start gap-3.5">
+          <span className={cn("grid size-10 shrink-0 place-items-center rounded-lg border", statusTone)} aria-hidden="true">
+            {completed ? <CheckIcon className="size-5 stroke-[2.5]" /> : <RefreshCwIcon className={cn("size-4.5", running && "motion-safe:animate-spin")} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-slate-900">Price watch</p>
+              <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", statusTone)}>{copy.label}</span>
+              <span className="text-[10px] font-medium text-slate-500">One purchase only</span>
+            </div>
+            <h2 className="mt-2 text-[22px] leading-7 font-semibold tracking-[-0.035em] text-slate-950 [font-family:var(--font-display)] sm:text-2xl">{copy.title}</h2>
+            <p className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-600">{copy.detail}</p>
+          </div>
+        </header>
+
+        <section className="mt-5 grid overflow-hidden rounded-lg border border-slate-200 bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_13.5rem]" aria-label="Approved trip details">
+          <div className="p-4 sm:p-5">
+            <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase">Your trip</p>
+            <div className="mt-2 flex items-center gap-3 text-xl font-semibold tracking-[-0.02em] text-slate-950 sm:text-2xl">
+              <span>{criteria.origin_iata ?? "—"}</span>
+              <span className="flex min-w-12 flex-1 items-center text-slate-400" aria-hidden="true"><i className="h-px flex-1 bg-slate-300" /><PlaneIcon className="mx-2 size-4 rotate-45 stroke-[1.7]" /><i className="h-px flex-1 bg-slate-300" /></span>
+              <span>{criteria.destination_iata ?? "—"}</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">{departure} · {travelerLabel} · {criteria.cabin ? cabinLabel(criteria.cabin) : "Cabin not set"}</p>
+          </div>
+          <div className="border-t border-slate-200 bg-white p-4 sm:border-t-0 sm:border-l sm:p-5">
+            <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase">Buy only at or below</p>
+            <strong className="mt-2 block text-2xl tracking-[-0.03em] text-slate-950 tabular-nums">{budget ? formatMoneyCompact(budget.amount, budget.currency) : "—"}</strong>
+            <p className="mt-1 text-[11px] leading-4 text-slate-500">Total for all travelers</p>
+          </div>
+        </section>
+
+        <ol className="mt-5 grid gap-2 sm:grid-cols-3" aria-label="How automatic purchase works">
+          {[
+            { number: "1", title: "Approve once", detail: "Confirm these exact details" },
+            { number: "2", title: "We check prices", detail: "Jaguary keeps looking" },
+            { number: "3", title: "We buy the match", detail: "No second selfie needed" },
+          ].map((step) => (
+            <li className="flex gap-3 rounded-lg border border-slate-200 px-3 py-3" key={step.number}>
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-slate-900 text-[10px] font-semibold text-white">{step.number}</span>
+              <span><strong className="block text-xs font-semibold text-slate-900">{step.title}</strong><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{step.detail}</span></span>
+            </li>
+          ))}
+        </ol>
+
+        {watch?.nearest_miss ? <p className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900"><InfoIcon className="mt-0.5 size-3.5 shrink-0" />Closest fare found: {formatMoneyCompact(watch.nearest_miss.party_total.amount, watch.nearest_miss.party_total.currency)} total. We did not buy it or change your limit.</p> : null}
+
+        {SHOW_DEVELOPMENT_SIMULATOR && watch && ["ACTIVE", "CHECKING", "COMPLETED", "FAILED"].includes(watch.status) ? (
+          <section className={cn(
+            "mt-4 flex flex-col gap-3 rounded-lg border border-dashed px-3.5 py-3 sm:flex-row sm:items-center",
+            watch.status === "COMPLETED" ? "border-emerald-300 bg-emerald-50/60" : "border-amber-300 bg-amber-50/60",
+          )} aria-label="Development purchase simulator">
+            <span className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-lg border bg-white",
+              watch.status === "COMPLETED" ? "border-emerald-200 text-emerald-700" : "border-amber-200 text-amber-700",
+            )}><FlaskConicalIcon className="size-4" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-900">
+                Test automatic purchase
+                <span className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[8px] tracking-[0.08em] text-slate-500 uppercase">Development only</span>
+              </p>
+              <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                {simulationMessage ?? "Create a one-time demo fare 10% below this approved limit. The regular worker, Verify, payment simulator and receipt flow will handle it."}
+              </p>
+            </div>
+            {watch.status === "ACTIVE" ? (
+              <Button className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100" disabled={disabled || simulationRunning} onClick={() => onSimulate(watch)} size="sm" variant="outline">
+                <FlaskConicalIcon />{simulationRunning ? "Offer queued" : "Make fare appear"}
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
+
+        <footer className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-[11px] leading-4 text-slate-500">
+            <p className="font-medium text-slate-700">Your maximum price never increases automatically.</p>
+            {watch?.next_check_at ? <p className="mt-1">Next check {formatDateTime(watch.next_check_at)} · Checked {watch.attempt_count} times</p> : <p className="mt-1">You can cancel this price watch at any time.</p>}
+            {watch?.receipt_id ? <p className="mt-1 font-mono text-emerald-800">Receipt {watch.receipt_id}</p> : null}
+          </div>
+          <div className="shrink-0 sm:min-w-56">
+          {!watch || canRestart ? (
+            <Button className="w-full" disabled={disabled} onClick={onCreate}><ShieldCheckIcon />Review automatic purchase</Button>
+          ) : watch.status === "AWAITING_LIVENESS" ? (
+            <Button className="w-full" disabled={disabled} onClick={() => onAuthorize(watch)}><FingerprintIcon />Verify & start watching</Button>
+          ) : watch.status === "COMPLETED" ? (
+            <Button className="w-full" nativeButton={false} render={<Link href="/purchases" />} variant="outline"><ReceiptTextIcon />View purchase</Button>
+          ) : (
+            <Button className="w-full" disabled={disabled} onClick={() => onCancel(watch)} variant="outline">Stop price watch</Button>
+          )}
+          </div>
+        </footer>
+      </div>
+    </article>
+  );
+}
+
 function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () => void }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
@@ -1126,15 +1289,30 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
   );
 }
 
-function OperationInspector({ conversation, busy }: { conversation?: TravelBotConversation; busy: BusyState }) {
+const watchProgressLabels: Record<TravelWatch["status"], string> = {
+  AWAITING_LIVENESS: "Awaiting verification",
+  ACTIVE: "Watching prices",
+  CHECKING: "Checking fares",
+  MATCHED: "Match found",
+  EXECUTING: "Purchasing",
+  COMPLETED: "Purchase complete",
+  EXPIRED: "Watch expired",
+  CANCELLED: "Watch cancelled",
+  FAILED: "Watch needs attention",
+};
+
+function OperationInspector({ conversation, watch, busy }: { conversation?: TravelBotConversation; watch?: TravelWatch | null; busy: BusyState }) {
   const state = conversation?.state ?? "COLLECTING";
   const operation = conversation?.operation;
+  const watchCompleted = watch?.status === "COMPLETED" && Boolean(watch.receipt_id);
+  const watchAuthorized = Boolean(watch && ["ACTIVE", "CHECKING", "MATCHED", "EXECUTING", "COMPLETED"].includes(watch.status));
+  const watchMatched = Boolean(watch?.matched_offer_id || watchCompleted);
   const steps = [
     { label: "Understand request", done: Boolean(conversation && conversation.missing_fields.length === 0) },
-    { label: "Choose best flight", done: Boolean(conversation?.intent.selected_offer_id) },
-    { label: "Lock checkout", done: Boolean(operation?.checkout_id) },
-    { label: "Obtain authority", done: Boolean(operation?.mandate_id) },
-    { label: "Purchase and issue", done: Boolean(operation?.receipt_id) },
+    { label: "Choose best flight", done: Boolean(conversation?.intent.selected_offer_id || watchMatched) },
+    { label: "Lock checkout", done: Boolean(operation?.checkout_id || watchCompleted) },
+    { label: "Obtain authority", done: Boolean(operation?.mandate_id || watchAuthorized) },
+    { label: "Purchase and issue", done: Boolean(operation?.receipt_id || watchCompleted) },
   ];
   const firstIncomplete = steps.findIndex(({ done }) => !done);
   const activeIndex = firstIncomplete === -1 ? steps.length - 1 : firstIncomplete;
@@ -1148,7 +1326,7 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b p-4">
-          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progress</h2><span className="text-[10px] text-muted-foreground">{conversationStateLabels[state]}</span></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progress</h2><span className="text-[10px] text-muted-foreground">{watch ? watchProgressLabels[watch.status] : conversationStateLabels[state]}</span></div>
           <ol>
             {steps.map((step, index) => (
               <li className="relative grid grid-cols-[18px_1fr] gap-2.5 pb-4 last:pb-0" key={step.label}>
@@ -1192,14 +1370,14 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
           </section>
         ) : null}
 
-        {operation && Object.values(operation).some(Boolean) ? (
+        {(operation && Object.values(operation).some(Boolean)) || watch?.mandate_id || watch?.receipt_id ? (
           <section className="p-4">
             <h2 className="panel-label">Evidence</h2>
             <dl className="mt-3 grid gap-3 text-[10px]">
-              {operation.checkout_id ? <div><dt className="text-muted-foreground">Checkout</dt><dd className="mt-0.5 break-all font-mono">{operation.checkout_id}</dd></div> : null}
-              {operation.mandate_id ? <div><dt className="text-muted-foreground">Mandate</dt><dd className="mt-0.5 break-all font-mono">{operation.mandate_id}</dd></div> : null}
-              {operation.authorization_id ? <div><dt className="text-muted-foreground">Authorization</dt><dd className="mt-0.5 break-all font-mono">{operation.authorization_id}</dd></div> : null}
-              {operation.receipt_id ? <div><dt className="text-muted-foreground">Receipt</dt><dd className="mt-0.5 break-all font-mono">{operation.receipt_id}</dd></div> : null}
+              {operation?.checkout_id ? <div><dt className="text-muted-foreground">Checkout</dt><dd className="mt-0.5 break-all font-mono">{operation.checkout_id}</dd></div> : null}
+              {operation?.mandate_id || watch?.mandate_id ? <div><dt className="text-muted-foreground">Mandate</dt><dd className="mt-0.5 break-all font-mono">{operation?.mandate_id ?? watch?.mandate_id}</dd></div> : null}
+              {operation?.authorization_id ? <div><dt className="text-muted-foreground">Authorization</dt><dd className="mt-0.5 break-all font-mono">{operation.authorization_id}</dd></div> : null}
+              {operation?.receipt_id || watch?.receipt_id ? <div><dt className="text-muted-foreground">Receipt</dt><dd className="mt-0.5 break-all font-mono">{operation?.receipt_id ?? watch?.receipt_id}</dd></div> : null}
             </dl>
           </section>
         ) : null}
@@ -1215,6 +1393,9 @@ export function TrustedSurface() {
   const [busy, setBusy] = useState<BusyState>(null);
   const [agent, setAgent] = useState<AgentIdentity>();
   const [conversation, setConversation] = useState<TravelBotConversation>();
+  const [watch, setWatch] = useState<TravelWatch | null>(null);
+  const [simulation, setSimulation] = useState<{ watchId: string; message: string; polling: boolean }>();
+  const [watchesByConversation, setWatchesByConversation] = useState<Record<string, TravelWatch>>({});
   const [recents, setRecents] = useState<TravelBotConversation[]>([]);
   const [composerValue, setComposerValue] = useState("");
   const [pendingMessage, setPendingMessage] = useState<string>();
@@ -1223,6 +1404,13 @@ export function TrustedSurface() {
   const [lastCorrelationId, setLastCorrelationId] = useState<string>();
   const [arrivingAssistantMessageId, setArrivingAssistantMessageId] = useState<string>();
   const [enteringConversationId, setEnteringConversationId] = useState<string>();
+  const activeConversationId = conversation?.conversation_id;
+  const recentConversationIds = recents.map(({ conversation_id }) => conversation_id).join("|");
+
+  const rememberWatch = useCallback((next: TravelWatch) => {
+    setWatch(next);
+    setWatchesByConversation((current) => ({ ...current, [next.conversation_id]: next }));
+  }, []);
 
   const rememberConversation = useCallback((next: TravelBotConversation) => {
     setConversation(next);
@@ -1312,6 +1500,79 @@ export function TrustedSurface() {
     return () => controller.abort();
   }, [createConversation, principalId]);
 
+  useEffect(() => {
+    const conversationIds = recentConversationIds ? recentConversationIds.split("|") : [];
+    if (!conversationIds.length) return;
+    const controller = new AbortController();
+    async function refreshWatches() {
+      try {
+        const results = await Promise.allSettled(
+          conversationIds.map((conversationId) => boundApi.getConversationWatch(conversationId, controller.signal)),
+        );
+        if (controller.signal.aborted) return;
+        const next = Object.fromEntries(results.flatMap((result) => (
+          result.status === "fulfilled" && result.value.data
+            ? [[result.value.data.conversation_id, result.value.data] as const]
+            : []
+        )));
+        setWatchesByConversation(next);
+        setWatch(activeConversationId ? next[activeConversationId] ?? null : null);
+      } catch (caught) {
+        if (controller.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError")) return;
+        setError(asApiError(caught));
+      }
+    }
+    void refreshWatches();
+    const interval = window.setInterval(() => void refreshWatches(), 10_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [activeConversationId, recentConversationIds]);
+
+  useEffect(() => {
+    if (!simulation?.polling) return;
+    const controller = new AbortController();
+    let attempts = 0;
+    const refresh = async () => {
+      attempts += 1;
+      try {
+        const result = await boundApi.getTravelWatch(simulation.watchId, controller.signal);
+        if (controller.signal.aborted) return;
+        rememberWatch(result.data);
+        if (result.data.status === "COMPLETED") {
+          setSimulation({
+            watchId: result.data.watch_id,
+            message: `Simulation completed through the regular purchase flow. Receipt ${result.data.receipt_id ?? "created"}.`,
+            polling: false,
+          });
+        } else if (["FAILED", "CANCELLED", "EXPIRED"].includes(result.data.status)) {
+          setSimulation({
+            watchId: result.data.watch_id,
+            message: `The simulation stopped with status ${result.data.status.toLowerCase()}. Check the error and audit trail before trying again.`,
+            polling: false,
+          });
+        } else if (attempts >= 45) {
+          setSimulation({
+            watchId: result.data.watch_id,
+            message: "The demo fare is queued. The background worker will continue processing it.",
+            polling: false,
+          });
+        }
+      } catch (caught) {
+        if (controller.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError")) return;
+        setError(asApiError(caught));
+        setSimulation((current) => current ? { ...current, polling: false } : current);
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [rememberWatch, simulation?.polling, simulation?.watchId]);
+
   const selectConversation = useCallback(async (conversationId: string) => {
     if (conversationId === conversation?.conversation_id || busy) return;
     setBusy("switching");
@@ -1344,6 +1605,9 @@ export function TrustedSurface() {
         const updated = current.filter(({ conversation_id: candidate }) => candidate !== conversationId);
         writeRecentConversationIds(principalId, updated.map(({ conversation_id }) => conversation_id));
         return updated;
+      });
+      setWatchesByConversation((current) => {
+        return Object.fromEntries(Object.entries(current).filter(([candidate]) => candidate !== conversationId));
       });
       if (discardingActiveConversation) {
         setConversation(undefined);
@@ -1430,6 +1694,108 @@ export function TrustedSurface() {
     }
   }, [busy, conversation]);
 
+  const beginWatchBiometricAuthorization = useCallback(async (target: TravelWatch) => {
+    if (!conversation || busy || target.status !== "AWAITING_LIVENESS") return;
+    setBusy("verifying");
+    setError(undefined);
+    try {
+      const principal = await boundApi.getPrincipalSession();
+      if (!principal.data.authenticated) {
+        throw new BoundApiError({ message: "Your session expired. Sign in again before authorizing.", code: "session_expired", status: 401 });
+      }
+      const started = await boundApi.startMandateBiometricConsent(
+        target.mandate_id,
+        principal.data.csrf_token,
+        createRequestIdentity("watch_biometric_consent"),
+      );
+      if (started.data.hosted_verification_url === null) {
+        throw new BoundApiError({ message: "The secure selfie session could not be opened. Try again.", code: "biometric_session_unavailable" });
+      }
+      writePendingBiometricConsent({
+        conversationId: conversation.conversation_id,
+        watchId: target.watch_id,
+        mandateId: target.mandate_id,
+        consentId: started.data.consent_id,
+        refreshIdentity: createRequestIdentity("watch_biometric_refresh"),
+        confirmationIdentity: createRequestIdentity("watch_activation"),
+      });
+      window.location.assign(started.data.hosted_verification_url);
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setError(apiError);
+      setLastCorrelationId(apiError.correlationId);
+      setBusy(null);
+    }
+  }, [busy, conversation]);
+
+  const createTravelWatch = useCallback(async () => {
+    if (!conversation || busy || !conversation.intent.departure_date) return;
+    setBusy("watching");
+    setError(undefined);
+    const identity = createRequestIdentity("watch_create");
+    try {
+      const expiresAt = watchExpiryForDeparture(conversation.intent.departure_date);
+      if (Date.parse(expiresAt) <= Date.now()) {
+        throw new BoundApiError({ message: "This departure window has already ended. Update the date before starting monitoring.", code: "watch_window_ended" });
+      }
+      const created = await boundApi.createTravelWatch(
+        conversation.conversation_id,
+        { mode: "AUTO_PURCHASE", expires_at: expiresAt },
+        identity,
+      );
+      rememberWatch(created.data);
+      setLastCorrelationId(created.correlationId ?? identity.correlationId);
+      setBusy(null);
+      await beginWatchBiometricAuthorization(created.data);
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setError(apiError);
+      setLastCorrelationId(apiError.correlationId ?? identity.correlationId);
+      setBusy(null);
+    }
+  }, [beginWatchBiometricAuthorization, busy, conversation, rememberWatch]);
+
+  const cancelTravelWatch = useCallback(async (target: TravelWatch) => {
+    if (busy) return;
+    setBusy("watching");
+    setError(undefined);
+    const identity = createRequestIdentity("watch_cancel");
+    try {
+      const cancelled = await boundApi.cancelTravelWatch(target.watch_id, identity);
+      rememberWatch(cancelled.data);
+      setLastCorrelationId(cancelled.correlationId ?? identity.correlationId);
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setError(apiError);
+      setLastCorrelationId(apiError.correlationId ?? identity.correlationId);
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, rememberWatch]);
+
+  const simulateTravelWatch = useCallback(async (target: TravelWatch) => {
+    if (busy || !SHOW_DEVELOPMENT_SIMULATOR || target.status !== "ACTIVE") return;
+    setBusy("simulating");
+    setError(undefined);
+    const identity = createRequestIdentity("watch_simulate_match");
+    try {
+      const simulated = await boundApi.simulateTravelWatchMatch(target.watch_id, identity);
+      rememberWatch(simulated.data);
+      setLastCorrelationId(simulated.correlationId ?? identity.correlationId);
+      setSimulation({
+        watchId: target.watch_id,
+        message: "Eligible demo fare queued. Jaguary is checking it through the normal purchase pipeline now.",
+        polling: true,
+      });
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setError(apiError);
+      setLastCorrelationId(apiError.correlationId ?? identity.correlationId);
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, rememberWatch]);
+
   function handleSubmit(message: PromptInputMessage) {
     void submitTurn(message.text);
   }
@@ -1445,6 +1811,13 @@ export function TrustedSurface() {
   );
   const isBusy = busy !== null;
   const showDockedComposer = Boolean(conversation?.messages.length || pendingMessage || busy === "sending");
+  const visibleWatch = watch?.conversation_id === conversation?.conversation_id ? watch : null;
+  const canOfferTravelWatch = Boolean(
+    conversation
+    && conversation.state === "READY_TO_SEARCH"
+    && conversation.offers.length === 0
+    && conversation.missing_fields.length === 0,
+  );
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden" style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
@@ -1455,6 +1828,7 @@ export function TrustedSurface() {
         onDiscardConversation={discardConversation}
         onNewConversation={() => void createConversation()}
         onSelectConversation={(conversationId) => void selectConversation(conversationId)}
+        watchesByConversation={watchesByConversation}
       />
 
       <SidebarInset className="h-dvh min-w-0 flex-row overflow-hidden">
@@ -1553,6 +1927,28 @@ export function TrustedSurface() {
               </AnimatePresence>
 
               <AnimatePresence initial={false} mode="popLayout">
+                {conversation && (visibleWatch !== null || canOfferTravelWatch) ? (
+                  <ChatPresenceItem key={visibleWatch?.status === "COMPLETED" ? `watch-receipt-${visibleWatch.receipt_id}` : `travel-watch-${conversation.conversation_id}-${visibleWatch?.version ?? "proposal"}`}>
+                    {visibleWatch?.status === "COMPLETED" ? (
+                      <PurchaseReceipt watch={visibleWatch} />
+                    ) : (
+                      <TravelWatchCard
+                        conversation={conversation}
+                        disabled={isBusy}
+                        onAuthorize={(target) => void beginWatchBiometricAuthorization(target)}
+                        onCancel={(target) => void cancelTravelWatch(target)}
+                        onCreate={() => void createTravelWatch()}
+                        onSimulate={(target) => void simulateTravelWatch(target)}
+                        simulationMessage={simulation && simulation.watchId === visibleWatch?.watch_id ? simulation.message : undefined}
+                        simulationRunning={Boolean(simulation && simulation.watchId === visibleWatch?.watch_id && simulation.polling)}
+                        watch={visibleWatch}
+                      />
+                    )}
+                  </ChatPresenceItem>
+                ) : null}
+              </AnimatePresence>
+
+              <AnimatePresence initial={false} mode="popLayout">
                 {showApproval || conversation?.state === "COMPLETED" ? (
                   <ChatPresenceItem delay={arrivingAssistantMessageId ? 0.16 : 0} key={`authority-surface-${conversation.conversation_id}`} layout={false}>
                     <AuthoritySurface
@@ -1629,7 +2025,7 @@ export function TrustedSurface() {
             </div>
           </footer> : null}
         </main>
-        <OperationInspector busy={busy} conversation={conversation} />
+        <OperationInspector busy={busy} conversation={conversation} watch={visibleWatch} />
       </SidebarInset>
     </SidebarProvider>
   );

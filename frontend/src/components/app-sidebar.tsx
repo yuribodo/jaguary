@@ -42,7 +42,8 @@ import {
   conversationTitle,
 } from "@/lib/conversation-history";
 import { boundApi, createRequestIdentity } from "@/lib/bound-api";
-import type { TravelBotConversation } from "@/lib/contracts";
+import type { TravelBotConversation, TravelWatch } from "@/lib/contracts";
+import { cn } from "@/lib/utils";
 
 export type AccountPage = "dashboard" | "agents" | "opportunities" | "approvals" | "payment-methods" | "purchases" | "merchants" | "audit" | "trust";
 
@@ -65,6 +66,7 @@ export function AppSidebar({
   onDiscardConversation,
   onSelectConversation,
   recentMessage,
+  watchesByConversation = {},
 }: {
   activeConversationId?: string;
   activePage?: AccountPage;
@@ -74,6 +76,7 @@ export function AppSidebar({
   onDiscardConversation?: (conversationId: string) => Promise<void>;
   onSelectConversation: (conversationId: string) => void;
   recentMessage?: string;
+  watchesByConversation?: Record<string, TravelWatch>;
 }) {
   const router = useRouter();
   const principalSession = useAuthenticatedPrincipalSession();
@@ -180,20 +183,32 @@ export function AppSidebar({
           <SidebarGroupLabel>Recent</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {conversations.length ? conversations.map((conversation) => (
-                <SidebarMenuItem key={conversation.conversation_id}>
+              {conversations.length ? conversations.map((conversation) => {
+                const travelWatch = watchesByConversation[conversation.conversation_id];
+                const searching = Boolean(travelWatch && ["ACTIVE", "CHECKING"].includes(travelWatch.status));
+                const purchasing = Boolean(travelWatch && ["MATCHED", "EXECUTING"].includes(travelWatch.status));
+                const waitingForApproval = travelWatch?.status === "AWAITING_LIVENESS";
+                return <SidebarMenuItem key={conversation.conversation_id}>
                   <SidebarMenuButton
                     className="h-auto items-start py-2.5 pr-9"
                     isActive={conversation.conversation_id === activeConversationId}
                     onClick={() => onSelectConversation(conversation.conversation_id)}
                     tooltip={conversationTitle(conversation)}
                   >
-                    <BotIcon className="mt-0.5 size-3.5 shrink-0" />
+                    <BotIcon className={cn("mt-0.5 size-3.5 shrink-0", searching && "text-amber-600", purchasing && "text-blue-600")} />
                     <span className="grid min-w-0 gap-0.5">
                       <span className="truncate text-xs font-medium">{conversationTitle(conversation)}</span>
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        {conversationStateLabels[conversation.state]}
-                      </span>
+                      {searching ? (
+                        <span className="flex items-center gap-1.5 truncate text-[10px] font-medium text-amber-700">
+                          <i className="size-1.5 shrink-0 rounded-full bg-amber-500 motion-safe:animate-pulse" />Searching fares
+                        </span>
+                      ) : purchasing ? (
+                        <span className="flex items-center gap-1.5 truncate text-[10px] font-medium text-blue-700"><i className="size-1.5 shrink-0 rounded-full bg-blue-500" />Match found</span>
+                      ) : waitingForApproval ? (
+                        <span className="flex items-center gap-1.5 truncate text-[10px] font-medium text-amber-700"><FingerprintIcon className="size-2.5 shrink-0" />Ready to start</span>
+                      ) : (
+                        <span className="truncate text-[10px] text-muted-foreground">{conversationStateLabels[conversation.state]}</span>
+                      )}
                     </span>
                   </SidebarMenuButton>
                   {onDiscardConversation ? (
@@ -208,8 +223,8 @@ export function AppSidebar({
                       <Trash2Icon className="size-3.5" />
                     </SidebarMenuAction>
                   ) : null}
-                </SidebarMenuItem>
-              )) : (
+                </SidebarMenuItem>;
+              }) : (
                 <p aria-live="polite" className="px-2 py-3 text-xs leading-5 text-muted-foreground">
                   {recentMessage ?? "Your current conversation will appear here."}
                 </p>

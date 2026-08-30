@@ -174,6 +174,53 @@ test("a checkout outside the authorized cabin is denied", () => {
   assert.deepEqual(result.reasons, ["scope_mismatch"]);
 });
 
+test("a checkout outside a conditional mandate departure window is denied", () => {
+  const input = canonicalInput();
+  Object.assign(input.mandate.terms, {
+    flight_constraints: {
+      departure_not_before: "2026-09-01T00:00:00.000Z",
+      departure_not_after: "2026-09-30T23:59:59.999Z",
+      passenger_count: 1,
+    },
+  });
+  input.checkout.terms.fulfillment.departure_at = "2026-10-01T10:00:00.000Z";
+  if ("terms_hash" in input.mandate) input.mandate.terms_hash = sha256CanonicalJson(input.mandate.terms);
+  resignCheckout(input);
+
+  const result = evaluate(input);
+
+  assert.equal(result.decision, "DENY");
+  assert.deepEqual(result.reasons, ["scope_mismatch"]);
+});
+
+test("a checkout with a different passenger count than the conditional mandate is denied", () => {
+  const input = canonicalInput();
+  Object.assign(input.mandate.terms, {
+    flight_constraints: {
+      departure_not_before: "2026-09-01T00:00:00.000Z",
+      departure_not_after: "2026-09-30T23:59:59.999Z",
+      passenger_count: 2,
+    },
+  });
+  if ("terms_hash" in input.mandate) input.mandate.terms_hash = sha256CanonicalJson(input.mandate.terms);
+
+  const result = evaluate(input);
+
+  assert.equal(result.decision, "DENY");
+  assert.deepEqual(result.reasons, ["scope_mismatch"]);
+});
+
+test("a checkout for a flight that already departed is denied", () => {
+  const input = canonicalInput();
+  input.checkout.terms.fulfillment.departure_at = input.now;
+  resignCheckout(input);
+
+  const result = evaluate(input);
+
+  assert.equal(result.decision, "DENY");
+  assert.deepEqual(result.reasons, ["scope_mismatch"]);
+});
+
 for (const [name, mutate, reason] of [
   ["per-purchase amount", (input: VerifyPolicyInput) => {
     input.checkout.terms.total.amount = 15_001;

@@ -73,7 +73,7 @@ export const vuelaYaRoutes: FastifyPluginAsync<VuelaYaRoutesOptions> = async (ap
     if (!parsed.success) {
       throw new PublicApiError(400, "validation_error", "Flight search query is invalid");
     }
-    return options.catalog.search({
+    return (await options.catalog.search({
       origin_iata: parsed.data.origin,
       destination_iata: parsed.data.destination,
       departure_date: parsed.data.date,
@@ -82,7 +82,7 @@ export const vuelaYaRoutes: FastifyPluginAsync<VuelaYaRoutesOptions> = async (ap
       max_total_budget: { amount: parsed.data.max_budget_minor, currency: parsed.data.currency },
       selected_offer_id: null,
       confirmation: null,
-    });
+    })).matches;
   });
 
   app.post("/ucp/v1/checkout", async (request, reply) => {

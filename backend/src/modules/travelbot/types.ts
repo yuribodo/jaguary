@@ -5,6 +5,7 @@ import type {
   TravelIntent,
   TravelIntentProposal,
 } from "../../contracts/v1/index.js";
+import type { FlightSearchResult } from "../vuelaya/google-flights.js";
 
 export const travelBotStates = [
   "COLLECTING",
@@ -193,6 +194,7 @@ export interface TravelBotRepositoryPort {
 
 export interface TravelBotToolsPort {
   findOffers(intent: TravelIntent): Promise<OfferCandidate[]>;
+  diagnoseOffers?(intent: TravelIntent): Promise<FlightSearchResult>;
   createCheckout?(input: {
     conversation: TravelBotConversation;
     offer: OfferCandidate;

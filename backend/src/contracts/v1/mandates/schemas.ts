@@ -44,6 +44,17 @@ export const flightRouteSchema = z
 
 export type FlightRoute = z.infer<typeof flightRouteSchema>;
 
+export const conditionalFlightConstraintsSchema = z.object({
+  departure_not_before: utcRfc3339Schema,
+  departure_not_after: utcRfc3339Schema,
+  passenger_count: z.number().int().min(1).max(9),
+}).strict().refine(
+  ({ departure_not_before: from, departure_not_after: until }) => Date.parse(from) <= Date.parse(until),
+  { message: "Conditional flight departure window is invalid", path: ["departure_not_after"] },
+);
+
+export type ConditionalFlightConstraints = z.infer<typeof conditionalFlightConstraintsSchema>;
+
 const mandateScopeShape = {
   principal_id: identifierSchema,
   agent_id: identifierSchema,
@@ -51,6 +62,7 @@ const mandateScopeShape = {
   allowed_merchant_categories: z.array(identifierSchema),
   route: flightRouteSchema,
   cabin: cabinClassSchema,
+  flight_constraints: conditionalFlightConstraintsSchema.optional(),
   max_per_purchase: moneySchema,
   max_aggregate: moneySchema,
   max_uses: z.number().int().positive(),

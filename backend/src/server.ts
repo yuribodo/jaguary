@@ -46,6 +46,7 @@ async function start(): Promise<void> {
       ttlMs: 5 * 60_000,
       maxEntries: 100,
     }),
+    enableDevelopmentTravelWatchSimulation: env.NODE_ENV === "development",
     principalAuth: {
       mode: env.auth.mode,
       nodeEnvironment: env.NODE_ENV,

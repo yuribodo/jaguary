@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AppSidebar, type AccountPage } from "@/components/app-sidebar";
 import { AuthenticatedPage, useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
@@ -15,7 +15,7 @@ import {
   readRecentConversationIds,
   rememberRecentConversationId,
 } from "@/lib/conversation-history";
-import type { TravelBotConversation } from "@/lib/contracts";
+import type { TravelBotConversation, TravelWatch } from "@/lib/contracts";
 
 const TRAVELBOT_ID = "agent_travelbot";
 
@@ -24,8 +24,20 @@ type AccountPageShellProps = {
   children: ReactNode;
 };
 
+type AccountActivity = {
+  conversations: TravelBotConversation[];
+  watchesByConversation: Record<string, TravelWatch>;
+};
+
+const AccountActivityContext = createContext<AccountActivity | null>(null);
+
+export function useAccountActivity() {
+  const activity = useContext(AccountActivityContext);
+  if (activity === null) throw new Error("useAccountActivity must be used within AccountPageShell");
+  return activity;
+}
+
 export function AccountPageShell(props: AccountPageShellProps) {
-  if (process.env.NODE_ENV === "development") return <WorkspaceAccountPageShell {...props} />;
   return <AuthenticatedPage><WorkspaceAccountPageShell {...props} /></AuthenticatedPage>;
 }
 
@@ -37,6 +49,7 @@ function WorkspaceAccountPageShell({
   const principalSession = useAuthenticatedPrincipalSession();
   const principalId = principalSession.principal.principal_id;
   const [recents, setRecents] = useState<TravelBotConversation[]>([]);
+  const [watchesByConversation, setWatchesByConversation] = useState<Record<string, TravelWatch>>({});
   const [recentMessage, setRecentMessage] = useState("Loading conversations…");
   const [creatingConversation, setCreatingConversation] = useState(false);
 
@@ -46,6 +59,8 @@ function WorkspaceAccountPageShell({
     async function loadRecents() {
       const ids = readRecentConversationIds(principalId);
       if (!ids.length) {
+        setRecents([]);
+        setWatchesByConversation({});
         setRecentMessage("Your conversations will appear here.");
         return;
       }
@@ -61,6 +76,15 @@ function WorkspaceAccountPageShell({
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
 
       setRecents(conversations);
+      const loadedWatches = await Promise.allSettled(
+        conversations.map(({ conversation_id }) => boundApi.getConversationWatch(conversation_id, controller.signal)),
+      );
+      if (controller.signal.aborted) return;
+      setWatchesByConversation(Object.fromEntries(
+        loadedWatches.flatMap((result) => result.status === "fulfilled" && result.value.data
+          ? [[result.value.data.conversation_id, result.value.data] as const]
+          : []),
+      ));
       setRecentMessage(
         conversations.length
           ? ""
@@ -69,7 +93,11 @@ function WorkspaceAccountPageShell({
     }
 
     void loadRecents();
-    return () => controller.abort();
+    const interval = window.setInterval(() => void loadRecents(), 10_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
   }, [principalId]);
 
   const createConversation = useCallback(async () => {
@@ -91,22 +119,25 @@ function WorkspaceAccountPageShell({
   }, [creatingConversation, principalId, router]);
 
   return (
-    <SidebarProvider
-      className="min-h-dvh"
-      style={{ "--sidebar-width": "15.5rem" } as CSSProperties}
-    >
-      <AppSidebar
-        activePage={activePage}
-        conversations={recents}
-        newConversationDisabled={creatingConversation}
-        onNewConversation={() => void createConversation()}
-        onSelectConversation={(conversationId) => router.push(`/demo?conversation=${encodeURIComponent(conversationId)}`)}
-        recentMessage={recentMessage}
-      />
-      <SidebarInset className="min-w-0 bg-background">
-        <header className="flex h-12 items-center border-b bg-panel px-3 md:px-4"><SidebarTrigger aria-label="Toggle sidebar" /><span className="ml-2 text-sm text-muted-foreground">Account</span></header>
-        <main className="mx-auto w-full max-w-5xl px-4 py-10 md:px-8 md:py-14">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <AccountActivityContext.Provider value={{ conversations: recents, watchesByConversation }}>
+      <SidebarProvider
+        className="min-h-dvh"
+        style={{ "--sidebar-width": "15.5rem" } as CSSProperties}
+      >
+        <AppSidebar
+          activePage={activePage}
+          conversations={recents}
+          newConversationDisabled={creatingConversation}
+          onNewConversation={() => void createConversation()}
+          onSelectConversation={(conversationId) => router.push(`/demo?conversation=${encodeURIComponent(conversationId)}`)}
+          recentMessage={recentMessage}
+          watchesByConversation={watchesByConversation}
+        />
+        <SidebarInset className="min-w-0 bg-background">
+          <header className="flex h-12 items-center border-b bg-panel px-3 md:px-4"><SidebarTrigger aria-label="Toggle sidebar" /><span className="ml-2 text-sm text-muted-foreground">Account</span></header>
+          <main className="mx-auto w-full max-w-5xl px-4 py-10 md:px-8 md:py-14">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </AccountActivityContext.Provider>
   );
 }

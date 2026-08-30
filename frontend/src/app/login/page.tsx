@@ -88,7 +88,7 @@ export default function LoginPage() {
           <span className="grid size-10 place-items-center rounded-xl border bg-background">
             <ShieldCheckIcon className="size-4.5" strokeWidth={1.7} />
           </span>
-          <span className="text-3xl leading-none [font-family:var(--font-serif)]">Jaguary</span>
+          <span className="text-3xl leading-none [font-family:var(--font-display)]">Jaguary</span>
         </Link>
 
         <div className="mt-20 sm:mt-24">

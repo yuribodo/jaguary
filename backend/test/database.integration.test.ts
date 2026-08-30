@@ -75,8 +75,11 @@ import { verifyCheckoutIntegrity, VuelaYaMerchant } from "../src/modules/vuelaya
 import { createTestAgentSigner } from "./support/agent-signing.js";
 import {
   PostgresTravelBotRepository,
+  PostgresTravelWatchRepository,
   ApplicationTravelBotTools,
   TravelBotService,
+  TravelWatchService,
+  TravelWatchWorker,
   type AgentRuntimePort,
 } from "../src/modules/travelbot/index.js";
 import { listVuelaYaOffers } from "../src/modules/vuelaya/catalog.js";
@@ -528,6 +531,8 @@ beforeEach(async () => {
       principals,
       travel_approvals,
       travel_tool_executions,
+      travel_watch_checks,
+      travel_watches,
       travel_sse_events,
       travel_model_runs,
       travel_intent_snapshots,
@@ -583,6 +588,8 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
       "travel_model_runs",
       "travel_sse_events",
       "travel_tool_executions",
+      "travel_watch_checks",
+      "travel_watches",
     ],
   );
 });
@@ -1368,6 +1375,138 @@ integrationTest("a mandate draft is created idempotently and read without signin
   const read = await app.inject({ method: "GET", url: `/v1/mandates/${mandate.terms.mandate_id}` });
   assert.equal(read.statusCode, 200);
   assert.deepEqual(read.json(), mandate);
+});
+
+integrationTest("a conditional mandate preserves the liveness-bound flight window and passengers", async (t) => {
+  assert.ok(testDatabaseUrl);
+  await seedMandateReferences();
+  const app = await buildApp({
+    databaseUrl: testDatabaseUrl,
+    logger: false,
+    clock: { now: () => new Date("2026-08-30T12:00:00.000Z") },
+  });
+  t.after(async () => app.close());
+  const flightConstraints = {
+    departure_not_before: "2026-09-01T00:00:00.000Z",
+    departure_not_after: "2026-09-30T23:59:59.999Z",
+    passenger_count: 2,
+  };
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/v1/mandates",
+    headers: { "idempotency-key": "idem_conditional_mandate_create_001" },
+    payload: mandateDraftRequest("mandate_conditional_watch_001", {
+      flight_constraints: flightConstraints,
+      valid_from: "2026-08-30T12:00:00.000Z",
+      expires_at: "2026-09-30T23:59:59.999Z",
+    }),
+  });
+
+  assert.equal(created.statusCode, 201);
+  assert.deepEqual(mandateSchema.parse(created.json()).terms.flight_constraints, flightConstraints);
+  const read = await app.inject({ method: "GET", url: "/v1/mandates/mandate_conditional_watch_001" });
+  assert.deepEqual(mandateSchema.parse(read.json()).terms.flight_constraints, flightConstraints);
+});
+
+integrationTest("an automatic travel watch survives a service restart while awaiting liveness", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const watchNow = new Date("2026-08-30T12:00:00.000Z");
+  const conversationId = "6f5ca3b3-1eca-4bde-9bc3-3923bf56350b";
+  await database.db.insert(travelConversations).values({
+    conversationId,
+    principalId: mandateFixture.terms.principal_id,
+    agentId: mandateFixture.terms.agent_id,
+    state: "READY_TO_SEARCH",
+    version: 1,
+    intent: {
+      origin_iata: "GRU",
+      destination_iata: "COR",
+      departure_date: "2026-09",
+      passenger_count: 2,
+      cabin: "ECONOMY",
+      max_total_budget: { amount: 150_000, currency: "BRL" },
+      selected_offer_id: null,
+      confirmation: null,
+    },
+    offers: [],
+    creationRequestHash: "a".repeat(64),
+    creationIdempotencyKey: "idem_watch_conversation_seed_001",
+    correlationId: "corr_watch_conversation_seed_001",
+    createdAt: watchNow,
+    updatedAt: watchNow,
+  });
+  const conversations = new PostgresTravelBotRepository(database, "fake-test-model");
+  const mandatesService = new MandateService(database, new EphemeralEs256Signer(), { now: () => watchNow });
+  const firstService = new TravelWatchService({
+    repository: new PostgresTravelWatchRepository(database),
+    conversations,
+    mandates: mandatesService,
+    clock: { now: () => watchNow },
+    credentialId: mandateFixture.terms.credential_id,
+    merchantId: "merchant_vuelaya",
+  });
+
+  const created = await firstService.create({
+    conversation_id: conversationId,
+    mode: "AUTO_PURCHASE",
+    expires_at: "2026-09-30T23:59:59.999Z",
+    idempotency_key: "idem_postgres_watch_create_001",
+    correlation_id: "corr_postgres_watch_create_001",
+  });
+  const restartedService = new TravelWatchService({
+    repository: new PostgresTravelWatchRepository(database),
+    conversations,
+    mandates: mandatesService,
+    clock: { now: () => watchNow },
+    credentialId: mandateFixture.terms.credential_id,
+    merchantId: "merchant_vuelaya",
+  });
+
+  assert.equal(created.status, "AWAITING_LIVENESS");
+  assert.deepEqual(await restartedService.get(created.watch_id), created);
+
+  const firstRepository = new PostgresTravelWatchRepository(database);
+  await firstRepository.activate(created.watch_id, watchNow);
+  assert.equal((await firstRepository.claimDue(watchNow))?.status, "CHECKING");
+  const matchedOffer = {
+    ...structuredClone(offerCandidateFixture),
+    offer_id: "offer_watch_restart_match_001",
+    total: { amount: 70_000, currency: "BRL" },
+    items: [{
+      ...structuredClone(offerCandidateFixture.items[0]!),
+      unit_price: { amount: 70_000, currency: "BRL" },
+      total: { amount: 70_000, currency: "BRL" },
+    }],
+    fulfillment: {
+      ...structuredClone(offerCandidateFixture.fulfillment),
+      departure_at: "2026-09-15T10:00:00.000Z",
+      arrival_at: "2026-09-15T13:05:00.000Z",
+    },
+    available_until: "2026-08-30T12:15:00.000Z",
+  };
+  await firstRepository.stagePurchase(created.watch_id, matchedOffer, watchNow);
+
+  const resumedAt = new Date("2026-08-30T12:01:01.000Z");
+  const restartedRepository = new PostgresTravelWatchRepository(database);
+  const worker = new TravelWatchWorker({
+    repository: restartedRepository,
+    search: { search: async () => assert.fail("a reclaimed purchase must reuse its persisted offer") },
+    purchases: {
+      async purchase({ watch, offer }) {
+        assert.equal(watch.attempt_count, 2);
+        assert.deepEqual(offer, matchedOffer);
+        return { status: "COMPLETED", receipt_id: "receipt_watch_restart_001" };
+      },
+    },
+    clock: { now: () => resumedAt },
+  });
+  assert.equal(await worker.runDue(), 1);
+  const completed = await restartedRepository.get(created.watch_id);
+  assert.equal(completed?.status, "COMPLETED");
+  assert.deepEqual(completed?.matched_offer, matchedOffer);
+  assert.equal(completed?.receipt_id, "receipt_watch_restart_001");
 });
 
 integrationTest("activating a draft signs its canonical immutable terms exactly once", async (t) => {

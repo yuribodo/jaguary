@@ -64,6 +64,7 @@ function rowTerms(row: MandateRow): MandateTerms {
     allowed_merchant_categories: row.allowedMerchantCategories,
     route: { origin: row.routeOrigin, destination: row.routeDestination },
     cabin: row.cabin,
+    ...(row.flightConstraints === null ? {} : { flight_constraints: row.flightConstraints }),
     max_per_purchase: {
       amount: row.maxPerPurchaseAmount,
       currency: row.maxPerPurchaseCurrency,
@@ -225,6 +226,7 @@ export class MandateService {
         allowed_merchant_categories: input.allowed_merchant_categories,
         route: input.route,
         cabin: input.cabin,
+        ...(input.flight_constraints === undefined ? {} : { flight_constraints: input.flight_constraints }),
         max_per_purchase: input.max_per_purchase,
         max_aggregate: input.max_aggregate,
         max_uses: input.max_uses,
@@ -244,6 +246,7 @@ export class MandateService {
         routeOrigin: terms.route.origin,
         routeDestination: terms.route.destination,
         cabin: terms.cabin,
+        flightConstraints: terms.flight_constraints,
         maxPerPurchaseAmount: terms.max_per_purchase.amount,
         maxPerPurchaseCurrency: terms.max_per_purchase.currency,
         maxAggregateAmount: terms.max_aggregate.amount,

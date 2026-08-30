@@ -146,7 +146,7 @@ test("a live checkout remains byte-for-byte idempotent when retried later", asyn
     source: "GOOGLE_FLIGHTS",
   });
   const catalog = new VuelaYaCatalog(
-    { search: async () => [liveOffer] },
+    { search: async () => ({ outcome: "MATCH_FOUND", matches: [liveOffer], nearest_miss: null, observed_at: clock.now().toISOString() }) },
     [liveOffer],
     { clock, ttlMs: 300_000, maxEntries: 10 },
   );
@@ -161,7 +161,7 @@ test("a live checkout remains byte-for-byte idempotent when retried later", asyn
   now = new Date("2026-08-29T15:01:00.000Z");
   const retried = await merchant.createCheckout(purchaseIntent);
   const restartedCatalog = new VuelaYaCatalog(
-    { search: async () => [liveOffer] },
+    { search: async () => ({ outcome: "MATCH_FOUND", matches: [liveOffer], nearest_miss: null, observed_at: clock.now().toISOString() }) },
     [liveOffer],
     { clock, ttlMs: 300_000, maxEntries: 10 },
   );

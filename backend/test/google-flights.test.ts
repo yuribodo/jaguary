@@ -52,7 +52,9 @@ test("Google Flights adapter sends normalized search controls and maps typed liv
     },
   });
 
-  const [offer] = offerCandidateSchema.array().parse(await provider.search(intent));
+  const result = await provider.search(intent);
+  const [offer] = offerCandidateSchema.array().parse(result.matches);
+  assert.equal(result.outcome, "MATCH_FOUND");
   assert.ok(offer);
   assert.equal(offer.source, "GOOGLE_FLIGHTS");
   assert.equal(offer.ranking, "BEST");
@@ -72,7 +74,24 @@ test("Google Flights adapter sends normalized search controls and maps typed liv
   assert.equal(params.get("arrival_id"), "COR");
   assert.equal(params.get("outbound_date"), "2026-09-15");
   assert.equal(params.get("adults"), "1");
-  assert.equal(params.get("max_price"), "150");
+  assert.equal(params.get("max_price"), null);
+});
+
+test("flight search reports the nearest over-budget offer instead of treating it as no inventory", async () => {
+  const overBudgetResponse = structuredClone(providerResponse);
+  overBudgetResponse.best_flights[0]!.price = 180;
+  const provider = new GoogleFlightsSearchProvider({
+    apiKey: "private-key",
+    timeoutMs: 2_000,
+    clock: { now: () => new Date("2026-08-29T15:00:00.000Z") },
+    fetch: async () => new Response(JSON.stringify(overBudgetResponse), { status: 200 }),
+  });
+
+  const result = await provider.search(intent);
+
+  assert.equal(result.outcome, "OVER_BUDGET");
+  assert.deepEqual(result.matches, []);
+  assert.deepEqual(result.nearest_miss?.total, { amount: 18_000, currency: "USD" });
 });
 
 test("a month-only request searches from the first eligible day and returns the earliest day with flights", async () => {
@@ -98,10 +117,10 @@ test("a month-only request searches from the first eligible day and returns the 
     },
   });
 
-  const [offer] = await provider.search({ ...intent, departure_date: "2026-09" });
+  const [offer] = (await provider.search({ ...intent, departure_date: "2026-09" })).matches;
 
   assert.equal(offer?.fulfillment.departure_local, "2026-09-02T08:40");
-  assert.deepEqual(requestedDates, ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
+  assert.deepEqual(requestedDates, ["2026-09-01", "2026-09-02", "2026-09-03"]);
   assert.ok(requestedDates.every((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)));
 });
 
