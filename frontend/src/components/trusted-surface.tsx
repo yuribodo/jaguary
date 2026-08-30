@@ -292,6 +292,7 @@ const airportCityLabels: Record<string, string> = {
   GIG: "Rio de Janeiro",
   GRU: "São Paulo",
   JFK: "New York",
+  LHR: "London",
 };
 
 function freshnessLabel(observedAt: string) {

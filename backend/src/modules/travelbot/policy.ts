@@ -98,6 +98,14 @@ function mentionsThailand(recentMessages: readonly string[]): boolean {
   });
 }
 
+function mentionsLondonDestination(recentMessages: readonly string[]): boolean {
+  return recentMessages.some((message) => {
+    const normalized = normalizedText(message).trim();
+    return /^(?:london|londres)[.!?]?$/.test(normalized)
+      || /\b(?:to|para|pra|pro|destination(?: is|:)?|destino(?:\s+(?:e|:))?)\s+(?:london|londres)\b/.test(normalized);
+  });
+}
+
 function budgetFrom(recentMessages: readonly string[]): TravelIntent["max_total_budget"] | undefined {
   for (const message of recentMessages.toReversed()) {
     const normalized = normalizedText(message);
@@ -151,6 +159,13 @@ function inferredYear(monthIndex: number, now: Date, explicitYear?: string): num
 function departureDateFrom(recentMessages: readonly string[], now: Date): string | undefined {
   for (const message of recentMessages.toReversed()) {
     const normalized = normalizedText(message);
+    if (/\b(?:tomorrow|amanha)\b/.test(normalized)) {
+      return new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+      )).toISOString().slice(0, 10);
+    }
     if (/\bthis month\b/.test(normalized)) {
       return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     }
@@ -249,7 +264,9 @@ export function applyConversationConventions(
   const destinationRegion = destinationRegionFrom(recentMessages);
   if (current.destination_iata === null && contextual.destination_iata === null) {
     const preferredAirport = destinationRegion === undefined
-      ? mentionsThailand(recentMessages) ? "BKK" : undefined
+      ? mentionsLondonDestination(recentMessages)
+        ? "LHR"
+        : mentionsThailand(recentMessages) ? "BKK" : undefined
       : preferredAirportByRegion[destinationRegion];
     if (preferredAirport !== undefined) {
       contextual.destination_iata = preferredAirport;

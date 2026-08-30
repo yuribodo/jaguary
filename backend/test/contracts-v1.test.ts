@@ -111,6 +111,20 @@ test("signed payload schemas reject unknown fields", () => {
   }));
 });
 
+test("flight fulfillment preserves an optional official source URL", () => {
+  const sourceUrl = "https://www.google.com/travel/flights/search?tfs=demo";
+  const fulfillment = flightFulfillmentSchema.parse({
+    ...offerCandidateFixture.fulfillment,
+    source_url: sourceUrl,
+  });
+  const receipt = orderReceiptSchema.parse({
+    ...orderReceiptFixture,
+    fulfillment,
+  });
+
+  assert.equal(receipt.fulfillment.source_url, sourceUrl);
+});
+
 test("RFC 8785 canonical content and SHA-256 remain stable", () => {
   assert.equal(canonicalizeJson(canonicalCheckoutFixture.input), canonicalCheckoutFixture.canonical);
   assert.equal(sha256CanonicalJson(canonicalCheckoutFixture.input), canonicalCheckoutFixture.sha256);

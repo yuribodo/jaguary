@@ -424,3 +424,5 @@ Audit and business writes share transaction boundaries:
 - payment result evidence and `order.confirmed` roll back with the result, order/receipt insertion and terminal-state update.
 
 Terminal evidence uses an internal unique deduplication key, so retries do not append another decision, payment result or order event. The receipt stores the real audit event hashes and remains readable after process restart.
+
+For live Google Flights offers, VuelaYa copies the provider's HTTPS `source_url` into the flight fulfillment before signing the checkout. The same optional field survives checkout persistence, payment completion, order storage, and receipt reads. Migration `0016_backfill_flight_source_url` restores that provenance for historical TravelBot receipts only when the selected offer and receipt can be matched deterministically; it does not invent links for legacy rows without matching evidence.

@@ -37,6 +37,7 @@ export const flightFulfillmentSchema = z
     flight_numbers: z.array(z.string().min(1).max(32)).min(1).max(12).optional(),
     duration_minutes: z.number().int().positive().max(10_080).optional(),
     stops: z.number().int().nonnegative().max(11).optional(),
+    source_url: z.url().optional(),
   })
   .strict();
 

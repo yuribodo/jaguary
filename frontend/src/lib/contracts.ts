@@ -62,6 +62,7 @@ export type FlightFulfillment = {
   flight_numbers?: string[];
   duration_minutes?: number;
   stops?: number;
+  source_url?: string;
 };
 
 export type OfferCandidate = {

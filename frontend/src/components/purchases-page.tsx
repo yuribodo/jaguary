@@ -18,6 +18,7 @@ import {
 
 import { AccountPageShell } from "@/components/account-page-shell";
 import { useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
+import { ReceiptFlightSourceLink } from "@/components/receipt-flight-source-link";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { boundApi, BoundApiError, createRequestIdentity } from "@/lib/bound-api";
@@ -251,6 +252,9 @@ function ReceiptDetails({ receipt, onOpenChange }: Readonly<{
                   <Detail label="Cabin" value={cabinName(receipt.fulfillment.cabin)} />
                   <Detail label="Travelers" value={String(receipt.items.reduce((total, item) => total + item.quantity, 0))} />
                 </dl>
+                <div className="mt-3">
+                  <ReceiptFlightSourceLink sourceUrl={receipt.fulfillment.source_url} />
+                </div>
               </section>
 
               <section>

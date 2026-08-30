@@ -575,6 +575,64 @@ test("natural month expressions complete a pending travel search", async () => {
   }
 });
 
+test("a Portuguese London request keeps tomorrow and resolves the primary airport across turns", async () => {
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [
+              { field: "destination_iata" as const, reason: "AMBIGUOUS" as const },
+              { field: "departure_date" as const, reason: "AMBIGUOUS" as const },
+            ],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "I need more details.",
+        };
+      },
+    },
+    tools: { findOffers: async () => assert.fail("budget is still required") },
+    clock: { now: () => new Date("2026-08-30T12:00:00.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_london_tomorrow_create_001",
+    correlation_id: "corr_london_tomorrow_create_001",
+  });
+
+  const first = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "quero ir para londres amanha",
+    idempotency_key: "idem_london_tomorrow_first_001",
+    correlation_id: "corr_london_tomorrow_first_001",
+  });
+  assert.equal(first.intent.destination_iata, "LHR");
+  assert.equal(first.intent.departure_date, "2026-08-31");
+  assert.deepEqual(first.missing_fields, ["origin_iata", "max_total_budget"]);
+
+  const second = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "I want to leave from São Paulo (GRU).",
+    idempotency_key: "idem_london_tomorrow_second_001",
+    correlation_id: "corr_london_tomorrow_second_001",
+  });
+  assert.equal(second.intent.origin_iata, "GRU");
+  assert.equal(second.intent.destination_iata, "LHR");
+  assert.equal(second.intent.departure_date, "2026-08-31");
+  assert.deepEqual(second.missing_fields, ["max_total_budget"]);
+});
+
 test("a Brazilian numeric date in the user message completes the travel intent", async () => {
   let searchedDate: string | null = null;
   const service = new TravelBotService({

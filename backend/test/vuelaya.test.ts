@@ -173,6 +173,7 @@ test("a live checkout remains byte-for-byte idempotent when retried later", asyn
 
   assert.deepEqual(retried, first);
   assert.equal(retried.checkout_hash, first.checkout_hash);
+  assert.equal(first.terms.fulfillment.source_url, liveOffer.source_url);
   assert.deepEqual(recreatedAfterRestart.terms, first.terms);
   assert.equal(recreatedAfterRestart.checkout_hash, first.checkout_hash);
 });

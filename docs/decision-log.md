@@ -188,6 +188,14 @@ The work then evolved in five movements:
 
 **Outcome.** TravelBot is `PUBLIC`; external trust is keyed by `(agent_id, principal_id)`; logical credentials are customer-isolated; agent snapshots use the platform's cryptographic trust; economic authority uses the customer's policy evidence. A public agent can serve multiple customers without sharing authority or data. [ADR-007](adr/ADR-007-agent-operator-and-customer-authority.md) formalizes the correction.
 
+### 19. Preserve flight-source provenance through the receipt
+
+**When:** 2026-08-30
+
+**Problem.** Google Flights supplied an official result URL during discovery, but the value stopped at the offer. A completed Purchase Receipt therefore could not link back to the flight source, and historical receipts lost useful provenance even when the original selected offer remained durable.
+
+**Decision and outcome.** VuelaYa now copies the HTTPS source URL into the flight fulfillment before signing the checkout. The signed value follows the existing checkout → authorization → order → receipt path without creating a browser-authored field. A data migration backfills historical receipts only when the durable conversation, selected offer, checkout, and receipt agree; unmatched legacy receipts remain unchanged.
+
 ## Decisions that remained invariant
 
 1. The model proposes; deterministic code decides and commits.

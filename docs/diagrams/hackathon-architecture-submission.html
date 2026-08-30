@@ -33,8 +33,9 @@
     svg { display: block; width: 100%; height: auto; }
     @media print {
       @page { size: A4 landscape; margin: 0; }
-      body { padding: 0; }
-      main { width: 100%; }
+      html, body { width: 297mm; height: 210mm; overflow: hidden; }
+      body { min-height: 0; padding: 0; }
+      main { width: 297mm; height: 210mm; }
     }
   </style>
 </head>
@@ -42,7 +43,7 @@
   <main>
     <svg viewBox="0 0 1120 792" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hackathon-architecture-title hackathon-architecture-desc">
       <title id="hackathon-architecture-title">Jaguary governed agentic commerce architecture</title>
-      <desc id="hackathon-architecture-desc">Architecture showing a human-approved request moving from the Next.js Trusted Surface through TravelBot, merchant-authored checkout, deterministic Bound verification, atomic PostgreSQL reservation, and payment execution, with a direct agent-to-payment bypass visibly blocked.</desc>
+      <desc id="hackathon-architecture-desc">Architecture showing a human-approved request moving through TravelBot, OpenAI, SerpApi and Google Flights, Didit identity evidence, VuelaYa checkout, deterministic Bound verification, PostgreSQL, and a gated Yuno payment adapter, with a direct agent-to-payment bypass visibly blocked.</desc>
       <defs>
         <marker id="hackathon-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
           <polygon points="0 0, 8 3, 0 6" fill="#5e6158"/>
@@ -75,7 +76,7 @@
       <rect x="848" y="128" width="232" height="512" rx="8" fill="rgba(20,21,17,0.02)" stroke="rgba(20,21,17,0.16)" stroke-width="0.8"/>
       <rect x="864" y="132" width="132" height="16" rx="4" fill="#f4f0e7"/>
       <text x="930" y="144" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">EXTERNAL SERVICES</text>
-      <text x="872" y="168" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace">Evidence and execution, never authority</text>
+      <text x="872" y="168" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace">Adapters normalize; providers never create ALLOW</text>
 
       <!-- Connectors: approved road and supporting calls -->
       <line x1="144" y1="272" x2="144" y2="384" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
@@ -86,10 +87,10 @@
       <path d="M 368,336 V 256 Q 368,248 376,248 H 872"
             fill="none" stroke="#334de8" stroke-width="1.2" marker-end="url(#hackathon-arrow-link)"/>
 
-      <path d="M 464,336 V 312 Q 464,304 472,304 H 920 Q 928,304 928,312 V 336"
+      <path d="M 464,336 V 328 Q 464,320 472,320 H 920 Q 928,320 928,328 V 352"
             fill="none" stroke="#334de8" stroke-width="1.2" marker-end="url(#hackathon-arrow-link)"/>
 
-      <line x1="872" y1="360" x2="776" y2="360" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
+      <line x1="872" y1="376" x2="776" y2="376" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
 
       <line x1="632" y1="416" x2="632" y2="504" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
 
@@ -116,11 +117,11 @@
       <rect x="228" y="404" width="40" height="12" rx="4" fill="#f4f0e7"/>
       <text x="248" y="412" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">HTTPS</text>
 
-      <rect x="600" y="228" width="120" height="12" rx="4" fill="#f4f0e7"/>
-      <text x="660" y="236" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MODEL + SEARCH</text>
+      <rect x="584" y="228" width="152" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="660" y="236" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MODEL · FARES · KYA</text>
 
-      <rect x="636" y="284" width="112" height="12" rx="4" fill="#f4f0e7"/>
-      <text x="692" y="292" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PURCHASE INTENT</text>
+      <rect x="636" y="300" width="112" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="692" y="308" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PURCHASE INTENT</text>
 
       <rect x="788" y="340" width="72" height="12" rx="4" fill="#f4f0e7"/>
       <text x="824" y="348" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">SIGNED TERMS</text>
@@ -161,9 +162,9 @@
       <rect x="320" y="336" width="192" height="80" rx="8" fill="#ffffff" stroke="#141511" stroke-width="1"/>
       <rect x="332" y="344" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.40)" stroke-width="0.8"/>
       <text x="350" y="352" fill="#141511" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">APP</text>
-      <text x="416" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">TravelBot Service</text>
-      <text x="416" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Fastify · durable workflow</text>
-      <text x="416" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">strict tools · idempotent turns</text>
+      <text x="416" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Bound API + TravelBot</text>
+      <text x="416" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Fastify · auth · trust · travel</text>
+      <text x="416" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">strict tools · durable workflow</text>
 
       <rect x="584" y="336" width="192" height="80" rx="8" fill="#f4f0e7"/>
       <rect x="584" y="336" width="192" height="80" rx="8" fill="rgba(51,77,232,0.08)" stroke="#334de8" stroke-width="1.2"/>
@@ -182,21 +183,22 @@
       <text x="608" y="572" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">receipts · hash-chained audit</text>
 
       <!-- Nodes: external services -->
-      <rect x="872" y="208" width="184" height="80" rx="8" fill="#f4f0e7"/>
-      <rect x="872" y="208" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
-      <rect x="884" y="216" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
-      <text x="902" y="224" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">EXT</text>
-      <text x="964" y="248" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">AI + flight search</text>
-      <text x="964" y="264" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OpenAI Responses · SerpApi</text>
-      <text x="964" y="276" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">untrusted structured input</text>
+      <rect x="872" y="192" width="184" height="112" rx="8" fill="#f4f0e7"/>
+      <rect x="872" y="192" width="184" height="112" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <rect x="884" y="200" width="64" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
+      <text x="916" y="208" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PROVIDERS</text>
+      <text x="964" y="228" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Provider adapters</text>
+      <text x="964" y="248" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OpenAI · agent runtime</text>
+      <text x="964" y="268" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">SerpApi · Google Flights</text>
+      <text x="964" y="288" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Didit · KYA + liveness</text>
 
-      <rect x="872" y="336" width="184" height="80" rx="8" fill="#f4f0e7"/>
-      <rect x="872" y="336" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
-      <rect x="884" y="344" width="48" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
-      <text x="908" y="352" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MERCH</text>
-      <text x="964" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">VuelaYa Merchant</text>
-      <text x="964" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">authoritative price + inventory</text>
-      <text x="964" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">signed UCP-style checkout</text>
+      <rect x="872" y="352" width="184" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="872" y="352" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <rect x="884" y="360" width="48" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
+      <text x="908" y="368" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MERCH</text>
+      <text x="964" y="392" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">VuelaYa Merchant</text>
+      <text x="964" y="408" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">authoritative price + inventory</text>
+      <text x="964" y="420" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">signed UCP-style checkout</text>
 
       <rect x="872" y="504" width="184" height="80" rx="8" fill="#f4f0e7"/>
       <rect x="872" y="504" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
@@ -204,7 +206,7 @@
       <text x="902" y="520" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PAY</text>
       <text x="964" y="544" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PaymentExecutor</text>
       <text x="964" y="560" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">FakePaymentExecutor · default</text>
-      <text x="964" y="572" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Yuno adapter · tested, gated</text>
+      <text x="964" y="572" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Yuno sandbox API · tested, gated</text>
 
       <!-- Legend strip -->
       <line x1="40" y1="672" x2="1080" y2="672" stroke="rgba(20,21,17,0.16)" stroke-width="0.8"/>

@@ -99,6 +99,11 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
         offer_id: intent.offer_id,
         quantity: intent.quantity,
       }).slice(0, 24)}`;
+    const fixtureOffer = offer.offer_id === offerCandidateFixture.offer_id;
+    const fulfillment = fixtureOffer ? offer.fulfillment : {
+      ...offer.fulfillment,
+      source_url: offer.source_url,
+    };
     const existing = this.#checkouts.get(checkoutId);
     if (existing !== undefined) {
       if (this.clock.now().getTime() >= Date.parse(existing.terms.expires_at)) {
@@ -111,7 +116,7 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
         merchant_url: offer.merchant_url,
         items,
         total: { amount: totalAmount, currency: offer.total.currency },
-        fulfillment: offer.fulfillment,
+        fulfillment,
       };
       const persistedEconomics = {
         merchant_id: existing.terms.merchant_id,
@@ -127,7 +132,6 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
       }
       return structuredClone(existing);
     }
-    const fixtureOffer = offer.offer_id === offerCandidateFixture.offer_id;
     const now = this.clock.now();
     const createdAt = offer.observed_at === undefined ? now : new Date(offer.observed_at);
     const expiresAt = new Date(Math.min(
@@ -145,7 +149,7 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
       merchant_url: offer.merchant_url,
       items,
       total: { amount: totalAmount, currency: offer.total.currency },
-      fulfillment: offer.fulfillment,
+      fulfillment,
       created_at: createdAt.toISOString(),
       expires_at: expiresAt.toISOString(),
       protocol: checkoutTermsFixture.protocol,
