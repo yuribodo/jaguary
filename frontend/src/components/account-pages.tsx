@@ -7,13 +7,9 @@ import { CheckIcon, CircleAlertIcon, ExternalLinkIcon, FileCheck2Icon, LayoutDas
 import { AccountPageShell } from "@/components/account-page-shell";
 import { BoundApiError, boundApi } from "@/lib/bound-api";
 import type { AuditTimeline } from "@/lib/contracts";
+import { demoPurchases, walletCards } from "@/lib/demo-data";
 
 type WalletCard = { id: string; brand: "mastercard" | "visa"; lastFour: string; expiry: string; reference: string; limit: number; used: number; usage: string };
-const walletCards: WalletCard[] = [
-  { id: "mastercard-0446", brand: "mastercard", lastFour: "0446", expiry: "01/31", reference: "cred_demo_marta_mastercard", limit: 8000, used: 1860, usage: "Compras autorizadas por mandato" },
-  { id: "mastercard-5364", brand: "mastercard", lastFour: "5364", expiry: "05/29", reference: "cred_demo_marta_mastercard_2", limit: 5000, used: 920, usage: "Compras autorizadas por mandato" },
-  { id: "visa-1855", brand: "visa", lastFour: "1855", expiry: "12/30", reference: "cred_demo_marta_visa", limit: 6500, used: 0, usage: "Compras autorizadas por mandato" },
-];
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
@@ -34,12 +30,13 @@ export function PaymentMethodsPage() {
 }
 
 export function PurchasesPage() {
-  const purchases = [
+  const purchasesStatic = [
     { route: "São Paulo → Rio", amount: 600, date: "18 ago 2026", card: "•••• 0446", receipt: "vy_7B91K" },
     { route: "Cidade do México → Bogotá", amount: 2300, date: "12 ago 2026", card: "•••• 5364", receipt: "vy_42MQA" },
     { route: "São Paulo → Buenos Aires", amount: 1600, date: "03 ago 2026", card: "•••• 1855", receipt: "vy_9P3LD" },
     { route: "Buenos Aires → Cidade do México", amount: 3700, date: "27 jul 2026", card: "•••• 0446", receipt: "vy_1H8RX" },
   ];
+  const purchases = demoPurchases;
   const total = purchases.reduce((sum, purchase) => sum + purchase.amount, 0);
   return <AccountPageShell activePage="purchases"><PageIntro eyebrow="Conta / histórico" title="Compras" description="Passagens concluídas com a VuelaYa. Cada recibo permanece separado dos mandatos e dos checkouts que o antecederam." /><section className="mt-8"><div className="mb-5 flex items-baseline justify-between"><div><p className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">Período selecionado</p><h2 className="mt-1 text-2xl [font-family:var(--font-serif)]">Agosto de 2026</h2></div><p className="text-sm text-muted-foreground"><strong className="text-foreground">{brl.format(total)}</strong> em 4 compras</p></div><div className="grid gap-4">{purchases.map((purchase) => <article className="grid gap-4 rounded-xl border bg-card p-5 shadow-xs sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center" key={purchase.receipt}><span className="grid size-11 place-items-center rounded-full border bg-background text-[#334de8]"><PlaneIcon className="size-5" /></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><h3 className="text-lg [font-family:var(--font-serif)]">{purchase.route}</h3><span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/8 px-2 py-0.5 font-mono text-[10px] text-emerald-900"><CheckIcon className="size-3" /> CONCLUÍDA</span></div><p className="mt-1 text-sm text-muted-foreground">VuelaYa · {purchase.date} · {purchase.card}</p><code className="mt-2 block text-[11px] text-muted-foreground">Recibo {purchase.receipt}</code></div><strong className="text-lg sm:text-right">{brl.format(purchase.amount)}</strong></article>)}</div></section><p className="mt-5 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><ReceiptTextIcon className="mt-0.5 size-3.5 shrink-0" />Histórico fictício para demonstração visual. Não representa transações reais.</p></AccountPageShell>;
 }
