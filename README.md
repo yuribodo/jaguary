@@ -10,7 +10,7 @@ The current product demonstrates a flight-purchase journey: TravelBot interprets
 
 > **OpenAI proposes. The merchant fixes the terms. AP2 carries authority. Bound decides. Payment waits for `ALLOW`.**
 
-[Explore the technical documentation](docs/technical/README.md) · [Open the system diagram](docs/diagrams/system-context.html) · [Review known gaps](docs/technical/known-gaps.md)
+[Explore the technical documentation](docs/technical/README.md) · [Open the system diagram](docs/diagrams/system-context.html) · [Explore the database map](docs/diagrams/database-domain-map.html) · [Review known gaps](docs/technical/known-gaps.md)
 
 ## Why Jaguary exists
 
@@ -159,6 +159,7 @@ For detailed database, provider, Postman, and integration-test instructions, use
 | --- | --- |
 | Start here | [Documentation home](docs/README.md) |
 | Architecture and boundaries | [Technical documentation](docs/technical/README.md) |
+| PostgreSQL tables and relationships | [Database model and diagrams](docs/technical/database-model.md) |
 | OpenAI and TravelBot | [Integration guide](docs/technical/openai-travelbot.md) |
 | Google Flights through SerpApi | [Integration guide](docs/technical/google-flights-search.md) |
 | Didit and agent trust | [Integration guide](docs/technical/didit-trust.md) |

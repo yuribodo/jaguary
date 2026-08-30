@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jaguary database domain map</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{--paper:#f4f0e7;--paper2:#faf8f2;--ink:#141511;--muted:#5e6158;--soft:#777b82;--rule:rgba(20,21,17,.16);--accent:#334de8;--accent-tint:rgba(51,77,232,.08)}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Geist,sans-serif}.page{max-width:1360px;margin:0 auto;padding:40px}.eyebrow{margin:0 0 8px;color:var(--muted);font:500 8px/1 Geist Mono,monospace;letter-spacing:.18em;text-transform:uppercase}h1{margin:0;font:400 40px/1.04 Instrument Serif,serif}.intro{max-width:880px;margin:12px 0 28px;color:var(--muted);font-size:16px;line-height:1.5}.diagram{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--paper2)}svg{display:block;min-width:1280px;width:100%;height:auto}.node{fill:#faf8f2;stroke:#141511;stroke-width:1}.focal{fill:rgba(51,77,232,.08);stroke:#334de8;stroke-width:2}.head{fill:rgba(20,21,17,.04)}.focal-head{fill:rgba(51,77,232,.10)}.tag{fill:#5e6158;font:500 8px Geist Mono,monospace;letter-spacing:.14em}.name{fill:#141511;font:600 12px Geist,sans-serif}.count{fill:#777b82;font:500 8px Geist Mono,monospace}.table{fill:#5e6158;font:400 9px Geist Mono,monospace}.edge{fill:none;stroke:#5e6158;stroke-width:2}.edge-accent{fill:none;stroke:#334de8;stroke-width:2}.edge-logical{fill:none;stroke:#141511;stroke-width:2;stroke-dasharray:8 8}.edge-label,.legend{fill:#5e6158;font:500 8px Geist Mono,monospace;letter-spacing:.06em}.cards{display:grid;grid-template-columns:1.15fr 1fr .85fr;gap:16px;margin-top:20px}.card{padding:20px;border:1px solid var(--rule);border-radius:6px;background:#fff}.card h2{margin:0 0 8px;font-size:15px}.card p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}.footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--rule);color:var(--muted);font:400 9px Geist Mono,monospace}
+  </style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">CURRENT IMPLEMENTATION · POSTGRESQL</p>
+  <h1>Twenty-five tables, one authority rail</h1>
+  <p class="intro">The database is organized around five durable domains. Solid lines are enforced foreign keys; dashed lines are application-level bindings stored without a database constraint.</p>
+  <div class="diagram">
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="database-domain-map-title database-domain-map-desc">
+      <title id="database-domain-map-title">Jaguary database domain map</title>
+      <desc id="database-domain-map-desc">Five database domains list all twenty-five PostgreSQL tables and show enforced foreign-key dependencies versus logical application bindings from identity and TravelBot through authority to payments and evidence.</desc>
+      <defs>
+        <marker id="database-domain-map-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5e6158"/></marker>
+        <marker id="database-domain-map-arrow-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#334de8"/></marker>
+        <marker id="database-domain-map-arrow-ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#141511"/></marker>
+      </defs>
+      <rect width="1280" height="720" fill="#f4f0e7"/>
+
+      <!-- Relationships are painted before domain boxes. -->
+      <path class="edge" d="M300 228 H340 Q352 228 352 216 V188 Q352 176 364 176 H392" marker-end="url(#database-domain-map-arrow)"/>
+      <rect x="304" y="204" width="80" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="344" y="212" text-anchor="middle">AGENT BINDING</text>
+
+      <path class="edge" d="M300 324 H628 Q640 324 640 312 V288 Q640 276 652 276 H688" marker-end="url(#database-domain-map-arrow)"/>
+      <rect x="436" y="300" width="96" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="484" y="308" text-anchor="middle">IDENTITY + TRUST</text>
+
+      <path class="edge-logical" d="M300 420 H344 Q356 420 356 432 V500 Q356 512 368 512 H392" marker-end="url(#database-domain-map-arrow-ink)"/>
+      <rect x="304" y="444" width="72" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="340" y="452" text-anchor="middle">PRINCIPAL ID</text>
+
+      <path class="edge-logical" d="M632 204 H652 Q664 204 664 216 V228 Q664 240 676 240 H688" marker-end="url(#database-domain-map-arrow-ink)"/>
+      <rect x="634" y="180" width="52" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="660" y="188" text-anchor="middle">LOGICAL IDS</text>
+
+      <path class="edge" d="M632 312 H688" marker-end="url(#database-domain-map-arrow)"/>
+      <rect x="636" y="292" width="48" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="660" y="300" text-anchor="middle">WATCH FK</text>
+
+      <path class="edge-logical" d="M512 288 V468" marker-end="url(#database-domain-map-arrow-ink)"/>
+      <rect x="524" y="372" width="72" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="560" y="380">CHECKOUT IDS</text>
+
+      <path class="edge" d="M632 520 H652 Q664 520 664 508 V356 Q664 344 676 344 H688" marker-end="url(#database-domain-map-arrow)"/>
+      <rect x="636" y="420" width="72" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="672" y="428" text-anchor="middle">CHECKOUT HASH</text>
+
+      <path class="edge-accent" d="M944 288 H980 Q992 288 992 300 V320 Q992 332 1004 332 H1024" marker-end="url(#database-domain-map-arrow-accent)"/>
+      <rect x="948" y="264" width="84" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="990" y="272" text-anchor="middle">AUTHORIZATION</text>
+
+      <path class="edge" d="M632 548 H980 Q992 548 992 536 V404 Q992 392 1004 392 H1024" marker-end="url(#database-domain-map-arrow)"/>
+      <rect x="780" y="524" width="96" height="12" rx="4" fill="#f4f0e7"/><text class="edge-label" x="828" y="532" text-anchor="middle">CHECKOUT + CREDENTIAL</text>
+
+      <!-- Identity and trust -->
+      <rect class="node" x="40" y="96" width="260" height="368" rx="8"/>
+      <rect class="head" x="40" y="96" width="260" height="48" rx="8"/><rect x="40" y="136" width="260" height="8" fill="rgba(20,21,17,.04)"/>
+      <text class="tag" x="56" y="116">DOMAIN</text><text class="name" x="56" y="136">Identity + agent trust</text><text class="count" x="284" y="116" text-anchor="end">7 TABLES</text>
+      <text class="table" x="64" y="176">principals</text>
+      <text class="table" x="64" y="208">principal_auth_identities</text>
+      <text class="table" x="64" y="240">principal_login_transactions</text>
+      <text class="table" x="64" y="272">principal_sessions</text>
+      <line x1="56" y1="292" x2="284" y2="292" stroke="rgba(20,21,17,.16)"/>
+      <text class="table" x="64" y="324">agents</text>
+      <text class="table" x="64" y="356">agent_attestations</text>
+      <text class="table" x="64" y="388">agent_attestation_events</text>
+      <text class="tag" x="64" y="436">OWNS WHO MAY ACT</text>
+
+      <!-- TravelBot runtime -->
+      <rect class="node" x="392" y="56" width="240" height="288" rx="8"/>
+      <rect class="head" x="392" y="56" width="240" height="48" rx="8"/><rect x="392" y="96" width="240" height="8" fill="rgba(20,21,17,.04)"/>
+      <text class="tag" x="408" y="76">DOMAIN</text><text class="name" x="408" y="96">TravelBot runtime</text><text class="count" x="616" y="76" text-anchor="end">9 TABLES</text>
+      <text class="table" x="416" y="148">travel_conversations</text><text class="table" x="416" y="168">travel_messages</text>
+      <text class="table" x="416" y="188">travel_intent_snapshots</text><text class="table" x="416" y="208">travel_model_runs</text>
+      <text class="table" x="416" y="228">travel_tool_executions</text><text class="table" x="416" y="248">travel_approvals</text>
+      <text class="table" x="416" y="268">travel_sse_events</text><text class="table" x="416" y="288">travel_watches</text>
+      <text class="table" x="416" y="308">travel_watch_checks</text>
+
+      <!-- Commerce and credentials -->
+      <rect class="node" x="392" y="468" width="240" height="104" rx="8"/>
+      <rect class="head" x="392" y="468" width="240" height="48" rx="8"/><rect x="392" y="508" width="240" height="8" fill="rgba(20,21,17,.04)"/>
+      <text class="tag" x="408" y="488">DOMAIN</text><text class="name" x="408" y="508">Commerce inputs</text><text class="count" x="616" y="488" text-anchor="end">2 TABLES</text>
+      <text class="table" x="416" y="540">payment_credentials</text><text class="table" x="416" y="560">checkouts</text>
+
+      <!-- Authority -->
+      <rect class="focal" x="688" y="176" width="256" height="208" rx="8"/>
+      <rect class="focal-head" x="688" y="176" width="256" height="48" rx="8"/><rect x="688" y="216" width="256" height="8" fill="rgba(51,77,232,.10)"/>
+      <text class="tag" x="704" y="196">TRANSACTIONAL CORE</text><text class="name" x="704" y="216">Authority + replay</text><text class="count" x="928" y="196" text-anchor="end">4 TABLES</text>
+      <text class="table" x="712" y="256">mandates</text><text class="table" x="712" y="284">mandate_biometric_consents</text>
+      <text class="table" x="712" y="312">nonces</text><text class="table" x="712" y="340">authorizations</text>
+      <text class="tag" x="712" y="368">ALLOW IS RESERVED HERE</text>
+
+      <!-- Settlement and evidence -->
+      <rect class="node" x="1024" y="280" width="216" height="136" rx="8"/>
+      <rect class="head" x="1024" y="280" width="216" height="48" rx="8"/><rect x="1024" y="320" width="216" height="8" fill="rgba(20,21,17,.04)"/>
+      <text class="tag" x="1040" y="300">DOMAIN</text><text class="name" x="1040" y="320">Effect + evidence</text><text class="count" x="1224" y="300" text-anchor="end">3 TABLES</text>
+      <text class="table" x="1048" y="352">payments</text><text class="table" x="1048" y="376">orders</text><text class="table" x="1048" y="400">audit_events</text>
+
+      <line x1="40" y1="632" x2="1240" y2="632" stroke="rgba(20,21,17,.16)"/>
+      <text class="tag" x="40" y="660">LEGEND</text>
+      <line class="edge" x1="144" y1="656" x2="192" y2="656" marker-end="url(#database-domain-map-arrow)"/><text class="legend" x="204" y="660">database-enforced FK</text>
+      <line class="edge-logical" x1="424" y1="656" x2="472" y2="656" marker-end="url(#database-domain-map-arrow-ink)"/><text class="legend" x="484" y="660">logical binding, no FK</text>
+      <line class="edge-accent" x1="744" y1="656" x2="792" y2="656" marker-end="url(#database-domain-map-arrow-accent)"/><text class="legend" x="804" y="660">authorized economic path</text>
+      <text class="legend" x="40" y="696">Source: backend/src/db/schema.ts · 25 tables · PostgreSQL is the transactional source of truth.</text>
+    </svg>
+  </div>
+  <section class="cards" aria-label="Database map notes">
+    <article class="card"><h2>The authority spine</h2><p>Mandates define scope, checkouts fix merchant economics, nonces stop replay, and authorizations reserve the exact payable action.</p></article>
+    <article class="card"><h2>Durable agent runtime</h2><p>Conversation state, model runs, tools, approvals, resumable events, and autonomous watches survive process restarts in nine TravelBot tables.</p></article>
+    <article class="card"><h2>Integrity signal</h2><p>Dashed edges expose useful hardening opportunities where IDs are stored and validated in application code but not by a foreign key.</p></article>
+  </section>
+  <p class="footer">JAGUARY · DATABASE DOMAIN MAP · VERIFIED AGAINST DRIZZLE SCHEMA ON 2026-08-30</p>
+</main>
+</body>
+</html>

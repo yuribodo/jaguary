@@ -76,6 +76,14 @@ Search entries are capped and expire, but the remembered-offer map has no evicti
 
 **Required work:** load a durable signing key, publish an overlapping JWKS key set, and define rotation/revocation operations.
 
+### Some ownership and workflow bindings are not database-enforced
+
+[`agents.principal_id`](../../backend/src/db/schema.ts) and `payment_credentials.principal_id` are not direct foreign keys to `principals`. Travel workflow rows also store checkout, mandate, authorization, and receipt identifiers without foreign keys in several places. The complete distinction between enforced and logical edges is documented in the [database model](database-model.md).
+
+**Impact:** service-level validation protects normal application paths, but a regression, migration, or alternate writer can create orphaned ownership or workflow references that PostgreSQL cannot reject.
+
+**Required work:** define deletion and retention behavior first, then add validated foreign keys where lifecycle ownership is shared; keep intentionally polymorphic ledger references documented and covered by correlation tests.
+
 ## Lower-severity hardening
 
 - The SerpApi adapter marks provider failures as retryable but performs no bounded retry/backoff itself.

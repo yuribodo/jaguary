@@ -21,6 +21,8 @@ Shopping agents are good at interpreting intent and navigating choices, but econ
 
 PostgreSQL stores durable conversations, intent snapshots, tool executions, encrypted approval interruptions, identity/trust state, mandates, nonces, authorizations, payment attempts, receipts, and audit events.
 
+The [database model](database-model.md) maps all 25 tables and expands the transactional authority spine down to its selected columns and foreign keys.
+
 ## Request path
 
 1. The browser sends a message with an idempotency key and correlation ID.

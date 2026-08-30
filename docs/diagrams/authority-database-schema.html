@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jaguary authority database schema</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{--paper:#f4f0e7;--paper2:#faf8f2;--ink:#141511;--muted:#5e6158;--soft:#777b82;--rule:rgba(20,21,17,.16);--accent:#334de8}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Geist,sans-serif}.page{max-width:1360px;margin:0 auto;padding:40px}.eyebrow{margin:0 0 8px;color:var(--muted);font:500 8px/1 Geist Mono,monospace;letter-spacing:.18em;text-transform:uppercase}h1{margin:0;font:400 40px/1.04 Instrument Serif,serif}.intro{max-width:900px;margin:12px 0 28px;color:var(--muted);font-size:16px;line-height:1.5}.diagram{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--paper2)}svg{display:block;min-width:1280px;width:100%;height:auto}.table-box{fill:#faf8f2;stroke:#141511;stroke-width:1}.header-band{fill:rgba(20,21,17,.05)}.row-even{fill:rgba(20,21,17,.025)}.table-name{fill:#141511;font:600 12px Geist,sans-serif}.tag{fill:#5e6158;font:500 8px Geist Mono,monospace;letter-spacing:.12em}.column{fill:#141511;font:500 12px Geist,sans-serif}.sqltype{fill:#5e6158;font:400 8px Geist Mono,monospace}.chip{fill:#f4f0e7;stroke:rgba(20,21,17,.22);stroke-width:1}.chip-text{fill:#5e6158;font:500 8px Geist Mono,monospace}.overflow{fill:#777b82;font:400 8px Geist Mono,monospace}.fk{fill:none;stroke:#5e6158;stroke-width:2}.legend{fill:#5e6158;font:400 8px Geist Mono,monospace}.cards{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-top:20px}.card{padding:20px;border:1px solid var(--rule);border-radius:6px;background:#fff}.card h2{margin:0 0 8px;font-size:15px}.card p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}.footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--rule);color:var(--muted);font:400 9px Geist Mono,monospace}
+  </style>
+</head>
+<body>
+<main class="page">
+  <p class="eyebrow">PHYSICAL SCHEMA · ECONOMIC CORE</p>
+  <h1>The transaction spine, column by column</h1>
+  <p class="intro">Five tables enforce the binding from human mandate and merchant checkout through replay protection, reserved authorization, and the single payment attempt.</p>
+  <div class="diagram">
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="authority-database-schema-title authority-database-schema-desc">
+      <title id="authority-database-schema-title">Jaguary authority database schema</title>
+      <desc id="authority-database-schema-desc">Physical PostgreSQL schema for mandates, checkouts, nonces, authorizations, and payments, showing selected SQL columns, constraints, and five enforced foreign keys with default no-action deletion behavior.</desc>
+      <defs>
+        <marker id="authority-database-schema-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0 0,8 4,0 8" fill="#5e6158"/></marker>
+      </defs>
+      <rect width="1280" height="720" fill="#f4f0e7"/>
+
+      <!-- Column-level foreign keys, drawn before tables. -->
+      <path class="fk" d="M480 188 H456 Q440 188 440 172 V148 Q440 132 424 132 H360" marker-end="url(#authority-database-schema-arrow)"/>
+
+      <path class="fk" d="M800 212 H824 Q840 212 840 196 V148 Q840 132 856 132 H920" marker-end="url(#authority-database-schema-arrow)"/>
+
+      <path class="fk" d="M360 472 H384 Q400 472 400 456 V164 Q400 148 384 148 H360" marker-end="url(#authority-database-schema-arrow)"/>
+
+      <path class="fk" d="M360 544 H384 Q400 544 400 560 V632 Q400 648 416 648 H864 Q880 648 880 632 V164 Q880 148 896 148 H920" marker-end="url(#authority-database-schema-arrow)"/>
+
+      <path class="fk" d="M480 496 H456 Q432 496 432 472 V464 Q432 448 416 448 H360" marker-end="url(#authority-database-schema-arrow)"/>
+
+      <!-- public.mandates -->
+      <rect class="table-box" x="40" y="80" width="320" height="240" rx="8"/>
+      <rect class="header-band" x="40" y="80" width="320" height="48" rx="8"/><rect x="40" y="120" width="320" height="8" fill="rgba(20,21,17,.05)"/>
+      <rect x="56" y="92" width="40" height="16" rx="4" class="chip"/><text class="chip-text" x="76" y="104" text-anchor="middle">TABLE</text><text class="table-name" x="108" y="104">public.mandates</text>
+      <rect class="row-even" x="40" y="152" width="320" height="24"/><rect class="row-even" x="40" y="200" width="320" height="24"/><rect class="row-even" x="40" y="248" width="320" height="24"/><rect class="row-even" x="40" y="296" width="320" height="24"/>
+      <text class="column" x="56" y="144">mandate_id</text><rect class="chip" x="168" y="132" width="24" height="16" rx="4"/><text class="chip-text" x="180" y="144" text-anchor="middle">PK</text><text class="sqltype" x="344" y="144" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="168">principal_id</text><rect class="chip" x="168" y="156" width="24" height="16" rx="4"/><text class="chip-text" x="180" y="168" text-anchor="middle">FK</text><text class="sqltype" x="344" y="168" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="192">agent_id</text><rect class="chip" x="168" y="180" width="24" height="16" rx="4"/><text class="chip-text" x="180" y="192" text-anchor="middle">FK</text><text class="sqltype" x="344" y="192" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="216">credential_id</text><rect class="chip" x="168" y="204" width="24" height="16" rx="4"/><text class="chip-text" x="180" y="216" text-anchor="middle">FK</text><text class="sqltype" x="344" y="216" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="240">status</text><text class="sqltype" x="344" y="240" text-anchor="end">varchar(16)</text>
+      <text class="column" x="56" y="264">terms_hash</text><text class="sqltype" x="344" y="264" text-anchor="end">char(64)</text>
+      <text class="column" x="56" y="288">expires_at</text><text class="sqltype" x="344" y="288" text-anchor="end">timestamptz</text>
+      <text class="overflow" x="56" y="312">+ 24 more columns</text>
+
+      <!-- public.nonces -->
+      <rect class="table-box" x="480" y="80" width="320" height="240" rx="8"/>
+      <rect class="header-band" x="480" y="80" width="320" height="48" rx="8"/><rect x="480" y="120" width="320" height="8" fill="rgba(20,21,17,.05)"/>
+      <rect x="496" y="92" width="40" height="16" rx="4" class="chip"/><text class="chip-text" x="516" y="104" text-anchor="middle">TABLE</text><text class="table-name" x="548" y="104">public.nonces</text>
+      <rect class="row-even" x="480" y="152" width="320" height="24"/><rect class="row-even" x="480" y="200" width="320" height="24"/><rect class="row-even" x="480" y="248" width="320" height="24"/><rect class="row-even" x="480" y="296" width="320" height="24"/>
+      <text class="column" x="496" y="144">agent_id</text><rect class="chip" x="608" y="132" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="144" text-anchor="middle">PK</text><text class="sqltype" x="784" y="144" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="168">nonce</text><rect class="chip" x="608" y="156" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="168" text-anchor="middle">PK</text><text class="sqltype" x="784" y="168" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="192">mandate_id</text><rect class="chip" x="608" y="180" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="192" text-anchor="middle">FK</text><text class="sqltype" x="784" y="192" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="216">checkout_id</text><rect class="chip" x="608" y="204" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="216" text-anchor="middle">FK</text><text class="sqltype" x="784" y="216" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="240">checkout_hash</text><rect class="chip" x="608" y="228" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="240" text-anchor="middle">FK</text><text class="sqltype" x="784" y="240" text-anchor="end">char(64)</text>
+      <text class="column" x="496" y="264">payload_hash</text><rect class="chip" x="608" y="252" width="24" height="16" rx="4"/><text class="chip-text" x="620" y="264" text-anchor="middle">UQ</text><text class="sqltype" x="784" y="264" text-anchor="end">char(64)</text>
+      <text class="column" x="496" y="288">expires_at</text><text class="sqltype" x="784" y="288" text-anchor="end">timestamptz</text>
+      <text class="overflow" x="496" y="312">+ 3 more columns</text>
+
+      <!-- public.checkouts -->
+      <rect class="table-box" x="920" y="80" width="320" height="240" rx="8"/>
+      <rect class="header-band" x="920" y="80" width="320" height="48" rx="8"/><rect x="920" y="120" width="320" height="8" fill="rgba(20,21,17,.05)"/>
+      <rect x="936" y="92" width="40" height="16" rx="4" class="chip"/><text class="chip-text" x="956" y="104" text-anchor="middle">TABLE</text><text class="table-name" x="988" y="104">public.checkouts</text>
+      <rect class="row-even" x="920" y="152" width="320" height="24"/><rect class="row-even" x="920" y="200" width="320" height="24"/><rect class="row-even" x="920" y="248" width="320" height="24"/><rect class="row-even" x="920" y="296" width="320" height="24"/>
+      <text class="column" x="936" y="144">checkout_id</text><rect class="chip" x="1048" y="132" width="24" height="16" rx="4"/><text class="chip-text" x="1060" y="144" text-anchor="middle">PK</text><text class="sqltype" x="1224" y="144" text-anchor="end">varchar(128)</text>
+      <text class="column" x="936" y="168">checkout_hash</text><rect class="chip" x="1048" y="156" width="24" height="16" rx="4"/><text class="chip-text" x="1060" y="168" text-anchor="middle">UQ</text><text class="sqltype" x="1224" y="168" text-anchor="end">char(64)</text>
+      <text class="column" x="936" y="192">merchant_id</text><text class="sqltype" x="1224" y="192" text-anchor="end">varchar(128)</text>
+      <text class="column" x="936" y="216">total_amount</text><text class="sqltype" x="1224" y="216" text-anchor="end">bigint</text>
+      <text class="column" x="936" y="240">currency</text><text class="sqltype" x="1224" y="240" text-anchor="end">char(3)</text>
+      <text class="column" x="936" y="264">expires_at</text><text class="sqltype" x="1224" y="264" text-anchor="end">timestamptz</text>
+      <text class="column" x="936" y="288">merchant_signature_value</text><text class="sqltype" x="1224" y="288" text-anchor="end">text</text>
+      <text class="overflow" x="936" y="312">+ 11 more columns</text>
+
+      <!-- public.authorizations -->
+      <rect class="table-box" x="40" y="388" width="320" height="240" rx="8"/>
+      <rect class="header-band" x="40" y="388" width="320" height="48" rx="8"/><rect x="40" y="428" width="320" height="8" fill="rgba(20,21,17,.05)"/>
+      <rect x="56" y="400" width="40" height="16" rx="4" class="chip"/><text class="chip-text" x="76" y="412" text-anchor="middle">TABLE</text><text class="table-name" x="108" y="412">public.authorizations</text>
+      <rect class="row-even" x="40" y="460" width="320" height="24"/><rect class="row-even" x="40" y="508" width="320" height="24"/><rect class="row-even" x="40" y="556" width="320" height="24"/><rect class="row-even" x="40" y="604" width="320" height="24"/>
+      <text class="column" x="56" y="452">authorization_id</text><rect class="chip" x="184" y="440" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="452" text-anchor="middle">PK</text><text class="sqltype" x="344" y="452" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="476">mandate_id</text><rect class="chip" x="184" y="464" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="476" text-anchor="middle">FK</text><text class="sqltype" x="344" y="476" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="500">agent_id</text><rect class="chip" x="184" y="488" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="500" text-anchor="middle">FK</text><text class="sqltype" x="344" y="500" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="524">principal_id</text><rect class="chip" x="184" y="512" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="524" text-anchor="middle">FK</text><text class="sqltype" x="344" y="524" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="548">checkout_id</text><rect class="chip" x="184" y="536" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="548" text-anchor="middle">FK</text><text class="sqltype" x="344" y="548" text-anchor="end">varchar(128)</text>
+      <text class="column" x="56" y="572">checkout_hash</text><rect class="chip" x="184" y="560" width="24" height="16" rx="4"/><text class="chip-text" x="196" y="572" text-anchor="middle">FK</text><text class="sqltype" x="344" y="572" text-anchor="end">char(64)</text>
+      <text class="column" x="56" y="596">status</text><text class="sqltype" x="344" y="596" text-anchor="end">varchar(24)</text>
+      <text class="overflow" x="56" y="620">+ 19 more columns</text>
+
+      <!-- public.payments -->
+      <rect class="table-box" x="480" y="388" width="320" height="240" rx="8"/>
+      <rect class="header-band" x="480" y="388" width="320" height="48" rx="8"/><rect x="480" y="428" width="320" height="8" fill="rgba(20,21,17,.05)"/>
+      <rect x="496" y="400" width="40" height="16" rx="4" class="chip"/><text class="chip-text" x="516" y="412" text-anchor="middle">TABLE</text><text class="table-name" x="548" y="412">public.payments</text>
+      <rect class="row-even" x="480" y="460" width="320" height="24"/><rect class="row-even" x="480" y="508" width="320" height="24"/><rect class="row-even" x="480" y="556" width="320" height="24"/><rect class="row-even" x="480" y="604" width="320" height="24"/>
+      <text class="column" x="496" y="452">payment_attempt_id</text><rect class="chip" x="640" y="440" width="24" height="16" rx="4"/><text class="chip-text" x="652" y="452" text-anchor="middle">PK</text><text class="sqltype" x="784" y="452" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="476">payment_id</text><rect class="chip" x="640" y="464" width="24" height="16" rx="4"/><text class="chip-text" x="652" y="476" text-anchor="middle">UQ</text><text class="sqltype" x="784" y="476" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="500">authorization_id</text><rect class="chip" x="640" y="488" width="24" height="16" rx="4"/><text class="chip-text" x="652" y="500" text-anchor="middle">FK</text><text class="sqltype" x="784" y="500" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="524">credential_id</text><rect class="chip" x="640" y="512" width="24" height="16" rx="4"/><text class="chip-text" x="652" y="524" text-anchor="middle">FK</text><text class="sqltype" x="784" y="524" text-anchor="end">varchar(128)</text>
+      <text class="column" x="496" y="548">amount</text><text class="sqltype" x="784" y="548" text-anchor="end">bigint</text>
+      <text class="column" x="496" y="572">currency</text><text class="sqltype" x="784" y="572" text-anchor="end">char(3)</text>
+      <text class="column" x="496" y="596">status</text><text class="sqltype" x="784" y="596" text-anchor="end">varchar(16)</text>
+      <text class="overflow" x="496" y="620">+ 7 more columns</text>
+
+      <line x1="40" y1="672" x2="1240" y2="672" stroke="rgba(20,21,17,.16)"/>
+      <text class="tag" x="40" y="700">LEGEND</text>
+      <rect class="chip" x="144" y="688" width="24" height="16" rx="4"/><text class="chip-text" x="156" y="700" text-anchor="middle">PK</text><text class="legend" x="180" y="700">primary key</text>
+      <rect class="chip" x="296" y="688" width="24" height="16" rx="4"/><text class="chip-text" x="308" y="700" text-anchor="middle">FK</text><text class="legend" x="332" y="700">foreign key</text>
+      <rect class="chip" x="448" y="688" width="24" height="16" rx="4"/><text class="chip-text" x="460" y="700" text-anchor="middle">UQ</text><text class="legend" x="484" y="700">unique</text>
+      <line class="fk" x1="592" y1="696" x2="640" y2="696" marker-end="url(#authority-database-schema-arrow)"/><text class="legend" x="652" y="700">column-level FK · default ON DELETE NO ACTION</text>
+    </svg>
+  </div>
+  <section class="cards" aria-label="Schema notes">
+    <article class="card"><h2>Why these five</h2><p>They are the atomic path from immutable authority and merchant-authored economics to replay prevention, reservation, and payment. Other domains feed this spine but do not replace its checks.</p></article>
+    <article class="card"><h2>Reading the omissions</h2><p>Each final row reports hidden columns. Identity, credential ownership, signatures, idempotency, evidence hashes, timestamps, and indexes remain in the Drizzle schema even when omitted here.</p></article>
+  </section>
+  <p class="footer">JAGUARY · AUTHORITY DATABASE SCHEMA · SELECTED COLUMNS FROM backend/src/db/schema.ts</p>
+</main>
+</body>
+</html>

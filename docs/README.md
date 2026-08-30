@@ -8,6 +8,7 @@ This directory separates current behavior, operating instructions, architecture 
 | --- | --- |
 | Understand the product and its boundaries | [Technical documentation](technical/README.md) |
 | See how the complete system fits together | [System architecture](technical/architecture.md) |
+| Understand PostgreSQL tables and relationships | [Database model](technical/database-model.md) |
 | Understand OpenAI, Google Flights search, Didit, UCP, or AP2 | [Integration guides](technical/README.md#integration-guides) |
 | Review missing or incorrect implementation work | [Known implementation gaps](technical/known-gaps.md) |
 | Run the repository locally | [Root README](../README.md#run-locally) |

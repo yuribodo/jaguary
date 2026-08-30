@@ -38,6 +38,7 @@ The shortest accurate model is:
 
 ## Engineering status
 
+- [Database model](database-model.md) — all 25 tables by domain, the detailed authority schema, enforced relationships, and logical bindings.
 - [Known implementation gaps](known-gaps.md) — prioritized production, interoperability, and reliability findings backed by code anchors.
 
 ## Core invariants

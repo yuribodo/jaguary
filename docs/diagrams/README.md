@@ -15,6 +15,8 @@ As páginas explicativas e os limites de conformidade de cada integração estã
 ## Implementação atual
 
 - [Como cada parte do Bound funciona hoje](bound-current-system.html) — arquitetura executável, superfícies frontend, TravelBot, compra, ciclos de estado, ledger e persistência.
+- [Mapa dos 25 objetos persistidos por domínio](database-domain-map.html) — inventário completo e distinção entre FKs e vínculos lógicos.
+- [Schema físico do núcleo de autorização](authority-database-schema.html) — colunas e relacionamentos de mandato, nonce, checkout, autorização e pagamento.
 
 ## Contexto de produto e decisões anteriores
 
