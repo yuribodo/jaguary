@@ -1,2 +1,2 @@
-import { AgentsPage } from "@/components/workspace-pages";
-export default function Page() { return <AgentsPage />; }
+import { redirect } from "next/navigation";
+export default function Page() { redirect("/connected-agents"); }
