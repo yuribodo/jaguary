@@ -1,3 +1,3 @@
-import { PaymentMethodsPage } from "@/components/account-pages";
+import { PaymentMethodsPage } from "@/components/payment-methods-page";
 
 export default function Page() { return <PaymentMethodsPage />; }
