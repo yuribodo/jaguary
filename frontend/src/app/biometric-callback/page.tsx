@@ -50,12 +50,17 @@ export default function BiometricCallbackPage() {
 
       if (cancelled) return;
       setState("confirming");
-      setMessage("Identity confirmed. Activating only the authority you reviewed…");
-      await boundApi.postConversationMessage(
-        pending.conversationId,
-        "I confirm and authorize this purchase after biometric verification.",
-        pending.confirmationIdentity,
-      );
+      if (pending.watchId) {
+        setMessage("Identity confirmed. Activating the monitoring authority you reviewed…");
+        await boundApi.activateTravelWatch(pending.watchId, pending.confirmationIdentity);
+      } else {
+        setMessage("Identity confirmed. Activating only the authority you reviewed…");
+        await boundApi.postConversationMessage(
+          pending.conversationId,
+          "I confirm and authorize this purchase after biometric verification.",
+          pending.confirmationIdentity,
+        );
+      }
       clearPendingBiometricConsent();
       window.location.replace(`/demo?conversation=${encodeURIComponent(pending.conversationId)}`);
     }

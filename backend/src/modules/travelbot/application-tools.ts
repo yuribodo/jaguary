@@ -107,7 +107,18 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
   constructor(private readonly options: ApplicationTravelBotToolsOptions) {}
 
   async findOffers(intent: TravelBotConversation["intent"]): Promise<OfferCandidate[]> {
-    return this.options.catalog?.search(intent) ?? listVuelaYaOffers();
+    return (await this.diagnoseOffers(intent)).matches;
+  }
+
+  async diagnoseOffers(intent: TravelBotConversation["intent"]) {
+    if (this.options.catalog !== undefined) return this.options.catalog.search(intent);
+    const matches = listVuelaYaOffers();
+    return {
+      outcome: matches.length > 0 ? "MATCH_FOUND" as const : "NO_INVENTORY" as const,
+      matches,
+      nearest_miss: null,
+      observed_at: this.options.clock.now().toISOString(),
+    };
   }
 
   async createCheckout(input: Parameters<NonNullable<TravelBotToolsPort["createCheckout"]>>[0]) {

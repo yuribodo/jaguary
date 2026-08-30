@@ -71,6 +71,27 @@
       "when": 1788061505133,
       "tag": "0009_dizzy_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788064642373,
+      "tag": "0010_busy_squadron_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788064961254,
+      "tag": "0011_busy_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788065913665,
+      "tag": "0012_loud_wallop",
+      "breakpoints": true
     }
   ]
 }

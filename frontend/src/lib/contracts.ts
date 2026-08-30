@@ -108,6 +108,11 @@ export type CreateMandateDraftInput = {
   allowed_merchant_categories: string[];
   route: { origin: string; destination: string };
   cabin: CabinClass;
+  flight_constraints?: {
+    departure_not_before: string;
+    departure_not_after: string;
+    passenger_count: number;
+  };
   max_per_purchase: Money;
   max_aggregate: Money;
   max_uses: number;
@@ -263,6 +268,64 @@ export type TravelBotConversation = {
     pending_approval: PendingTravelApproval | null;
   };
   missing_fields: RequiredTravelIntentField[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TravelWatchMode = "ASK_BEFORE_PURCHASE" | "AUTO_PURCHASE";
+export type TravelWatchStatus =
+  | "AWAITING_LIVENESS"
+  | "ACTIVE"
+  | "CHECKING"
+  | "MATCHED"
+  | "EXECUTING"
+  | "COMPLETED"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "FAILED";
+
+export type TravelWatch = {
+  watch_id: string;
+  conversation_id: string;
+  principal_id: string;
+  agent_id: string;
+  mode: TravelWatchMode;
+  status: TravelWatchStatus;
+  criteria: {
+    origin_iata: string;
+    destination_iata: string;
+    departure_date: string;
+    passenger_count: number;
+    cabin: CabinClass;
+    max_total_budget: Money;
+  };
+  criteria_hash: string;
+  mandate_id: string;
+  authority: {
+    max_per_purchase: Money;
+    max_uses: number;
+    expires_at: string;
+    flight_constraints: {
+      departure_not_before: string;
+      departure_not_after: string;
+      passenger_count: number;
+    };
+  };
+  next_check_at: string | null;
+  last_checked_at: string | null;
+  expires_at: string;
+  attempt_count: number;
+  consecutive_failures: number;
+  last_outcome: "MATCH_FOUND" | "OVER_BUDGET" | "NO_INVENTORY" | null;
+  nearest_miss: {
+    offer_id: string;
+    unit_total: Money;
+    party_total: Money;
+  } | null;
+  matched_offer_id: string | null;
+  matched_offer: OfferCandidate | null;
+  receipt_id: string | null;
+  version: number;
   created_at: string;
   updated_at: string;
 };

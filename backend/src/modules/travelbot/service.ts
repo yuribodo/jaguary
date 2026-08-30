@@ -83,6 +83,22 @@ function selectPreferredOffer(offers: readonly TravelBotConversation["offers"][n
   ))[0];
 }
 
+function noMatchMessage(
+  intent: TravelBotConversation["intent"],
+  nearest: TravelBotConversation["offers"][number] | null,
+): string {
+  const budget = intent.max_total_budget;
+  if (nearest === null || budget === null || intent.passenger_count === null || nearest.total.currency !== budget.currency) {
+    return "I found no flights matching these criteria. I can keep monitoring them, or you can change the airport, date, or budget.";
+  }
+  const nearestTotal = nearest.total.amount * intent.passenger_count;
+  const difference = nearestTotal - budget.amount;
+  if (difference <= 0 || !Number.isSafeInteger(nearestTotal)) {
+    return "I found no flights matching these criteria. I can keep monitoring them, or you can change the airport, date, or budget.";
+  }
+  return `No flight is within your ${budget.currency} ${(budget.amount / 100).toFixed(2)} limit right now. The closest fare I found is ${budget.currency} ${(nearestTotal / 100).toFixed(2)} total (${budget.currency} ${(difference / 100).toFixed(2)} above it). I can keep monitoring this exact limit, or you can approve a new budget.`;
+}
+
 function flexibleDateNotice(
   requestedDate: string | null,
   offer: TravelBotConversation["offers"][number],
@@ -505,11 +521,22 @@ export class TravelBotService {
           : "Choose one of the current options below to continue.";
       } else {
         state = "READY_TO_SEARCH";
-        offers = (await executeTool("find_offers", {
-          origin_iata: applied.intent.origin_iata,
-          destination_iata: applied.intent.destination_iata,
-          departure_date: applied.intent.departure_date,
-        }, () => this.options.tools.findOffers(applied.intent), (result) => ({ count: result.length }))).filter((offer) => (
+        const searchResult = this.options.tools.diagnoseOffers === undefined
+          ? { matches: await executeTool("find_offers", {
+              origin_iata: applied.intent.origin_iata,
+              destination_iata: applied.intent.destination_iata,
+              departure_date: applied.intent.departure_date,
+            }, () => this.options.tools.findOffers(applied.intent), (result) => ({ count: result.length })), nearest_miss: null }
+          : await executeTool("find_offers", {
+              origin_iata: applied.intent.origin_iata,
+              destination_iata: applied.intent.destination_iata,
+              departure_date: applied.intent.departure_date,
+            }, () => this.options.tools.diagnoseOffers!(applied.intent), (result) => ({
+              count: result.matches.length,
+              outcome: result.outcome,
+              nearest_offer_id: result.nearest_miss?.offer_id ?? null,
+            }));
+        offers = searchResult.matches.filter((offer) => (
           offer.fulfillment.origin === applied.intent.origin_iata
           && offer.fulfillment.destination === applied.intent.destination_iata
           && offer.fulfillment.departure_at.startsWith(applied.intent.departure_date!)
@@ -530,7 +557,7 @@ export class TravelBotService {
             assistantMessage = `I chose ${selected.offer_id}.${flexibleDateNotice(applied.intent.departure_date, selected)} Checkout tools are unavailable.`;
           }
         } else {
-          assistantMessage = "I found no flights matching these criteria. I can try another airport, date, or budget.";
+          assistantMessage = noMatchMessage(applied.intent, searchResult.nearest_miss);
         }
       }
 

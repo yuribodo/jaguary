@@ -71,6 +71,10 @@ function normalizedText(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+function usesDayFirstDateConvention(value: string): boolean {
+  return /\b(?:dia|quero|passagem|viagem|viajar|economica|economico|passageir[oa]s?|orcamento|limite|reais)\b/.test(value);
+}
+
 function destinationRegionFrom(
   recentMessages: readonly string[],
 ): (typeof brazilianRegions)[number] | undefined {
@@ -130,8 +134,11 @@ function departureDateFrom(recentMessages: readonly string[], now: Date): string
 
     const numericDate = normalized.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}))?\b/);
     if (numericDate !== null) {
-      const monthIndex = Number(numericDate[1]) - 1;
-      const day = Number(numericDate[2]);
+      const first = Number(numericDate[1]);
+      const second = Number(numericDate[2]);
+      const dayFirst = first > 12 || (second <= 12 && usesDayFirstDateConvention(normalized));
+      const monthIndex = (dayFirst ? second : first) - 1;
+      const day = dayFirst ? first : second;
       let year = inferredYear(monthIndex, now, numericDate[3]);
       const candidate = new Date(Date.UTC(year, monthIndex, day));
       if (numericDate[3] === undefined && candidate <= now) year += 1;

@@ -39,7 +39,16 @@ const responseSchema = z.object({
 }).passthrough();
 
 export interface FlightSearchProvider {
-  search(intent: TravelIntent): Promise<OfferCandidate[]>;
+  search(intent: TravelIntent): Promise<FlightSearchResult>;
+}
+
+export type FlightSearchOutcome = "MATCH_FOUND" | "OVER_BUDGET" | "NO_INVENTORY";
+
+export interface FlightSearchResult {
+  outcome: FlightSearchOutcome;
+  matches: OfferCandidate[];
+  nearest_miss: OfferCandidate | null;
+  observed_at: string;
 }
 
 export interface GoogleFlightsSearchOptions {
@@ -112,7 +121,7 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
     this.#fetch = options.fetch ?? fetch;
   }
 
-  async search(intent: TravelIntent): Promise<OfferCandidate[]> {
+  async search(intent: TravelIntent): Promise<FlightSearchResult> {
     if (
       intent.origin_iata === null
       || intent.destination_iata === null
@@ -126,21 +135,41 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
 
     const searchableIntent = intent as SearchableTravelIntent;
     const dates = eligibleDepartureDates(searchableIntent.departure_date, this.options.clock.now());
-    if (dates.length === 0) return [];
+    if (dates.length === 0) return {
+      outcome: "NO_INVENTORY",
+      matches: [],
+      nearest_miss: null,
+      observed_at: this.options.clock.now().toISOString(),
+    };
 
-    // A month-only request means "the earliest available day". Most routes
-    // resolve on day one, so avoid speculative calls first; only fan out in
-    // small ordered batches when a date has no results.
-    const first = await this.#searchDate(searchableIntent, dates[0]!);
-    if (first.length > 0) return first;
-    for (let index = 1; index < dates.length; index += 3) {
+    let nearestMiss: OfferCandidate | null = null;
+    for (let index = 0; index < dates.length; index += 3) {
       const batch = await Promise.all(
         dates.slice(index, index + 3).map((date) => this.#searchDate(searchableIntent, date)),
       );
-      const earliest = batch.find((offers) => offers.length > 0);
-      if (earliest !== undefined) return earliest;
+      for (const offers of batch) {
+        const matches = offers.filter((offer) => (
+          offer.total.currency === searchableIntent.max_total_budget.currency
+          && offer.total.amount * searchableIntent.passenger_count <= searchableIntent.max_total_budget.amount
+        ));
+        if (matches.length > 0) return {
+          outcome: "MATCH_FOUND",
+          matches,
+          nearest_miss: null,
+          observed_at: this.options.clock.now().toISOString(),
+        };
+        const candidate = offers.toSorted((left, right) => left.total.amount - right.total.amount)[0];
+        if (candidate !== undefined && (nearestMiss === null || candidate.total.amount < nearestMiss.total.amount)) {
+          nearestMiss = candidate;
+        }
+      }
     }
-    return [];
+    return {
+      outcome: nearestMiss === null ? "NO_INVENTORY" : "OVER_BUDGET",
+      matches: [],
+      nearest_miss: nearestMiss,
+      observed_at: this.options.clock.now().toISOString(),
+    };
   }
 
   async #searchDate(intent: SearchableTravelIntent, outboundDate: string): Promise<OfferCandidate[]> {
@@ -154,7 +183,6 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
       travel_class: travelClass(intent.cabin),
       adults: "1",
       currency: intent.max_total_budget.currency,
-      max_price: String(Math.floor(intent.max_total_budget.amount / intent.passenger_count / 100)),
       gl: "br",
       hl: "pt",
       sort_by: "1",
@@ -265,7 +293,7 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
 }
 
 export class UnavailableFlightSearchProvider implements FlightSearchProvider {
-  async search(): Promise<OfferCandidate[]> {
+  async search(): Promise<FlightSearchResult> {
     throw new PublicApiError(503, "invalid_request", "Live flight search is not configured", {
       provider: "google_flights",
       reason: "missing_api_key",

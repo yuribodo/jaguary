@@ -9,6 +9,7 @@ import type {
   OrderReceipt,
   PurchaseIntent,
   TravelBotConversation,
+  TravelWatch,
 } from "@/lib/contracts";
 
 const DEFAULT_API_URL = "http://localhost:3001";
@@ -248,6 +249,66 @@ export const boundApi = {
         "X-Correlation-Id": requestIdentity.correlationId,
         "X-CSRF-Token": csrfToken,
       },
+    });
+  },
+
+  getConversationWatch(conversationId: string, signal?: AbortSignal) {
+    return request<TravelWatch | null>(`/v1/conversations/${encodeURIComponent(conversationId)}/watch`, { signal });
+  },
+
+  getTravelWatch(watchId: string, signal?: AbortSignal) {
+    return request<TravelWatch>(`/v1/travel-watches/${encodeURIComponent(watchId)}`, { signal });
+  },
+
+  createTravelWatch(
+    conversationId: string,
+    input: { mode: "AUTO_PURCHASE"; expires_at: string },
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<TravelWatch>(`/v1/conversations/${encodeURIComponent(conversationId)}/watches`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: JSON.stringify(input),
+    });
+  },
+
+  activateTravelWatch(watchId: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<TravelWatch>(`/v1/travel-watches/${encodeURIComponent(watchId)}/activate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: "{}",
+    });
+  },
+
+  cancelTravelWatch(watchId: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<TravelWatch>(`/v1/travel-watches/${encodeURIComponent(watchId)}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: "{}",
+    });
+  },
+
+  simulateTravelWatchMatch(watchId: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<TravelWatch>(`/v1/dev/travel-watches/${encodeURIComponent(watchId)}/simulate-match`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: "{}",
     });
   },
 

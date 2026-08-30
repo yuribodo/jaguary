@@ -200,6 +200,23 @@ test("delegated airport and month choices are retained without asking for an exa
         searchedDate = intent.departure_date;
         return [];
       },
+      diagnoseOffers: async (intent) => {
+        searchedDate = intent.departure_date;
+        return {
+        outcome: "OVER_BUDGET",
+        matches: [],
+        nearest_miss: {
+          ...structuredClone(offerCandidateFixture),
+          offer_id: "offer_nearest_over_budget",
+          total: { amount: 350000, currency: "BRL" },
+          fulfillment: {
+            ...structuredClone(offerCandidateFixture.fulfillment),
+            destination: "GIG",
+          },
+        },
+        observed_at: "2026-08-29T12:04:01.000Z",
+        };
+      },
     },
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
   });
@@ -237,7 +254,7 @@ test("delegated airport and month choices are retained without asking for an exa
   assert.deepEqual(second.missing_fields, []);
   assert.equal(
     second.messages.at(-1)?.content,
-    "I found no flights matching these criteria. I can try another airport, date, or budget.",
+    "No flight is within your BRL 3000.00 limit right now. The closest fare I found is BRL 3500.00 total (BRL 500.00 above it). I can keep monitoring this exact limit, or you can approve a new budget.",
   );
 });
 
@@ -381,6 +398,56 @@ test("natural month expressions complete a pending travel search", async () => {
     assert.deepEqual(result.missing_fields, [], scenario.phrase);
     assert.equal(searched, true, scenario.phrase);
   }
+});
+
+test("a Brazilian numeric date in the user message completes the travel intent", async () => {
+  let searchedDate: string | null = null;
+  const service = new TravelBotService({
+    repository: new InMemoryTravelBotRepository(),
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: "GRU",
+            destination_iata: "COR",
+            departure_date: null,
+            passenger_count: 1,
+            cabin: "ECONOMY" as const,
+            max_total_budget: { amount: 10_000, currency: "USD" },
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [{ field: "departure_date" as const, reason: "AMBIGUOUS" as const }],
+            requested_action: "FIND_OFFERS" as const,
+          },
+          assistant_message: "I need the date.",
+        };
+      },
+    },
+    tools: {
+      findOffers: async (intent) => {
+        searchedDate = intent.departure_date;
+        return [];
+      },
+    },
+    clock: { now: () => new Date("2026-08-30T05:11:00.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_brazilian_date_create_001",
+    correlation_id: "corr_brazilian_date_create_001",
+  });
+
+  const result = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Quero uma passagem economica de GRU para COR no dia 15/09/2026, para 1 passageiro, com limite total de USD 100.",
+    idempotency_key: "idem_brazilian_date_message_001",
+    correlation_id: "corr_brazilian_date_message_001",
+  });
+
+  assert.equal(result.intent.departure_date, "2026-09-15");
+  assert.deepEqual(result.missing_fields, []);
+  assert.equal(searchedDate, "2026-09-15");
 });
 
 test("a flexible month reports the exact earliest date selected by the provider", async () => {

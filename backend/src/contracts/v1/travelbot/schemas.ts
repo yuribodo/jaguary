@@ -7,6 +7,7 @@ import {
   sha256Schema,
   utcRfc3339Schema,
 } from "../common/primitives.js";
+import { conditionalFlightConstraintsSchema } from "../mandates/schemas.js";
 
 export const travelBotStateSchema = z.enum([
   "COLLECTING",
@@ -57,6 +58,47 @@ export const travelIntentSchema = z.object({
 }).strict();
 
 export type TravelIntent = z.infer<typeof travelIntentSchema>;
+
+export const travelWatchModeSchema = z.enum(["ASK_BEFORE_PURCHASE", "AUTO_PURCHASE"]);
+export type TravelWatchMode = z.infer<typeof travelWatchModeSchema>;
+
+export const travelWatchStatusSchema = z.enum([
+  "AWAITING_LIVENESS",
+  "ACTIVE",
+  "CHECKING",
+  "MATCHED",
+  "EXECUTING",
+  "COMPLETED",
+  "EXPIRED",
+  "CANCELLED",
+  "FAILED",
+]);
+export type TravelWatchStatus = z.infer<typeof travelWatchStatusSchema>;
+
+export const travelWatchCriteriaSchema = z.object({
+  origin_iata: z.string().regex(/^[A-Z]{3}$/),
+  destination_iata: z.string().regex(/^[A-Z]{3}$/),
+  departure_date: z.string().regex(/^\d{4}-\d{2}(?:-\d{2})?$/),
+  passenger_count: z.number().int().min(1).max(9),
+  cabin: cabinClassSchema,
+  max_total_budget: moneySchema,
+}).strict();
+export type TravelWatchCriteria = z.infer<typeof travelWatchCriteriaSchema>;
+
+export const travelWatchAuthoritySchema = z.object({
+  max_per_purchase: moneySchema,
+  max_uses: z.number().int().positive(),
+  expires_at: utcRfc3339Schema,
+  flight_constraints: conditionalFlightConstraintsSchema,
+}).strict();
+export type TravelWatchAuthority = z.infer<typeof travelWatchAuthoritySchema>;
+
+export const travelWatchNearestMissSchema = z.object({
+  offer_id: identifierSchema,
+  unit_total: moneySchema,
+  party_total: moneySchema,
+}).strict();
+export type TravelWatchNearestMiss = z.infer<typeof travelWatchNearestMissSchema>;
 
 export const travelIntentAmbiguitySchema = z.object({
   field: requiredTravelIntentFieldSchema,

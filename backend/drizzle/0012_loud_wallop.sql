@@ -1,0 +1,2 @@
+ALTER TABLE "travel_watches" ADD COLUMN "matched_offer" jsonb;--> statement-breakpoint
+ALTER TABLE "travel_watches" ADD CONSTRAINT "travel_watches_matched_offer_check" CHECK ("travel_watches"."matched_offer" IS NULL OR jsonb_typeof("travel_watches"."matched_offer") = 'object');

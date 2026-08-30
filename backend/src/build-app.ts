@@ -48,17 +48,24 @@ import { healthRoutes } from "./routes/health.js";
 import { rootRoutes } from "./routes/root.js";
 import {
   ApplicationTravelBotTools,
+  ApplicationTravelWatchPurchases,
   NoopLlmTelemetry,
   OpenAIAgentsRuntime,
   PostgresTravelBotRepository,
+  PostgresTravelWatchRepository,
   StateGuardedAgentToolExecutor,
   TravelBotService,
+  TravelWatchService,
+  DevelopmentTravelWatchSimulator,
+  TravelWatchWorker,
   UnavailableAgentRuntime,
   travelBotRoutes,
+  travelWatchRoutes,
   type AgentProofFactoryPort,
   type ApprovalStateProtectorPort,
   type LlmTelemetryPort,
   type TravelBotEventSource,
+  type TravelWatchSimulatorPort,
 } from "./modules/travelbot/index.js";
 import { VuelaYaCatalog, type VuelaYaCatalogPort } from "./modules/vuelaya/catalog.js";
 import {
@@ -93,6 +100,10 @@ export interface BuildAppOptions {
   humanApprovalRequired?: (input: VerifyRequestBody) => boolean;
   travelBotService?: TravelBotService;
   travelBotEvents?: TravelBotEventSource;
+  travelWatchService?: TravelWatchService;
+  travelWatchSimulator?: TravelWatchSimulatorPort;
+  enableDevelopmentTravelWatchSimulation?: boolean;
+  travelWatchPollMs?: number;
   openAI?: {
     apiKey: string;
     model: string;
@@ -246,6 +257,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     origin: options.corsOrigin ?? "http://localhost:3000",
     credentials: true,
     exposedHeaders: ["x-correlation-id"],
+    methods: ["GET", "HEAD", "POST", "DELETE", "OPTIONS"],
   });
 
   await app.register(rootRoutes);
@@ -464,7 +476,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       travelBotService = new TravelBotService({
         repository,
         runtime: new UnavailableAgentRuntime(),
-        tools: { findOffers: async (intent) => flightCatalog.search(intent) },
+        tools: { findOffers: async (intent) => (await flightCatalog.search(intent)).matches },
         clock,
         model,
       });
@@ -479,6 +491,94 @@ export async function buildApp(options: BuildAppOptions = {}) {
         allowedOrigin: configuredAuth.allowedOrigin,
       }),
     });
+  }
+  let travelWatchService = options.travelWatchService;
+  let travelWatchSimulator = options.travelWatchSimulator;
+  let travelWatchWorker: TravelWatchWorker | undefined;
+  if (
+    travelWatchService === undefined
+    && database !== undefined
+    && mandateService !== undefined
+    && options.travelBotCredentialId !== undefined
+  ) {
+    const repository = new PostgresTravelWatchRepository(database);
+    const conversations = new PostgresTravelBotRepository(
+      database,
+      options.openAI?.model ?? "unavailable",
+      configuredTrust?.service.eligibility,
+    );
+    travelWatchService = new TravelWatchService({
+      repository,
+      conversations,
+      mandates: mandateService,
+      clock,
+      credentialId: options.travelBotCredentialId,
+      merchantId: (await merchant.discoverProfile()).merchant_id,
+    });
+    if (options.enableDevelopmentTravelWatchSimulation === true) {
+      if (flightCatalog.queueNextSearchResult === undefined) {
+        throw new Error("Development travel watch simulation requires a simulatable flight catalog");
+      }
+      const merchantProfile = await merchant.discoverProfile();
+      travelWatchSimulator = new DevelopmentTravelWatchSimulator({
+        repository,
+        catalog: { queueNextSearchResult: flightCatalog.queueNextSearchResult.bind(flightCatalog) },
+        clock,
+        merchantId: merchantProfile.merchant_id,
+        merchantUrl: merchantProfile.merchant_url,
+      });
+    }
+    if (
+      verifyOrchestrator !== undefined
+      && paymentService !== undefined
+      && receiptStore !== undefined
+      && options.travelBotProofFactory !== undefined
+    ) {
+      travelWatchWorker = new TravelWatchWorker({
+        repository,
+        search: {
+          search: (criteria, watchId) => flightCatalog.search({
+            ...criteria,
+            selected_offer_id: null,
+            confirmation: null,
+          }, watchId),
+        },
+        purchases: new ApplicationTravelWatchPurchases({
+          merchant,
+          mandates: mandateService,
+          verify: verifyOrchestrator,
+          payments: paymentService,
+          receipts: receiptStore,
+          proofFactory: options.travelBotProofFactory,
+          clock,
+          catalog: flightCatalog,
+        }),
+        clock,
+      });
+    }
+  }
+  if (travelWatchService !== undefined) {
+    await app.register(travelWatchRoutes, {
+      service: travelWatchService,
+      ...(travelWatchSimulator === undefined ? {} : { simulator: travelWatchSimulator }),
+    });
+  }
+  if (travelWatchWorker !== undefined) {
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        await travelWatchWorker!.runDue();
+      } catch (error) {
+        app.log.error({ error: error instanceof Error ? error.message : "unknown" }, "travel watch worker tick failed");
+      } finally {
+        running = false;
+      }
+    };
+    const timer = setInterval(() => void tick(), options.travelWatchPollMs ?? 15_000);
+    timer.unref();
+    app.addHook("onClose", async () => clearInterval(timer));
   }
 
   return app;

@@ -217,10 +217,20 @@ function evaluateScope(input: ParsedPolicyInput, addReason: AddReason): void {
   const { checkout, mandate } = input;
   if (checkout === undefined || mandate === undefined) return;
   const fulfillment = checkout.terms.fulfillment;
+  const flightConstraints = mandate.terms.flight_constraints;
   if (
     fulfillment.origin !== mandate.terms.route.origin
     || fulfillment.destination !== mandate.terms.route.destination
     || fulfillment.cabin !== mandate.terms.cabin
+    || (input.nowValue !== undefined && Date.parse(fulfillment.departure_at) <= Date.parse(input.nowValue))
+    || (
+      flightConstraints !== undefined
+      && (
+        Date.parse(fulfillment.departure_at) < Date.parse(flightConstraints.departure_not_before)
+        || Date.parse(fulfillment.departure_at) > Date.parse(flightConstraints.departure_not_after)
+        || checkout.terms.items.some(({ quantity }) => quantity !== flightConstraints.passenger_count)
+      )
+    )
   ) addReason("scope_mismatch");
 }
 

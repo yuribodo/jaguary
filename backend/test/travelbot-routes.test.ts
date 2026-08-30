@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildApp } from "../src/build-app.js";
+import { mandateSchema, type CreateMandateDraftInput } from "../src/contracts/v1/index.js";
 import { AuthCrypto } from "../src/modules/auth/crypto.js";
 import { DemoPrincipalAuthProvider } from "../src/modules/auth/demo-provider.js";
 import { InMemoryPrincipalAuthStore } from "../src/modules/auth/memory-repository.js";
@@ -9,7 +10,10 @@ import { PrincipalAuthService } from "../src/modules/auth/service.js";
 import {
   emptyTravelIntent,
   InMemoryTravelBotRepository,
+  InMemoryTravelWatchRepository,
   TravelBotService,
+  TravelWatchService,
+  type TravelBotConversation,
 } from "../src/modules/travelbot/index.js";
 
 function fixtureService() {
@@ -154,6 +158,18 @@ test("discarding a conversation requires the owning principal session, CSRF and 
     "x-correlation-id": "corr_discard_delete_001",
   };
 
+  const preflight = await app.inject({
+    method: "OPTIONS",
+    url: `/v1/conversations/${conversationId}`,
+    headers: {
+      origin: "http://localhost:3000",
+      "access-control-request-method": "DELETE",
+      "access-control-request-headers": "x-csrf-token,idempotency-key,x-correlation-id",
+    },
+  });
+  assert.equal(preflight.statusCode, 204);
+  assert.match(String(preflight.headers["access-control-allow-methods"]), /\bDELETE\b/);
+
   const unauthenticated = await app.inject({
     method: "DELETE",
     url: `/v1/conversations/${conversationId}`,
@@ -183,5 +199,94 @@ test("discarding a conversation requires the owning principal session, CSRF and 
   assert.equal(discarded.statusCode, 204);
   const read = await app.inject({ method: "GET", url: `/v1/conversations/${conversationId}` });
   assert.equal(read.statusCode, 404);
+  await app.close();
+});
+
+test("travel watch routes create authority first and activate monitoring only after liveness", async () => {
+  const now = new Date("2026-08-30T12:00:00.000Z");
+  const conversation: TravelBotConversation = {
+    conversation_id: "5a89de04-4b45-4dc4-a0c4-ed12ceaa9bea",
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    state: "READY_TO_SEARCH",
+    version: 1,
+    intent: {
+      origin_iata: "GRU", destination_iata: "COR", departure_date: "2026-09",
+      passenger_count: 1, cabin: "ECONOMY", max_total_budget: { amount: 150_000, currency: "BRL" },
+      selected_offer_id: null, confirmation: null,
+    },
+    offers: [], messages: [], active_run_id: null,
+    operation: { checkout_id: null, checkout_hash: null, mandate_id: null, authorization_id: null, receipt_id: null, pending_approval: null },
+    created_at: now.toISOString(), updated_at: now.toISOString(),
+  };
+  let draft!: ReturnType<typeof mandateSchema.parse>;
+  const service = new TravelWatchService({
+    repository: new InMemoryTravelWatchRepository(),
+    conversations: { get: async () => structuredClone(conversation) },
+    mandates: {
+      async createDraft(input: CreateMandateDraftInput) {
+        draft = mandateSchema.parse({
+          terms: { ...input, version: 1 },
+          payment_credential: { credential_id: input.credential_id, display: "Visa •••• 4242" },
+          status: "DRAFT", authority_valid: false, created_at: now.toISOString(),
+        });
+        return { mandate: draft };
+      },
+      async activate() {
+        return mandateSchema.parse({
+          ...draft, status: "ACTIVE", authority_valid: true, terms_hash: "a".repeat(64),
+          principal_signature: { algorithm: "ES256", key_id: "key_demo_bound_2026", value: "ZGVtb19zaWduYXR1cmVfbm90X2Zvcl9wcm9kdWN0aW9u" },
+          activated_at: now.toISOString(),
+        });
+      },
+      async revoke() {
+        const active = mandateSchema.parse({
+          ...draft, status: "ACTIVE", authority_valid: true, terms_hash: "a".repeat(64),
+          principal_signature: { algorithm: "ES256", key_id: "key_demo_bound_2026", value: "ZGVtb19zaWduYXR1cmVfbm90X2Zvcl9wcm9kdWN0aW9u" },
+          activated_at: now.toISOString(),
+        });
+        return mandateSchema.parse({ ...active, status: "REVOKED", authority_valid: false, revoked_at: now.toISOString() });
+      },
+    },
+    clock: { now: () => now },
+    credentialId: "cred_demo_marta_visa",
+    merchantId: "merchant_vuelaya",
+  });
+  const app = await buildApp({ travelWatchService: service, logger: false });
+
+  const created = await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${conversation.conversation_id}/watches`,
+    headers: { "idempotency-key": "idem_watch_route_create_001", "x-correlation-id": "corr_watch_route_create_001" },
+    payload: { mode: "AUTO_PURCHASE", expires_at: "2026-09-30T23:59:59.999Z" },
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().status, "AWAITING_LIVENESS");
+
+  const activated = await app.inject({
+    method: "POST",
+    url: `/v1/travel-watches/${created.json().watch_id}/activate`,
+    headers: { "idempotency-key": "idem_watch_route_activate_001", "x-correlation-id": "corr_watch_route_activate_001" },
+    payload: {},
+  });
+  assert.equal(activated.statusCode, 200);
+  assert.equal(activated.json().status, "ACTIVE");
+  const read = await app.inject({ method: "GET", url: `/v1/travel-watches/${created.json().watch_id}` });
+  assert.deepEqual(read.json(), activated.json());
+  const discovered = await app.inject({
+    method: "GET",
+    url: `/v1/conversations/${conversation.conversation_id}/watch`,
+  });
+  assert.equal(discovered.statusCode, 200);
+  assert.deepEqual(discovered.json(), activated.json());
+  const cancelled = await app.inject({
+    method: "POST",
+    url: `/v1/travel-watches/${created.json().watch_id}/cancel`,
+    headers: { "idempotency-key": "idem_watch_route_cancel_001", "x-correlation-id": "corr_watch_route_cancel_001" },
+    payload: {},
+  });
+  assert.equal(cancelled.statusCode, 200);
+  assert.equal(cancelled.json().status, "CANCELLED");
+  assert.equal(cancelled.json().next_check_at, null);
   await app.close();
 });

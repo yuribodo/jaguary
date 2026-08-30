@@ -1,0 +1,2 @@
+ALTER TABLE "mandates" ADD COLUMN "flight_constraints" jsonb;--> statement-breakpoint
+ALTER TABLE "mandates" ADD CONSTRAINT "mandates_flight_constraints_check" CHECK ("mandates"."flight_constraints" IS NULL OR jsonb_typeof("mandates"."flight_constraints") = 'object');

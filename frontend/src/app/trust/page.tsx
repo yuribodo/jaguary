@@ -35,7 +35,7 @@ function PageIntro() {
   return (
     <div className="max-w-2xl border-b pb-8">
       <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Account / trust</p>
-      <h1 className="mt-3 text-4xl leading-none [font-family:var(--font-serif)] md:text-5xl">Identity &amp; trust</h1>
+      <h1 className="mt-3 text-4xl leading-none [font-family:var(--font-display)] md:text-5xl">Identity &amp; trust</h1>
       <p className="mt-5 text-base leading-7 text-muted-foreground">Manage the identity linked to TravelBot and review the assurance used to enforce its authority.</p>
     </div>
   );
@@ -156,7 +156,7 @@ export default function TrustPage() {
         <PageIntro />
         {loadError ? (
           <section role="alert" className="mt-8 rounded-xl border bg-card p-6 shadow-xs">
-            <h2 className="text-2xl [font-family:var(--font-serif)]">Trust record unavailable</h2>
+            <h2 className="text-2xl [font-family:var(--font-display)]">Trust record unavailable</h2>
             <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
             <Button className="mt-5 min-h-11" variant="outline" onClick={() => void bootstrap()}><RefreshCwIcon /> Try again</Button>
           </section>
@@ -174,7 +174,7 @@ export default function TrustPage() {
       <AccountPageShell activePage="trust">
         <PageIntro />
         <section className="mt-8 rounded-xl border bg-card p-6 shadow-xs">
-          <h2 className="text-2xl [font-family:var(--font-serif)]">Sign in to view identity assurance</h2>
+          <h2 className="text-2xl [font-family:var(--font-display)]">Sign in to view identity assurance</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Jaguary must identify the principal before showing or changing the operator verification.</p>
           <Button className="mt-5 min-h-11" nativeButton={false} render={<Link href="/login" />}>Sign in <ArrowRightIcon /></Button>
         </section>
@@ -187,7 +187,7 @@ export default function TrustPage() {
       <AccountPageShell activePage="trust">
         <PageIntro />
         <section role="alert" className="mt-8 rounded-xl border bg-card p-6 shadow-xs">
-          <h2 className="text-2xl [font-family:var(--font-serif)]">Trust record unavailable</h2>
+          <h2 className="text-2xl [font-family:var(--font-display)]">Trust record unavailable</h2>
           <p className="mt-2 text-sm text-muted-foreground">{loadError}</p>
           <Button className="mt-5 min-h-11" variant="outline" onClick={() => void bootstrap()}><RefreshCwIcon /> Try again</Button>
         </section>
@@ -218,7 +218,7 @@ export default function TrustPage() {
           </span>
           <div className="min-w-0">
             <span className={`inline-flex rounded-full px-2 py-1 font-mono text-[10px] ${verified ? "bg-emerald-950/8 text-emerald-900" : pending ? "bg-blue-950/8 text-blue-900" : "bg-secondary text-foreground"}`}>{content.badge}</span>
-            <h2 className="mt-2 text-2xl [font-family:var(--font-serif)]">{content.title}</h2>
+            <h2 className="mt-2 text-2xl [font-family:var(--font-display)]">{content.title}</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">{content.description}</p>
           </div>
           <div className="sm:col-start-2 lg:col-start-3 lg:row-start-1">

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif, Sora } from "next/font/google";
+import { Geist, Geist_Mono, Sora } from "next/font/google";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { EnglishUi } from "@/components/english-ui";
@@ -11,12 +11,6 @@ import "./globals.css";
 const geist = Geist({
   subsets: ["latin"],
   variable: "--font-sans",
-});
-
-const serif = Instrument_Serif({
-  subsets: ["latin"],
-  variable: "--font-serif",
-  weight: "400",
 });
 
 const display = Sora({
@@ -43,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      className={cn(geist.variable, serif.variable, display.variable, mono.variable)}
+      className={cn(geist.variable, display.variable, mono.variable)}
       lang="en"
     >
       <body>
