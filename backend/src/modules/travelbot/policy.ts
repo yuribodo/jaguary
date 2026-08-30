@@ -40,12 +40,12 @@ export function missingTravelIntentFields(intent: TravelIntent): RequiredTravelI
 }
 
 const fieldLabels: Record<RequiredTravelIntentField, string> = {
-  origin_iata: "de onde você quer sair",
-  destination_iata: "qual cidade ou aeroporto você prefere no destino",
-  departure_date: "em que data quer viajar",
-  passenger_count: "para quantas pessoas",
-  cabin: "em qual cabine (por exemplo, econômica)",
-  max_total_budget: "quanto pretende gastar e em qual moeda",
+  origin_iata: "where you want to depart from",
+  destination_iata: "which city or airport you prefer at the destination",
+  departure_date: "when you want to travel",
+  passenger_count: "how many people are traveling",
+  cabin: "which cabin you prefer (for example, economy)",
+  max_total_budget: "how much you plan to spend and in which currency",
 };
 
 const brazilianRegions = [
@@ -67,7 +67,7 @@ const preferredAirportByRegion: Partial<Record<(typeof brazilianRegions)[number]
   Tocantins: "PMW",
 };
 
-function normalizedPortuguese(value: string): string {
+function normalizedText(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
@@ -75,11 +75,11 @@ function destinationRegionFrom(
   recentMessages: readonly string[],
 ): (typeof brazilianRegions)[number] | undefined {
   for (const message of recentMessages.toReversed()) {
-    const normalized = normalizedPortuguese(message);
+    const normalized = normalizedText(message);
     for (const region of brazilianRegions) {
-      const normalizedRegion = normalizedPortuguese(region).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const normalizedRegion = normalizedText(region).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const destination = new RegExp(
-        `(?:\\bpara|\\bpra|\\bpro|\\bate|\\bdestino(?: e|:)?)\\s+(?:(?:o|a)\\s+)?(?:estado\\s+(?:de|do|da)\\s+)?${normalizedRegion}\\b`,
+        `(?:\\bto|\\btoward|\\bdestination(?: is|:)?)\\s+(?:the\\s+)?(?:state\\s+of\\s+)?${normalizedRegion}\\b`,
       );
       if (destination.test(normalized)) return region;
     }
@@ -89,8 +89,8 @@ function destinationRegionFrom(
 
 function mentionsThailand(recentMessages: readonly string[]): boolean {
   return recentMessages.some((message) => {
-    const normalized = normalizedPortuguese(message);
-    return /\b(?:thailand|thailandia|tailandia)\b/.test(normalized);
+    const normalized = normalizedText(message);
+    return /\bthailand\b/.test(normalized);
   });
 }
 
@@ -104,11 +104,6 @@ function withoutAmbiguities(
   };
 }
 
-const portugueseMonths = [
-  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
-] as const;
-
 const englishMonths = [
   "january", "february", "march", "april", "may", "june",
   "july", "august", "september", "october", "november", "december",
@@ -121,29 +116,32 @@ function inferredYear(monthIndex: number, now: Date, explicitYear?: string): num
 
 function departureDateFrom(recentMessages: readonly string[], now: Date): string | undefined {
   for (const message of recentMessages.toReversed()) {
-    const normalized = normalizedPortuguese(message);
-    if (/\b(?:esse|este|nesse|neste)\s+mes\b|\bthis month\b/.test(normalized)) {
+    const normalized = normalizedText(message);
+    if (/\bthis month\b/.test(normalized)) {
       return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     }
-    if (/\bproximo\s+mes\b|\bnext month\b/.test(normalized)) {
+    if (/\bnext month\b/.test(normalized)) {
       const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
       return `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, "0")}`;
     }
 
-    const numericDate = normalized.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/);
+    const isoDate = normalized.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+    if (isoDate !== null) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+
+    const numericDate = normalized.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}))?\b/);
     if (numericDate !== null) {
-      const day = Number(numericDate[1]);
-      const monthIndex = Number(numericDate[2]) - 1;
+      const monthIndex = Number(numericDate[1]) - 1;
+      const day = Number(numericDate[2]);
       let year = inferredYear(monthIndex, now, numericDate[3]);
       const candidate = new Date(Date.UTC(year, monthIndex, day));
       if (numericDate[3] === undefined && candidate <= now) year += 1;
       return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
 
-    for (const [monthIndex, month] of portugueseMonths.entries()) {
-      const aliases = [normalizedPortuguese(month), englishMonths[monthIndex]!];
-      const monthPattern = `(?:${aliases.join("|")})`;
-      const exactDate = normalized.match(new RegExp(`\\bdia\\s+(\\d{1,2})\\s+de\\s+${monthPattern}(?:\\s+de\\s+(20\\d{2}))?\\b`));
+    for (const [monthIndex, month] of englishMonths.entries()) {
+      const dayFirst = normalized.match(new RegExp(`\\b(?:on\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+of)?\\s+${month}(?:[ ,]+(20\\d{2}))?\\b`));
+      const monthFirst = normalized.match(new RegExp(`\\b${month}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:[ ,]+(20\\d{2}))?\\b`));
+      const exactDate = dayFirst ?? monthFirst;
       if (exactDate !== null) {
         const day = Number(exactDate[1]);
         let year = inferredYear(monthIndex, now, exactDate[2]);
@@ -151,9 +149,9 @@ function departureDateFrom(recentMessages: readonly string[], now: Date): string
         if (exactDate[2] === undefined && candidate <= now) year += 1;
         return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
-      const monthOnly = new RegExp(`^\\s*${monthPattern}\\s*[.!?]?\\s*$`).test(normalized);
+      const monthOnly = new RegExp(`^\\s*${month}\\s*[.!?]?\\s*$`).test(normalized);
       const monthWithDateContext = new RegExp(
-        `\\b(?:mes\\s+de|em|durante|ultimo\\s+dia\\s+de|viajar(?:\\s+em|\\s+no\\s+mes\\s+de)?)\\s+${monthPattern}\\b`,
+        `\\b(?:in|during|last\\s+day\\s+of|travel(?:\\s+in|\\s+during)?)\\s+${month}\\b`,
       ).test(normalized);
       if (monthOnly || monthWithDateContext) {
         const explicitYear = normalized.match(/\b(20\d{2})\b/)?.[1];
@@ -172,7 +170,7 @@ export function applyConversationConventions(
   now: Date,
 ): TravelIntentProposal {
   let contextual = structuredClone(proposal);
-  const normalizedMessages = recentMessages.map(normalizedPortuguese);
+  const normalizedMessages = recentMessages.map(normalizedText);
   const resolved = new Set<RequiredTravelIntentField>();
   for (const field of travelIntentInputFields) {
     if (current[field] !== null && contextual[field] === null) resolved.add(field);
@@ -193,8 +191,8 @@ export function applyConversationConventions(
   }
 
   const originContext = normalizedMessages.toReversed().find((message) => (
-    /(?:vou\s+)?(?:sair|saio|saindo|partir|parto)\s+de\s+sao paulo\b/.test(message)
-    || /\borigem(?:\s+e|:)\s+sao paulo\b/.test(message)
+    /(?:i(?:'m| am)?\s+)?(?:leav(?:e|ing)|depart(?:ing)?)\s+from\s+sao paulo\b/.test(message)
+    || /\borigin(?:\s+is|:)\s+sao paulo\b/.test(message)
   ));
   if (contextual.origin_iata === null && originContext !== undefined) {
     contextual.origin_iata = "GRU";
@@ -202,7 +200,7 @@ export function applyConversationConventions(
   }
   if (current.origin_iata === null && contextual.origin_iata === null) {
     const explicitOrigin = recentMessages.toReversed()
-      .map((message) => message.match(/\b(?:aeroporto\s+de\s+)?([A-Z]{3})\b/))
+      .map((message) => message.match(/\b(?:airport\s+)?([A-Z]{3})\b/))
       .find((match) => match?.[1] !== undefined)?.[1];
     if (explicitOrigin !== undefined) {
       contextual.origin_iata = explicitOrigin;
@@ -235,14 +233,13 @@ export function applyConversationConventions(
 
 function departureDeadlineFrom(recentMessages: readonly string[]): string | undefined {
   for (const message of recentMessages.toReversed()) {
-    const normalized = normalizedPortuguese(message);
-    for (const month of portugueseMonths) {
-      const normalizedMonth = normalizedPortuguese(month);
-      if (new RegExp(`\\bultimo dia de ${normalizedMonth}\\b`).test(normalized)) {
-        return `o último dia de ${month}`;
+    const normalized = normalizedText(message);
+    for (const month of englishMonths) {
+      if (new RegExp(`\\blast day of ${month}\\b`).test(normalized)) {
+        return `the last day of ${month}`;
       }
-      const datedDeadline = normalized.match(new RegExp(`\\bate(?: no maximo)?(?: o dia)? (\\d{1,2}) de ${normalizedMonth}\\b`));
-      if (datedDeadline?.[1] !== undefined) return `${Number(datedDeadline[1])} de ${month}`;
+      const datedDeadline = normalized.match(new RegExp(`\\b(?:by|no later than)(?: the)? (\\d{1,2})(?:st|nd|rd|th)?(?: of)? ${month}\\b`));
+      if (datedDeadline?.[1] !== undefined) return `${month} ${Number(datedDeadline[1])}`;
     }
   }
   return undefined;
@@ -257,22 +254,22 @@ export function deterministicClarification(
   const thailand = mentionsThailand(recentMessages);
   const departureDeadline = departureDeadlineFrom(recentMessages);
   const destinationRegionLabel = destinationRegion === "Rio de Janeiro"
-    ? "no Rio de Janeiro"
+    ? "in Rio de Janeiro"
     : destinationRegion === undefined
-      ? thailand ? "na Tailândia" : undefined
-      : `em ${destinationRegion}`;
+      ? thailand ? "in Thailand" : undefined
+      : `in ${destinationRegion}`;
   const fields = [...new Set([...invalid, ...missing])].map((field) => (
     field === "destination_iata" && destinationRegionLabel !== undefined
-      ? `qual cidade ou aeroporto ${destinationRegionLabel} você prefere`
+      ? `which city or airport ${destinationRegionLabel} you prefer`
       : field === "departure_date" && departureDeadline !== undefined
-        ? `qual dia até ${departureDeadline} você prefere`
+        ? `which day up to ${departureDeadline} you prefer`
       : fieldLabels[field]
   ));
-  if (fields.length === 0) return "Como você gostaria de continuar?";
+  if (fields.length === 0) return "How would you like to continue?";
   const joined = fields.length === 1
     ? fields[0]
-    : `${fields.slice(0, -1).join(", ")} e ${fields.at(-1)}`;
-  return `Para continuar, me diga ${joined}.`;
+    : `${fields.slice(0, -1).join(", ")} and ${fields.at(-1)}`;
+  return `To continue, tell me ${joined}.`;
 }
 
 export function applyTravelIntentProposal(

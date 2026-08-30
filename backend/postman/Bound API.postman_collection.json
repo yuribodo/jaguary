@@ -906,7 +906,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"content\":\"Quero ir de GRU para COR em 15/09/2026, uma pessoa, econômica, até USD 150.\"}",
+              "raw": "{\"content\":\"I want to travel from GRU to COR on 2026-09-15, one passenger, economy, up to USD 150.\"}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {

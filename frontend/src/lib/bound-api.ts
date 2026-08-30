@@ -82,7 +82,7 @@ async function request<T>(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new BoundApiError({
-      message: "Não foi possível alcançar a API do Bound.",
+      message: "Could not reach the Bound API.",
       code: "api_offline",
       offline: true,
     });
@@ -94,7 +94,7 @@ async function request<T>(
   if (!response.ok) {
     const errorBody = body as ApiErrorBody | undefined;
     throw new BoundApiError({
-      message: errorBody?.error?.message ?? `A API respondeu com status ${response.status}.`,
+      message: errorBody?.error?.message ?? `The API returned status ${response.status}.`,
       code: errorBody?.error?.code,
       status: response.status,
       correlationId: errorBody?.correlation_id ?? headerCorrelationId,
@@ -103,7 +103,7 @@ async function request<T>(
 
   if (body === undefined) {
     throw new BoundApiError({
-      message: "A API respondeu sem um corpo JSON válido.",
+      message: "The API returned an invalid JSON body.",
       code: "invalid_response",
       status: response.status,
       correlationId: headerCorrelationId,

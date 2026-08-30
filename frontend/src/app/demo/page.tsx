@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { TrustedSurface } from "@/components/trusted-surface";
 
 export const metadata: Metadata = {
-  title: "Bound — converse, limite, autorize",
+  title: "Bound — converse, limit, authorize",
   description:
-    "Converse com um agente identificado e controle uma autoridade limitada e revogável.",
+    "Talk to an identified agent and control limited, revocable authority.",
 };
 
 export default function DemoPage() {

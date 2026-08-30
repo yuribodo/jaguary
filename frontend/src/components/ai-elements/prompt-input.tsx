@@ -169,7 +169,7 @@ export function PromptInputSubmit({
 
   return (
     <InputGroupButton
-      aria-label={pending ? "Processando" : "Enviar mensagem"}
+      aria-label={pending ? "Processing" : "Send message"}
       className={cn("rounded-lg", className)}
       size="icon-sm"
       type="submit"
