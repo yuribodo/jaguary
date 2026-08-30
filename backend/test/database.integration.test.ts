@@ -50,8 +50,11 @@ import {
   paymentCredentials,
   payments,
   principalSessions,
+  travelConversations,
+  travelIntentSnapshots,
   travelMessages,
   travelModelRuns,
+  travelSseEvents,
   travelToolExecutions,
 } from "../src/db/schema.js";
 import { EphemeralEs256Signer } from "../src/modules/vuelaya/index.js";
@@ -712,6 +715,57 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   const events = await repository.listSseEvents(conversation.conversation_id, 1);
   assert.equal(events.length, 4);
   assert.equal(events.at(-1)?.event_type, "turn.completed");
+});
+
+integrationTest("TravelBot discards a completed conversation and all of its durable child records", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-discard-model");
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "Tell me about your trip.",
+        };
+      },
+    },
+    tools: { findOffers: async () => [] },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_travelbot_discard_create_001",
+    correlation_id: "corr_travelbot_discard_create_001",
+  });
+  await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Help me begin a trip.",
+    idempotency_key: "idem_travelbot_discard_message_001",
+    correlation_id: "corr_travelbot_discard_message_001",
+  });
+
+  assert.equal(await repository.discard(conversation.conversation_id, "principal_someone_else"), "NOT_FOUND");
+  assert.equal(await repository.discard(conversation.conversation_id, travelBotFixture.principal_id), "DELETED");
+  assert.equal(await repository.get(conversation.conversation_id), undefined);
+  assert.equal((await database.db.select().from(travelConversations)).length, 0);
+  assert.equal((await database.db.select().from(travelMessages)).length, 0);
+  assert.equal((await database.db.select().from(travelModelRuns)).length, 0);
+  assert.equal((await database.db.select().from(travelIntentSnapshots)).length, 0);
+  assert.equal((await database.db.select().from(travelSseEvents)).length, 0);
 });
 
 integrationTest("TravelBot persists distinct calls to the same tool within one model run", async () => {

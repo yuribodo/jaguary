@@ -149,5 +149,6 @@ test("external identities bind by canonical issuer and subject, never email alon
   const renamed = await store.resolveExternalIdentity({ provider: "google", issuer: "https://accounts.google.com", subject: "subject-a", displayName: "Marta B", verifiedEmail: "changed@example.com", assurance: "OIDC" });
   const sameEmailOtherSubject = await store.resolveExternalIdentity({ provider: "google", issuer: "https://accounts.google.com", subject: "subject-b", displayName: "Marta", verifiedEmail: "marta@example.com", assurance: "OIDC" });
   assert.equal(renamed.principal_id, first.principal_id);
+  assert.equal(renamed.display_name, "Marta B");
   assert.notEqual(sameEmailOtherSubject.principal_id, first.principal_id);
 });

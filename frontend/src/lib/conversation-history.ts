@@ -3,6 +3,10 @@ import type { TravelBotConversation, TravelBotState } from "@/lib/contracts";
 export const RECENT_CONVERSATIONS_KEY = "bound.recent-conversations.v1";
 export const MAX_RECENT_CONVERSATIONS = 8;
 
+function recentConversationsKey(principalId: string) {
+  return `${RECENT_CONVERSATIONS_KEY}.${principalId}`;
+}
+
 export const conversationStateLabels: Record<TravelBotState, string> = {
   COLLECTING: "Collecting details",
   READY_TO_SEARCH: "Ready to search",
@@ -26,9 +30,9 @@ export function conversationTitle(conversation: TravelBotConversation) {
     : firstMessage.content;
 }
 
-export function readRecentConversationIds(): string[] {
+export function readRecentConversationIds(principalId: string): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem(RECENT_CONVERSATIONS_KEY) ?? "[]");
+    const value = JSON.parse(localStorage.getItem(recentConversationsKey(principalId)) ?? "[]");
     return Array.isArray(value)
       ? value
           .filter((id): id is string => typeof id === "string")
@@ -39,16 +43,16 @@ export function readRecentConversationIds(): string[] {
   }
 }
 
-export function writeRecentConversationIds(ids: string[]) {
+export function writeRecentConversationIds(principalId: string, ids: string[]) {
   localStorage.setItem(
-    RECENT_CONVERSATIONS_KEY,
+    recentConversationsKey(principalId),
     JSON.stringify([...new Set(ids)].slice(0, MAX_RECENT_CONVERSATIONS)),
   );
 }
 
-export function rememberRecentConversationId(conversationId: string) {
-  writeRecentConversationIds([
+export function rememberRecentConversationId(principalId: string, conversationId: string) {
+  writeRecentConversationIds(principalId, [
     conversationId,
-    ...readRecentConversationIds().filter((id) => id !== conversationId),
+    ...readRecentConversationIds(principalId).filter((id) => id !== conversationId),
   ]);
 }

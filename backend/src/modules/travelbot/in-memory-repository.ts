@@ -61,6 +61,20 @@ export class InMemoryTravelBotRepository implements TravelBotRepositoryPort {
     return conversation === undefined ? undefined : clone(conversation);
   }
 
+  async discard(conversationId: string, principalId: string): Promise<"DELETED" | "IN_PROGRESS" | "NOT_FOUND"> {
+    const conversation = this.#conversations.get(conversationId);
+    if (conversation === undefined || conversation.principal_id !== principalId) return "NOT_FOUND";
+    if (conversation.active_run_id !== null) return "IN_PROGRESS";
+    this.#conversations.delete(conversationId);
+    for (const [key, value] of this.#creationKeys) {
+      if (value === conversationId) this.#creationKeys.delete(key);
+    }
+    for (const [key, value] of this.#messageKeys) {
+      if (value.conversationId === conversationId) this.#messageKeys.delete(key);
+    }
+    return "DELETED";
+  }
+
   async claimTurn(command: PostMessageCommand, now: Date) {
     const replay = this.#messageKeys.get(command.idempotency_key);
     if (replay !== undefined) {

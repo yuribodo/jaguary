@@ -11,8 +11,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ArrowUpIcon,
   ArrowRightIcon,
   BotIcon,
+  BriefcaseBusinessIcon,
   CheckIcon,
   CheckCheckIcon,
   ChevronRightIcon,
@@ -27,8 +29,8 @@ import {
   PlaneIcon,
   ReceiptTextIcon,
   RefreshCwIcon,
+  RouteIcon,
   ShieldCheckIcon,
-  SparklesIcon,
   SquareIcon,
   WalletCardsIcon,
   WifiOffIcon,
@@ -38,6 +40,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
 import {
   Conversation,
   ConversationContent,
@@ -86,15 +89,30 @@ import type {
   TravelBotState,
 } from "@/lib/contracts";
 
-const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
 const STARTER_PROMPTS = [
-  "I want to travel from GRU to COR on September 15, 2026, one passenger, economy, up to US$1,000.",
-  "Find a flight from São Paulo to Córdoba on September 15 for up to US$1,000.",
+  {
+    description: "3 days · flexible dates",
+    icon: PlaneIcon,
+    prompt: "Help me plan a three-day weekend escape. My dates are flexible.",
+    title: "Weekend escape",
+  },
+  {
+    description: "Flights, stops and trade-offs",
+    icon: RouteIcon,
+    prompt: "Compare flight routes, stops, prices, and trade-offs for my trip.",
+    title: "Compare a route",
+  },
+  {
+    description: "Schedule-first options",
+    icon: BriefcaseBusinessIcon,
+    prompt: "Help me plan a work trip, prioritizing my schedule and practical flight times.",
+    title: "Plan a work trip",
+  },
 ];
 
 type LoadState = "loading" | "ready" | "error";
-type BusyState = "authorizing" | "creating" | "switching" | "sending" | "verifying" | null;
+type BusyState = "authorizing" | "creating" | "deleting" | "switching" | "sending" | "verifying" | null;
 type TurnMode = "authority" | "chat";
 type FailedTurn = {
   text: string;
@@ -464,31 +482,112 @@ const ChatPresenceItem = forwardRef<HTMLDivElement, ChatPresenceItemProps>(funct
   );
 });
 
-function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: (value: string) => void }) {
+function Welcome({
+  composerValue,
+  disabled,
+  onComposerChange,
+  onSubmit,
+  onSuggestion,
+  principalName,
+  speech,
+}: {
+  composerValue: string;
+  disabled: boolean;
+  onComposerChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+  onSuggestion: (value: string) => void;
+  principalName: string;
+  speech: ReturnType<typeof useSpeechInput>;
+}) {
+  const firstName = principalName.split(/\s+/)[0];
+
   return (
-    <div className="my-auto flex min-h-[25rem] flex-col justify-center py-10">
-      <span className="mb-5 grid size-10 place-items-center rounded-lg border bg-panel text-blue-700 shadow-sm">
-        <SparklesIcon className="size-5" />
-      </span>
-      <h1 className="max-w-xl font-serif text-4xl leading-[1.05] tracking-tight md:text-5xl">
-        Where are we going, Marta?
-      </h1>
-      <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">
-        Share your trip details. TravelBot checks Google Flights, compares options, and prepares the purchase — always asking for confirmation before moving any money.
+    <div className="my-0 flex min-h-0 w-full flex-col justify-center py-0 sm:my-auto sm:min-h-[34rem] sm:py-12">
+      <p className="mb-5 font-mono text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        New trip <span aria-hidden="true">·</span> TravelBot
       </p>
-      <div className="mt-7 grid max-w-2xl gap-2">
-        {STARTER_PROMPTS.map((suggestion) => (
-          <Button
-            className="h-auto w-full justify-start whitespace-normal rounded-full px-4 py-2.5 text-left leading-5"
+      <h1 className="max-w-2xl text-[2.35rem] leading-[0.98] font-semibold tracking-[-0.05em] text-foreground [font-family:var(--font-display)] sm:text-[2.85rem] md:max-w-none md:text-[3.05rem]">
+        Where are we going, {firstName}?
+      </h1>
+      <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-[15px]">
+        Tell me where you want to go, when, and what matters most. I’ll compare the best routes and build a plan for your approval.
+      </p>
+
+      <PromptInput
+        className="mt-7 [&_[data-slot=input-group]]:rounded-2xl [&_[data-slot=input-group]]:border-foreground/20 [&_[data-slot=input-group]]:bg-panel [&_[data-slot=input-group]]:shadow-[0_16px_45px_rgb(20_21_17/0.08)] [&_[data-slot=input-group]]:focus-within:border-blue-600/70 [&_[data-slot=input-group]]:focus-within:ring-blue-600/15"
+        onSubmit={(message) => onSubmit(message.text)}
+      >
+        <PromptInputBody>
+          <PromptInputTextarea
+            className="min-h-28 px-5 pt-5 text-[15px] leading-6 placeholder:text-muted-foreground/75"
             disabled={disabled}
-            key={suggestion}
-            onClick={() => onSuggestion(suggestion)}
-            variant="outline"
-          >
-            {suggestion}
-          </Button>
-        ))}
+            onChange={(event) => onComposerChange(event.currentTarget.value)}
+            placeholder="Describe your trip — destination, dates, travelers, budget…"
+            value={composerValue}
+          />
+        </PromptInputBody>
+        <PromptInputFooter className="border-t border-border/70 px-4 py-3">
+          <PromptInputTools>
+            <Button
+              aria-label={speech.listening ? "Stop dictation" : speech.supported ? "Dictate message" : "Dictation is not supported in this browser"}
+              aria-pressed={speech.listening}
+              className={cn("rounded-md", speech.listening && "bg-red-50 text-destructive hover:bg-red-100")}
+              disabled={!speech.supported || disabled}
+              onClick={speech.toggle}
+              size="icon-sm"
+              title={speech.supported ? "Dictate message" : "Your browser does not support speech recognition"}
+              type="button"
+              variant="ghost"
+            >
+              {speech.listening ? <SquareIcon className="size-3.5 fill-current" /> : speech.supported ? <MicIcon /> : <MicOffIcon />}
+            </Button>
+            {speech.listening ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />listening</span> : null}
+          </PromptInputTools>
+          <div className="flex items-center gap-3">
+            <span className="hidden items-center gap-1.5 text-[10px] text-muted-foreground sm:inline-flex">
+              <i className="size-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+              Google Flights ready
+            </span>
+            <PromptInputSubmit
+              className="size-10 rounded-full bg-blue-700 text-white hover:bg-blue-800"
+              disabled={!composerValue.trim() || disabled}
+              status="ready"
+            >
+              <ArrowUpIcon className="size-4" />
+            </PromptInputSubmit>
+          </div>
+        </PromptInputFooter>
+      </PromptInput>
+
+      <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-muted-foreground sm:text-xs">
+        <ShieldCheckIcon className="size-4 shrink-0 text-foreground/70" />
+        <span>Nothing is booked or paid without your confirmation.</span>
       </div>
+
+      <div className="mt-7 grid gap-2.5 sm:grid-cols-3">
+        {STARTER_PROMPTS.map((suggestion) => {
+          const StarterIcon = suggestion.icon;
+          return (
+            <Button
+              className="group h-auto min-h-[4.75rem] w-full justify-start gap-3 whitespace-normal rounded-xl border-foreground/15 bg-panel/55 px-3.5 py-3 text-left shadow-none transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-foreground/25 hover:bg-panel motion-reduce:transform-none"
+              disabled={disabled}
+              key={suggestion.title}
+              onClick={() => onSuggestion(suggestion.prompt)}
+              variant="outline"
+            >
+              <StarterIcon className="size-4.5 shrink-0 text-foreground/75" strokeWidth={1.7} />
+              <span className="min-w-0 flex-1">
+                <strong className="block text-xs font-semibold text-foreground">{suggestion.title}</strong>
+                <span className="mt-1 block text-[10px] leading-4 text-muted-foreground">{suggestion.description}</span>
+              </span>
+              <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transform-none" />
+            </Button>
+          );
+        })}
+      </div>
+      <p className={cn("mt-3 min-h-4 text-center text-[10px]", speech.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+        {speech.error ?? (speech.supported ? "Use the microphone to dictate, then review before sending." : "Enter sends · Shift+Enter adds a new line")}
+      </p>
     </div>
   );
 }
@@ -739,7 +838,7 @@ function ApprovalCard({
 
 const auditEventContent: Record<string, { title: string; detail: string }> = {
   "mandate.created": { title: "Authority recorded", detail: "The one-time spending terms were stored." },
-  "mandate.activated": { title: "Authority activated", detail: "Marta's signed mandate became valid." },
+  "mandate.activated": { title: "Authority activated", detail: "The principal's signed mandate became valid." },
   "authorization.reserved": { title: "Purchase allowed", detail: "Jaguary verified the flight, merchant, and amount." },
   "payment.attempt_started": { title: "Payment initiated", detail: "The approved amount was sent for processing." },
   "payment.approved": { title: "Payment approved", detail: "The provider returned a successful result." },
@@ -1110,6 +1209,8 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
 }
 
 export function TrustedSurface() {
+  const principalSession = useAuthenticatedPrincipalSession();
+  const principalId = principalSession.principal.principal_id;
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [busy, setBusy] = useState<BusyState>(null);
   const [agent, setAgent] = useState<AgentIdentity>();
@@ -1129,10 +1230,10 @@ export function TrustedSurface() {
       const updated = [next, ...current.filter(({ conversation_id }) => conversation_id !== next.conversation_id)]
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
         .slice(0, 8);
-      writeRecentConversationIds(updated.map(({ conversation_id }) => conversation_id));
+      writeRecentConversationIds(principalId, updated.map(({ conversation_id }) => conversation_id));
       return updated;
     });
-  }, []);
+  }, [principalId]);
 
   const createConversation = useCallback(async (signal?: AbortSignal) => {
     setBusy("creating");
@@ -1141,7 +1242,7 @@ export function TrustedSurface() {
     const identity = createRequestIdentity("conversation_create");
     try {
       const result = await boundApi.createConversation(
-        { principal_id: PRINCIPAL_ID, agent_id: TRAVELBOT_ID },
+        { principal_id: principalId, agent_id: TRAVELBOT_ID },
         identity,
         signal,
       );
@@ -1162,7 +1263,7 @@ export function TrustedSurface() {
     } finally {
       if (!signal?.aborted) setBusy(null);
     }
-  }, [rememberConversation]);
+  }, [principalId, rememberConversation]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1178,7 +1279,7 @@ export function TrustedSurface() {
         setLastCorrelationId(agentResult.correlationId ?? healthResult.correlationId);
 
         const requestedConversationId = new URL(window.location.href).searchParams.get("conversation");
-        const recentIds = readRecentConversationIds();
+        const recentIds = readRecentConversationIds(principalId);
         const ids = requestedConversationId
           ? [requestedConversationId, ...recentIds.filter((id) => id !== requestedConversationId)]
           : recentIds;
@@ -1193,7 +1294,7 @@ export function TrustedSurface() {
           setEnteringConversationId(selectedConversation.conversation_id);
           setConversation(selectedConversation);
           setLastCorrelationId(messageCorrelationId(selectedConversation) ?? agentResult.correlationId ?? healthResult.correlationId);
-          writeRecentConversationIds(conversations.map(({ conversation_id }) => conversation_id));
+          writeRecentConversationIds(principalId, conversations.map(({ conversation_id }) => conversation_id));
           setLoadState("ready");
           return;
         }
@@ -1209,7 +1310,7 @@ export function TrustedSurface() {
 
     void initialize();
     return () => controller.abort();
-  }, [createConversation]);
+  }, [createConversation, principalId]);
 
   const selectConversation = useCallback(async (conversationId: string) => {
     if (conversationId === conversation?.conversation_id || busy) return;
@@ -1230,6 +1331,34 @@ export function TrustedSurface() {
       setBusy(null);
     }
   }, [busy, conversation?.conversation_id, rememberConversation]);
+
+  const discardConversation = useCallback(async (conversationId: string) => {
+    if (busy) throw new Error("Wait for the current action to finish before discarding a conversation.");
+    const discardingActiveConversation = conversation?.conversation_id === conversationId;
+    setBusy("deleting");
+    const identity = createRequestIdentity("conversation_discard");
+    try {
+      const result = await boundApi.discardConversation(conversationId, principalSession.csrf_token, identity);
+      setLastCorrelationId(result.correlationId ?? identity.correlationId);
+      setRecents((current) => {
+        const updated = current.filter(({ conversation_id: candidate }) => candidate !== conversationId);
+        writeRecentConversationIds(principalId, updated.map(({ conversation_id }) => conversation_id));
+        return updated;
+      });
+      if (discardingActiveConversation) {
+        setConversation(undefined);
+        setPendingMessage(undefined);
+        setFailedTurn(undefined);
+        setComposerValue("");
+        setLoadState("loading");
+        await createConversation();
+      }
+    } catch (caught) {
+      throw asApiError(caught);
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, conversation?.conversation_id, createConversation, principalId, principalSession.csrf_token]);
 
   const submitTurn = useCallback(async (
     text: string,
@@ -1315,6 +1444,7 @@ export function TrustedSurface() {
     || conversation?.intent.departure_date,
   );
   const isBusy = busy !== null;
+  const showDockedComposer = Boolean(conversation?.messages.length || pendingMessage || busy === "sending");
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden" style={{ "--sidebar-width": "15.5rem" } as CSSProperties}>
@@ -1322,6 +1452,7 @@ export function TrustedSurface() {
         activeConversationId={conversation?.conversation_id}
         conversations={recents}
         newConversationDisabled={isBusy || loadState === "loading"}
+        onDiscardConversation={discardConversation}
         onNewConversation={() => void createConversation()}
         onSelectConversation={(conversationId) => void selectConversation(conversationId)}
       />
@@ -1352,7 +1483,7 @@ export function TrustedSurface() {
             <ConversationContent
               className={cn(
                 "relative mx-auto min-h-full min-w-0 w-full max-w-3xl gap-7 overflow-x-hidden px-4 py-7 transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] md:px-8 md:py-10",
-                !conversation?.messages.length && !pendingMessage && busy !== "sending" && "justify-center",
+                !conversation?.messages.length && !pendingMessage && busy !== "sending" && "justify-start sm:justify-center",
                 (busy === "creating" || busy === "switching") && "opacity-60",
               )}
             >
@@ -1371,7 +1502,15 @@ export function TrustedSurface() {
 
                 {loadState === "ready" && conversation && !conversation.messages.length && !pendingMessage ? (
                   <ChatPresenceItem key="welcome">
-                    <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} />
+                    <Welcome
+                      composerValue={composerValue}
+                      disabled={isBusy}
+                      onComposerChange={setComposerValue}
+                      onSubmit={(value) => void submitTurn(value)}
+                      onSuggestion={(value) => void submitTurn(value)}
+                      principalName={principalSession.principal.display_name}
+                      speech={speech}
+                    />
                   </ChatPresenceItem>
                 ) : null}
 
@@ -1441,7 +1580,7 @@ export function TrustedSurface() {
             <ConversationScrollButton aria-label="Go to the end of the conversation" />
           </Conversation>
 
-          <footer className="min-w-0 shrink-0 overflow-hidden border-t bg-panel px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:px-6">
+          {showDockedComposer ? <footer className="min-w-0 shrink-0 overflow-hidden border-t bg-panel px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:px-6">
             <div className="mx-auto min-w-0 max-w-3xl">
               <PromptInput onSubmit={handleSubmit}>
                 <PromptInputBody>
@@ -1488,7 +1627,7 @@ export function TrustedSurface() {
                 <span className="hidden truncate font-mono text-[9px] text-muted-foreground sm:block">{shortId(apiUrl, 28, 0)}</span>
               </div>
             </div>
-          </footer>
+          </footer> : null}
         </main>
         <OperationInspector busy={busy} conversation={conversation} />
       </SidebarInset>

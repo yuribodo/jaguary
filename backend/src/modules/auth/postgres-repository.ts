@@ -75,8 +75,17 @@ export class PostgresPrincipalAuthRepository implements PrincipalAuthRepositoryP
         .from(principalAuthIdentities).innerJoin(principals, eq(principalAuthIdentities.principalId, principals.principalId))
         .where(and(eq(principalAuthIdentities.issuer, identity.issuer), eq(principalAuthIdentities.subjectHash, subjectHash))))[0];
       if (existing !== undefined) {
-        await transaction.update(principalAuthIdentities).set({ lastAuthenticatedAt: now, updatedAt: now }).where(eq(principalAuthIdentities.identityId, existing.identityId));
-        return { principal_id: existing.principalId, display_name: existing.displayName };
+        const displayName = identity.displayName.slice(0, 128);
+        await transaction.update(principals).set({ displayName, updatedAt: now }).where(eq(principals.principalId, existing.principalId));
+        await transaction.update(principalAuthIdentities).set({
+          lastAuthenticatedAt: now,
+          updatedAt: now,
+          ...(identity.verifiedEmail === undefined ? {} : {
+            verifiedEmailHash: sha256Text(identity.verifiedEmail.toLowerCase()),
+            maskedEmail: maskVerifiedEmail(identity.verifiedEmail),
+          }),
+        }).where(eq(principalAuthIdentities.identityId, existing.identityId));
+        return { principal_id: existing.principalId, display_name: displayName };
       }
       const principal: SanitizedPrincipal = { principal_id: `principal_${randomUUID()}`, display_name: identity.displayName.slice(0, 128) };
       await transaction.insert(principals).values({ principalId: principal.principal_id, displayName: principal.display_name, createdAt: now, updatedAt: now });

@@ -236,6 +236,21 @@ export const boundApi = {
     });
   },
 
+  discardConversation(
+    conversationId: string,
+    csrfToken: string,
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<never>(`/v1/conversations/${encodeURIComponent(conversationId)}`, {
+      method: "DELETE",
+      headers: {
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+        "X-CSRF-Token": csrfToken,
+      },
+    });
+  },
+
   getReceipt(receiptId: string, signal?: AbortSignal) {
     return request<OrderReceipt>(`/receipts/${receiptId}`, { signal });
   },

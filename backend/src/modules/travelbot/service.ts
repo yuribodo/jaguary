@@ -123,6 +123,16 @@ export class TravelBotService {
     return view(conversation);
   }
 
+  async discardConversation(conversationId: string, principalId: string): Promise<void> {
+    const result = await this.options.repository.discard(conversationId, principalId);
+    if (result === "NOT_FOUND") throw new PublicApiError(404, "not_found", "Conversation not found");
+    if (result === "IN_PROGRESS") {
+      throw new PublicApiError(409, "invalid_request", "Wait for TravelBot to finish before discarding this conversation", {
+        retryable: true,
+      });
+    }
+  }
+
   async postMessage(command: PostMessageCommand): Promise<TravelBotConversationView> {
     const claimed = await this.options.repository.claimTurn(command, this.options.clock.now());
     if (claimed.kind === "REPLAY") return view(claimed.conversation);

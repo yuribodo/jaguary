@@ -181,6 +181,7 @@ export interface CompletedTravelToolExecution {
 export interface TravelBotRepositoryPort {
   create(command: CreateConversationCommand, now: Date): Promise<TravelBotConversation>;
   get(conversationId: string): Promise<TravelBotConversation | undefined>;
+  discard(conversationId: string, principalId: string): Promise<"DELETED" | "IN_PROGRESS" | "NOT_FOUND">;
   claimTurn(command: PostMessageCommand, now: Date): Promise<
     | { kind: "REPLAY"; conversation: TravelBotConversation }
     | { kind: "CLAIMED"; claim: ClaimedTravelBotTurn }

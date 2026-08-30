@@ -12,6 +12,40 @@ import {
   type AgentRuntimeRequest,
 } from "../src/modules/travelbot/index.js";
 
+test("discarding is owner-bound and refuses a conversation with an active turn", async () => {
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: { async run() { throw new Error("runtime is not used"); } },
+    tools: { findOffers: async () => [] },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_discard_service_create_001",
+    correlation_id: "corr_discard_service_create_001",
+  });
+  await assert.rejects(
+    service.discardConversation(conversation.conversation_id, "principal_someone_else"),
+    (error: unknown) => error instanceof Error && error.message === "Conversation not found",
+  );
+  const claim = await repository.claimTurn({
+    conversation_id: conversation.conversation_id,
+    content: "Plan a trip.",
+    idempotency_key: "idem_discard_service_message_001",
+    correlation_id: "corr_discard_service_message_001",
+  }, new Date("2026-08-29T12:04:01.000Z"));
+  assert.equal(claim.kind, "CLAIMED");
+  await assert.rejects(
+    service.discardConversation(conversation.conversation_id, "principal_marta"),
+    (error: unknown) => error instanceof Error && /TravelBot to finish/.test(error.message),
+  );
+  if (claim.kind === "CLAIMED") await repository.failTurn(claim.claim.run_id, "test_failure", false);
+  await service.discardConversation(conversation.conversation_id, "principal_marta");
+  assert.equal(await repository.get(conversation.conversation_id), undefined);
+});
+
 test("a complete one-message request keeps only the best offer and asks for purchase approval", async () => {
   const runtimeRequests: AgentRuntimeRequest[] = [];
   let checkouts = 0;

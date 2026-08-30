@@ -33,7 +33,11 @@ export class InMemoryPrincipalAuthStore implements PrincipalAuthRepositoryPort, 
   async resolveExternalIdentity(identity: VerifiedExternalIdentity): Promise<SanitizedPrincipal> {
     const key = `${identity.issuer}:${sha256Text(identity.subject)}`;
     const existingId = this.#identities.get(key);
-    if (existingId !== undefined) return this.#principals.get(existingId)!;
+    if (existingId !== undefined) {
+      const principal = { principal_id: existingId, display_name: identity.displayName };
+      this.#principals.set(existingId, principal);
+      return principal;
+    }
     const principal = { principal_id: `principal_${randomUUID()}`, display_name: identity.displayName };
     this.#principals.set(principal.principal_id, principal);
     this.#identities.set(key, principal.principal_id);

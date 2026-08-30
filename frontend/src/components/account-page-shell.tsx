@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { AppSidebar, type AccountPage } from "@/components/app-sidebar";
-import { AuthenticatedPage } from "@/components/authenticated-page";
+import { AuthenticatedPage, useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
 import {
   SidebarInset,
   SidebarProvider,
@@ -17,7 +17,6 @@ import {
 } from "@/lib/conversation-history";
 import type { TravelBotConversation } from "@/lib/contracts";
 
-const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
 
 type AccountPageShellProps = {
@@ -35,6 +34,8 @@ function WorkspaceAccountPageShell({
   children,
 }: AccountPageShellProps) {
   const router = useRouter();
+  const principalSession = useAuthenticatedPrincipalSession();
+  const principalId = principalSession.principal.principal_id;
   const [recents, setRecents] = useState<TravelBotConversation[]>([]);
   const [recentMessage, setRecentMessage] = useState("Loading conversations…");
   const [creatingConversation, setCreatingConversation] = useState(false);
@@ -43,7 +44,7 @@ function WorkspaceAccountPageShell({
     const controller = new AbortController();
 
     async function loadRecents() {
-      const ids = readRecentConversationIds();
+      const ids = readRecentConversationIds(principalId);
       if (!ids.length) {
         setRecentMessage("Your conversations will appear here.");
         return;
@@ -69,7 +70,7 @@ function WorkspaceAccountPageShell({
 
     void loadRecents();
     return () => controller.abort();
-  }, []);
+  }, [principalId]);
 
   const createConversation = useCallback(async () => {
     if (creatingConversation) return;
@@ -78,16 +79,16 @@ function WorkspaceAccountPageShell({
 
     try {
       const result = await boundApi.createConversation(
-        { principal_id: PRINCIPAL_ID, agent_id: TRAVELBOT_ID },
+        { principal_id: principalId, agent_id: TRAVELBOT_ID },
         createRequestIdentity("conversation_create"),
       );
-      rememberRecentConversationId(result.data.conversation_id);
+      rememberRecentConversationId(principalId, result.data.conversation_id);
       router.push(`/demo?conversation=${encodeURIComponent(result.data.conversation_id)}`);
     } catch {
       setRecentMessage("Could not create a conversation. Please try again.");
       setCreatingConversation(false);
     }
-  }, [creatingConversation, router]);
+  }, [creatingConversation, principalId, router]);
 
   return (
     <SidebarProvider
