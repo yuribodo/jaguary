@@ -37,9 +37,34 @@ test("all missing fields are grouped into one concise deterministic question", (
 
   assert.equal(
     question,
-    "Informe origem e destino (IATA), data de ida, passageiros, cabine e orçamento total com moeda.",
+    "Para continuar, me diga de onde você quer sair, qual cidade ou aeroporto você prefere no destino, em que data quer viajar e quanto pretende gastar e em qual moeda.",
   );
   assert.equal((question.match(/\?/g) ?? []).length, 0);
+});
+
+test("a regional destination is named in the clarification without asking inferred defaults again", () => {
+  const question = deterministicClarification(
+    ["origin_iata", "destination_iata", "departure_date"],
+    [],
+    ["Quero comprar uma passagem para Rondônia de no máximo 3 mil reais."],
+  );
+
+  assert.equal(
+    question,
+    "Para continuar, me diga de onde você quer sair, qual cidade ou aeroporto em Rondônia você prefere e em que data quer viajar.",
+  );
+  assert.doesNotMatch(question, /passageir|cabine/i);
+});
+
+test("the Rio de Janeiro clarification uses natural Brazilian Portuguese", () => {
+  assert.equal(
+    deterministicClarification(
+      ["destination_iata"],
+      [],
+      ["Quero um voo para o Rio de Janeiro."],
+    ),
+    "Para continuar, me diga qual cidade ou aeroporto no Rio de Janeiro você prefere.",
+  );
 });
 
 test("a correction after offer selection invalidates the selected offer", () => {
@@ -113,6 +138,6 @@ test("every individual missing field is named by the deterministic clarification
     const intent = { ...complete, [field]: null };
     const missing = missingTravelIntentFields(intent);
     assert.deepEqual(missing, [field]);
-    assert.match(deterministicClarification(missing, []), /^Informe /);
+    assert.match(deterministicClarification(missing, []), /^Para continuar, me diga /);
   }
 });

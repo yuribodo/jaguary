@@ -624,6 +624,47 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   assert.equal(events.at(-1)?.event_type, "turn.completed");
 });
 
+integrationTest("TravelBot persists distinct calls to the same tool within one model run", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-repeated-tool-model");
+  const conversation = await repository.create({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_repeated_tool_create_001",
+    correlation_id: "corr_repeated_tool_create_001",
+  }, new Date("2026-08-29T12:04:01.000Z"));
+  const claimed = await repository.claimTurn({
+    conversation_id: conversation.conversation_id,
+    content: "Seleciono a oferta disponível.",
+    idempotency_key: "idem_repeated_tool_message_001",
+    correlation_id: "corr_repeated_tool_message_001",
+  }, new Date("2026-08-29T12:04:01.000Z"));
+  assert.equal(claimed.kind, "CLAIMED");
+  if (claimed.kind !== "CLAIMED") return;
+
+  await repository.recordToolExecutions(claimed.claim.run_id, [
+    {
+      tool_call_id: "call_model_create_checkout",
+      tool_name: "create_checkout",
+      status: "COMPLETED",
+      arguments: { offer_id: offerCandidateFixture.offer_id },
+      result: { status: "OK", reference_id: offerCandidateFixture.offer_id },
+    },
+    {
+      tool_call_id: "call_application_create_checkout",
+      tool_name: "create_checkout",
+      status: "COMPLETED",
+      arguments: { offer_id: offerCandidateFixture.offer_id },
+      result: { checkout_id: "checkout_test_repeated_tool" },
+    },
+  ], new Date("2026-08-29T12:04:01.000Z"));
+
+  const persisted = await database.db.select().from(travelToolExecutions)
+    .where(eq(travelToolExecutions.runId, claimed.claim.run_id));
+  assert.equal(persisted.length, 2);
+});
+
 integrationTest("TravelBot serializes concurrent messages on one conversation", async () => {
   assert.ok(database);
   await seedMandateReferences();

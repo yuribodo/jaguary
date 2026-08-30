@@ -40,6 +40,7 @@ export type CommerceItem = {
 
 export type FlightFulfillment = {
   type: "FLIGHT";
+  cabin: CabinClass;
   origin: string;
   destination: string;
   departure_at: string;
@@ -140,3 +141,83 @@ export type ActiveMandate = SignedMandate & { status: "ACTIVE" };
 export type RevokedMandate = SignedMandate & { status: "REVOKED"; revoked_at: string };
 export type InactiveMandate = SignedMandate & { status: "EXPIRED" | "CONSUMED" };
 export type Mandate = DraftMandate | ActiveMandate | RevokedMandate | InactiveMandate;
+
+export type TravelBotState =
+  | "COLLECTING"
+  | "READY_TO_SEARCH"
+  | "AWAITING_OFFER_SELECTION"
+  | "AWAITING_AUTHORITY_CONFIRMATION"
+  | "READY_TO_PURCHASE"
+  | "EXECUTING"
+  | "COMPLETED"
+  | "FAILED";
+
+export type RequiredTravelIntentField =
+  | "origin_iata"
+  | "destination_iata"
+  | "departure_date"
+  | "passenger_count"
+  | "cabin"
+  | "max_total_budget";
+
+export type TravelIntent = {
+  origin_iata: string | null;
+  destination_iata: string | null;
+  departure_date: string | null;
+  passenger_count: number | null;
+  cabin: CabinClass | null;
+  max_total_budget: Money | null;
+  selected_offer_id: string | null;
+  confirmation: {
+    approval_id: string;
+    merchant_id: string;
+    checkout_hash: string;
+    amount: number;
+    currency: string;
+    mandate_id: string;
+    decision: "CONFIRMED" | "DENIED";
+    decided_at: string;
+  } | null;
+};
+
+export type TravelBotMessage = {
+  message_id: string;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  sequence: number;
+  correlation_id: string;
+  created_at: string;
+};
+
+export type PendingTravelApproval = {
+  approval_id: string;
+  merchant_id: string;
+  checkout_hash: string;
+  amount: number;
+  currency: string;
+  mandate_id: string;
+  status: "PENDING" | "APPROVED" | "DENIED" | "CANCELLED" | "CONSUMED";
+};
+
+export type TravelBotConversation = {
+  conversation_id: string;
+  principal_id: string;
+  agent_id: string;
+  state: TravelBotState;
+  version: number;
+  intent: TravelIntent;
+  offers: OfferCandidate[];
+  messages: TravelBotMessage[];
+  active_run_id: string | null;
+  operation: {
+    checkout_id: string | null;
+    checkout_hash: string | null;
+    mandate_id: string | null;
+    authorization_id: string | null;
+    receipt_id: string | null;
+    pending_approval: PendingTravelApproval | null;
+  };
+  missing_fields: RequiredTravelIntentField[];
+  created_at: string;
+  updated_at: string;
+};
