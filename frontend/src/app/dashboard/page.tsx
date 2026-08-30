@@ -1,5 +1,5 @@
-import { SyncedDashboardPage } from "@/components/dashboard-sync";
+import { DashboardPage } from "@/components/dashboard-page";
 
 export default function Page() {
-  return <SyncedDashboardPage />;
+  return <DashboardPage />;
 }
