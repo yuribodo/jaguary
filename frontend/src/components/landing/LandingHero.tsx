@@ -64,7 +64,7 @@ export function LandingHero() {
           </a>
         </div>
 
-        <div className="landing-rise mt-20 w-full max-w-3xl" style={{ animationDelay: "700ms" }}>
+        <div className="landing-rise mt-14 w-full max-w-5xl md:mt-16" style={{ animationDelay: "700ms" }}>
           <LandingStage />
         </div>
       </div>
