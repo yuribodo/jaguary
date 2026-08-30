@@ -12,11 +12,13 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => {
+  const reduceMotion = useReducedMotion();
+
   return (
     <StickToBottom
       className={cn("relative flex-1 overflow-y-hidden", className)}
       initial="instant"
-      resize="instant"
+      resize={reduceMotion ? "instant" : "smooth"}
       role="log"
       {...props}
     />
@@ -85,7 +87,7 @@ export const ConversationScrollButton = ({
     scrollToBottom(
       reduceMotion
         ? "instant"
-        : { animation: { damping: 0.8, mass: 0.85, stiffness: 0.1 } },
+        : { animation: { damping: 0.75, mass: 1, stiffness: 0.08 } },
     );
   }, [reduceMotion, scrollToBottom]);
 
