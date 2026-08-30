@@ -301,7 +301,7 @@ function freshnessLabel(observedAt: string) {
 function officialFlightHref(offer: OfferCandidate) {
   const source = new URL(offer.source_url);
   if (offer.merchant_id === "merchant_vuelaya" && source.hostname === "demo.vuelaya.example") {
-    return `/connected-merchants/vuelaya${source.pathname}`;
+    return `/lojas-conectadas/vuelaya/voos/${encodeURIComponent(offer.offer_id)}`;
   }
   return offer.source_url;
 }

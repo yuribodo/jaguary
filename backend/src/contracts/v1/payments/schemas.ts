@@ -17,6 +17,23 @@ export const paymentCredentialReferenceSchema = z
 
 export type PaymentCredentialReference = z.infer<typeof paymentCredentialReferenceSchema>;
 
+export const paymentMethodNetworkSchema = z.enum(["VISA", "MASTERCARD", "OTHER"]);
+
+export type PaymentMethodNetwork = z.infer<typeof paymentMethodNetworkSchema>;
+
+export const paymentMethodSummarySchema = z
+  .object({
+    credential_id: identifierSchema,
+    network: paymentMethodNetworkSchema,
+    last_four: z.string().regex(/^\d{4}$/).nullable(),
+    label: z.string().min(1).max(64),
+    created_at: utcRfc3339Schema,
+    updated_at: utcRfc3339Schema,
+  })
+  .strict();
+
+export type PaymentMethodSummary = z.infer<typeof paymentMethodSummarySchema>;
+
 export const authorizedPaymentSchema = z
   .object({
     authorization: reservedAuthorizationSchema,

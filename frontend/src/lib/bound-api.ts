@@ -7,6 +7,7 @@ import type {
   NormalizedCheckout,
   OfferCandidate,
   OrderReceipt,
+  PaymentMethodSummary,
   PurchaseIntent,
   TravelBotConversation,
   TravelWatch,
@@ -323,6 +324,10 @@ export const boundApi = {
 
   listReceipts(signal?: AbortSignal) {
     return request<OrderReceipt[]>("/receipts", { signal });
+  },
+
+  listPaymentMethods(signal?: AbortSignal) {
+    return request<PaymentMethodSummary[]>("/v1/payment-methods", { signal });
   },
 
   getAuditTimeline(correlationId: string, signal?: AbortSignal) {
