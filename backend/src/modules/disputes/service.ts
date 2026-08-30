@@ -208,9 +208,10 @@ export class PurchaseDisputeService {
     const adjudication = adjudicatePurchaseDispute(checks);
     const now = this.clock.now();
     const disputeId = `dispute_${randomUUID()}`;
+    const lockKey = `purchase-dispute:${input.receiptId}`;
 
     return this.database.transaction(async (transaction) => {
-      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`purchase-dispute:${input.receiptId}`}, 0))`);
+      await transaction.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
       const concurrentReplay = (await transaction.select().from(purchaseDisputes)
         .where(eq(purchaseDisputes.idempotencyKey, input.idempotencyKey)).limit(1))[0];
       if (concurrentReplay !== undefined) return this.replay(input, concurrentReplay);

@@ -128,7 +128,7 @@ const evidenceCheckLabels: Record<keyof PurchaseDisputeEvidenceChecks, string> =
   audit_chain_verified: "Tamper-evident audit chain",
 };
 
-function DisputeResolution({ dispute }: { dispute: PurchaseDispute }) {
+function DisputeResolution({ dispute }: Readonly<{ dispute: PurchaseDispute }>) {
   const authorized = dispute.verdict === "AUTHORIZED";
   return (
     <section className={cn("rounded-xl border p-5", authorized ? "border-amber-200 bg-amber-50/60" : "border-emerald-200 bg-emerald-50/60")}>
@@ -171,10 +171,7 @@ function DisputeResolution({ dispute }: { dispute: PurchaseDispute }) {
   );
 }
 
-function ReceiptDetails({ receipt, onOpenChange }: {
-  receipt: OrderReceipt | null;
-  onOpenChange: (open: boolean) => void;
-}) {
+function useReceiptDispute(receipt: OrderReceipt | null) {
   const principalSession = useAuthenticatedPrincipalSession();
   const [dispute, setDispute] = useState<PurchaseDispute | null>();
   const [confirming, setConfirming] = useState(false);
@@ -187,8 +184,8 @@ function ReceiptDetails({ receipt, onOpenChange }: {
     const controller = new AbortController();
     void boundApi.getReceiptDispute(receipt.receipt_id, controller.signal)
       .then((result) => setDispute(result.data))
-      .catch((caught: unknown) => {
-        if (!controller.signal.aborted) setDisputeError(caught instanceof BoundApiError ? caught.message : "The dispute status could not be loaded.");
+      .catch((error_: unknown) => {
+        if (!controller.signal.aborted) setDisputeError(error_ instanceof BoundApiError ? error_.message : "The dispute status could not be loaded.");
       });
     return () => controller.abort();
   }, [receipt]);
@@ -206,12 +203,21 @@ function ReceiptDetails({ receipt, onOpenChange }: {
       );
       setDispute(result.data);
       setConfirming(false);
-    } catch (caught) {
-      setDisputeError(caught instanceof BoundApiError ? caught.message : "The dispute could not be opened.");
+    } catch (error_) {
+      setDisputeError(error_ instanceof BoundApiError ? error_.message : "The dispute could not be opened.");
     } finally {
       setSubmitting(false);
     }
   }, [principalSession.csrf_token, receipt, submitting]);
+
+  return { confirming, dispute, disputeError, openDispute, setConfirming, submitting };
+}
+
+function ReceiptDetails({ receipt, onOpenChange }: Readonly<{
+  receipt: OrderReceipt | null;
+  onOpenChange: (open: boolean) => void;
+}>) {
+  const { confirming, dispute, disputeError, openDispute, setConfirming, submitting } = useReceiptDispute(receipt);
 
   return (
     <Sheet onOpenChange={onOpenChange} open={receipt !== null}>

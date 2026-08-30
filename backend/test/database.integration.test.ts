@@ -258,6 +258,38 @@ async function seedReservedAuthorizationAuditEvent(evidenceHash = "e".repeat(64)
   }));
 }
 
+async function createAuthenticatedDisputeApp(
+  t: { after(callback: () => Promise<void>): void },
+  now: string,
+  loginIdempotencyKey: string,
+) {
+  assert.ok(testDatabaseUrl);
+  const app = await buildApp({
+    databaseUrl: testDatabaseUrl,
+    logger: false,
+    clock: { now: () => new Date(now) },
+    principalAuth: {
+      mode: "demo",
+      nodeEnvironment: "development",
+      allowedOrigin: "http://localhost:3000",
+      secureCookies: false,
+      sessionTtlSeconds: 28_800,
+      loginTransactionTtlSeconds: 600,
+    },
+  });
+  t.after(async () => app.close());
+  const login = await app.inject({
+    method: "POST",
+    url: "/auth/v1/demo/session",
+    headers: { origin: "http://localhost:3000", "idempotency-key": loginIdempotencyKey },
+  });
+  assert.equal(login.statusCode, 201);
+  const cookie = login.headers["set-cookie"] as string;
+  const session = await app.inject({ method: "GET", url: "/auth/v1/session", headers: { cookie } });
+  assert.equal(session.statusCode, 200);
+  return { app, cookie, csrf: session.json().csrf_token as string };
+}
+
 async function seedMandateReferences(): Promise<void> {
   assert.ok(database);
   await database.transaction(insertMandateReferences);
@@ -3452,28 +3484,11 @@ integrationTest("the authenticated principal disputes an agent purchase and rece
   const paid = await payment.sendPay("idem_dispute_payment_001", undefined, "corr_dispute_payment_001");
   assert.equal(paid.statusCode, 200);
 
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:05:00.000Z") },
-    principalAuth: {
-      mode: "demo",
-      nodeEnvironment: "development",
-      allowedOrigin: "http://localhost:3000",
-      secureCookies: false,
-      sessionTtlSeconds: 28_800,
-      loginTransactionTtlSeconds: 600,
-    },
-  });
-  t.after(async () => app.close());
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/v1/demo/session",
-    headers: { origin: "http://localhost:3000", "idempotency-key": "idem_dispute_login_001" },
-  });
-  const cookie = login.headers["set-cookie"] as string;
-  const session = await app.inject({ method: "GET", url: "/auth/v1/session", headers: { cookie } });
-  const csrf = session.json().csrf_token as string;
+  const { app, cookie, csrf } = await createAuthenticatedDisputeApp(
+    t,
+    "2026-08-29T12:05:00.000Z",
+    "idem_dispute_login_001",
+  );
   const receiptList = await app.inject({ method: "GET", url: "/receipts", headers: { cookie } });
   const receiptId = receiptList.json<Array<{ receipt_id: string }>>()[0]?.receipt_id;
   assert.ok(receiptId);
@@ -3590,28 +3605,11 @@ integrationTest("incomplete authority evidence resolves an unrecognized purchase
     .set({ evidenceHash: "f".repeat(64) })
     .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
 
-  const app = await buildApp({
-    databaseUrl: testDatabaseUrl,
-    logger: false,
-    clock: { now: () => new Date("2026-08-29T12:06:00.000Z") },
-    principalAuth: {
-      mode: "demo",
-      nodeEnvironment: "development",
-      allowedOrigin: "http://localhost:3000",
-      secureCookies: false,
-      sessionTtlSeconds: 28_800,
-      loginTransactionTtlSeconds: 600,
-    },
-  });
-  t.after(async () => app.close());
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/v1/demo/session",
-    headers: { origin: "http://localhost:3000", "idempotency-key": "idem_dispute_invalid_login_001" },
-  });
-  const cookie = login.headers["set-cookie"] as string;
-  const session = await app.inject({ method: "GET", url: "/auth/v1/session", headers: { cookie } });
-  const csrf = session.json().csrf_token as string;
+  const { app, cookie, csrf } = await createAuthenticatedDisputeApp(
+    t,
+    "2026-08-29T12:06:00.000Z",
+    "idem_dispute_invalid_login_001",
+  );
   const opened = await app.inject({
     method: "POST",
     url: `/v1/receipts/${receiptId}/disputes`,

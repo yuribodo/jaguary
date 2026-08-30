@@ -24,7 +24,12 @@ async function resolveAuditTimeline(value: string): Promise<AuditTimeline> {
   return (await boundApi.getAuditTimeline(correlationId)).data;
 }
 
-export function AuditTrailPage({ initialQuery = "" }: { initialQuery?: string }) {
+function auditErrorMessage(error_: unknown): string {
+  if (error_ instanceof BoundApiError || error_ instanceof Error) return error_.message;
+  return "The audit trail could not be loaded.";
+}
+
+export function AuditTrailPage({ initialQuery = "" }: Readonly<{ initialQuery?: string }>) {
   const [query, setQuery] = useState(initialQuery);
   const [timeline, setTimeline] = useState<AuditTimeline>();
   const [error, setError] = useState<string>();
@@ -34,7 +39,7 @@ export function AuditTrailPage({ initialQuery = "" }: { initialQuery?: string })
     if (!initialQuery) return;
     void resolveAuditTimeline(initialQuery)
       .then(setTimeline)
-      .catch((caught: unknown) => setError(caught instanceof BoundApiError ? caught.message : caught instanceof Error ? caught.message : "The audit trail could not be loaded."))
+      .catch((error_: unknown) => setError(auditErrorMessage(error_)))
       .finally(() => setLoading(false));
   }, [initialQuery]);
 
@@ -46,8 +51,8 @@ export function AuditTrailPage({ initialQuery = "" }: { initialQuery?: string })
     setTimeline(undefined);
     try {
       setTimeline(await resolveAuditTimeline(value));
-    } catch (caught) {
-      setError(caught instanceof BoundApiError ? caught.message : caught instanceof Error ? caught.message : "The audit trail could not be loaded.");
+    } catch (error_) {
+      setError(auditErrorMessage(error_));
     } finally {
       setLoading(false);
     }

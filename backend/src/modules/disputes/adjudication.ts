@@ -18,7 +18,7 @@ export interface PurchaseDisputeAdjudication {
 export function adjudicatePurchaseDispute(
   checks: PurchaseDisputeEvidenceChecks,
 ): PurchaseDisputeAdjudication {
-  if (!Object.values(checks).every((verified) => verified)) {
+  if (!Object.values(checks).every(Boolean)) {
     return {
       verdict: "UNAUTHORIZED",
       liable_party: "MERCHANT",

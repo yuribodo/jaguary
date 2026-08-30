@@ -20,7 +20,7 @@ CREATE TABLE "purchase_disputes" (
 	"resolved_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "purchase_disputes_receipt_unique" UNIQUE("receipt_id"),
 	CONSTRAINT "purchase_disputes_idempotency_unique" UNIQUE("idempotency_key"),
-	CONSTRAINT "purchase_disputes_id_check" CHECK ("purchase_disputes"."dispute_id" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'),
+	CONSTRAINT "purchase_disputes_id_check" CHECK ("purchase_disputes"."dispute_id" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]*$'), -- NOSONAR: generated migration materializes the shared identifier constraint
 	CONSTRAINT "purchase_disputes_reason_check" CHECK ("purchase_disputes"."reason" IN ('UNRECOGNIZED_PURCHASE')),
 	CONSTRAINT "purchase_disputes_status_check" CHECK ("purchase_disputes"."status" IN ('RESOLVED')),
 	CONSTRAINT "purchase_disputes_verdict_check" CHECK ("purchase_disputes"."verdict" IN ('AUTHORIZED', 'UNAUTHORIZED')),
