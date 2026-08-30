@@ -594,7 +594,16 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   const service = new TravelBotService({
     repository,
     runtime,
-    tools: { findOffers: async () => listVuelaYaOffers() },
+    tools: {
+      findOffers: async () => listVuelaYaOffers(),
+      createCheckout: async ({ offer }) => ({
+        checkout_id: "checkout_travelbot_integration_001",
+        checkout_hash: "c".repeat(64),
+        merchant_id: offer.merchant_id,
+        total: offer.total,
+      }),
+      prepareAuthority: async () => ({ mandate_id: "mandate_chat_integration_001", status: "DRAFT" }),
+    },
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
     model: "fake-integration-model",
   });
@@ -614,11 +623,11 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   const replay = await service.postMessage(command);
   assert.deepEqual(replay, first);
   assert.equal(modelRuns, 1);
-  assert.equal(first.state, "AWAITING_OFFER_SELECTION");
+  assert.equal(first.state, "AWAITING_AUTHORITY_CONFIRMATION");
   const messages = await database.db.select().from(travelMessages);
   assert.equal(messages.some(({ content }) => content.includes("sk-supersecret")), false);
   assert.equal((await database.db.select().from(travelModelRuns)).length, 1);
-  assert.equal((await database.db.select().from(travelToolExecutions)).length, 1);
+  assert.equal((await database.db.select().from(travelToolExecutions)).length, 3);
   const events = await repository.listSseEvents(conversation.conversation_id, 1);
   assert.equal(events.length, 4);
   assert.equal(events.at(-1)?.event_type, "turn.completed");

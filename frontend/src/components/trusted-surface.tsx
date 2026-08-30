@@ -7,15 +7,17 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { motion, useReducedMotion } from "framer-motion";
 import {
-  ArrowUpRightIcon,
+  ArrowRightIcon,
   BotIcon,
-  CalendarDaysIcon,
   CheckIcon,
+  CheckCheckIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   CircleIcon,
   CopyIcon,
+  ExternalLinkIcon,
+  FingerprintIcon,
   InfoIcon,
   MicIcon,
   MicOffIcon,
@@ -28,7 +30,6 @@ import {
   SquareIcon,
   WalletCardsIcon,
   WifiOffIcon,
-  UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -70,7 +71,10 @@ import {
 } from "@/lib/conversation-history";
 import type {
   AgentIdentity,
+  AuditTimeline,
+  AuditTimelineEvent,
   OfferCandidate,
+  OrderReceipt,
   RequiredTravelIntentField,
   TravelBotConversation,
   TravelBotMessage,
@@ -80,8 +84,8 @@ import type {
 const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
 const STARTER_PROMPTS = [
-  "I want to travel from GRU to COR on September 15, 2026, one passenger, economy, up to US$150.",
-  "Find a flight from São Paulo to Córdoba on September 15 for up to US$150.",
+  "I want to travel from GRU to COR on September 15, 2026, one passenger, economy, up to US$1,000.",
+  "Find a flight from São Paulo to Córdoba on September 15 for up to US$1,000.",
 ];
 
 type LoadState = "loading" | "ready" | "error";
@@ -133,6 +137,15 @@ function formatMoney(amount: number, currency: string) {
   }).format(amount / 100);
 }
 
+function formatMoneyCompact(amount: number, currency: string) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: amount % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amount / 100);
+}
+
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
@@ -155,11 +168,41 @@ function formatLocalTime(local: string | undefined, fallback: string) {
   return local?.slice(11, 16) ?? formatTime(fallback);
 }
 
-function formatDuration(minutes?: number) {
+function formatTicketDate(local: string | undefined, fallback: string) {
+  const date = local?.slice(0, 10) ?? fallback.slice(0, 10);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    weekday: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00.000Z`)).replaceAll(",", "").toUpperCase().replace("SEPT", "SEP");
+}
+
+function formatTicketShortDate(local: string | undefined, fallback: string) {
+  const date = local?.slice(0, 10) ?? fallback.slice(0, 10);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00.000Z`)).replace("Sept", "Sep").toUpperCase();
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(value));
+}
+
+function formatTicketDuration(minutes?: number) {
   if (minutes === undefined) return undefined;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}min` : `${hours}h`;
+  return rest ? `${hours}H ${rest}M` : `${hours}H`;
 }
 
 function cabinLabel(cabin: OfferCandidate["fulfillment"]["cabin"] | null) {
@@ -176,6 +219,15 @@ function stopLabel(stops?: number) {
   if (stops === 0) return "Nonstop";
   return `${stops} ${stops === 1 ? "stop" : "stops"}`;
 }
+
+const airportCityLabels: Record<string, string> = {
+  AEP: "Buenos Aires",
+  COR: "Córdoba",
+  EZE: "Buenos Aires",
+  GIG: "Rio de Janeiro",
+  GRU: "São Paulo",
+  JFK: "New York",
+};
 
 function freshnessLabel(observedAt: string) {
   return `at ${formatTime(observedAt)}`;
@@ -282,14 +334,8 @@ function useSpeechInput(
 }
 
 function AssistantMessage({ message }: { message: TravelBotMessage }) {
-  const reduceMotion = useReducedMotion();
   return (
-    <motion.div
-      animate={{ opacity: 1, y: 0 }}
-      className="w-full"
-      initial={{ opacity: 0, y: reduceMotion ? 0 : 5 }}
-      transition={{ duration: reduceMotion ? 0.08 : 0.2 }}
-    >
+    <div className="w-full">
       <Message className="max-w-full" from="assistant">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 grid size-7 shrink-0 place-items-center text-blue-700">
@@ -312,7 +358,7 @@ function AssistantMessage({ message }: { message: TravelBotMessage }) {
           </div>
         </div>
       </Message>
-    </motion.div>
+    </div>
   );
 }
 
@@ -368,11 +414,18 @@ function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: 
 function IntentSummary({ conversation }: { conversation: TravelBotConversation }) {
   const { intent } = conversation;
   if (!intent.origin_iata && !intent.destination_iata && !intent.departure_date) return null;
+  const summaryStatus = conversation.missing_fields.length
+    ? `${conversation.missing_fields.length} details missing`
+    : conversation.state === "AWAITING_AUTHORITY_CONFIRMATION"
+      ? "Flight selected"
+      : conversation.state === "COMPLETED"
+        ? "Purchase completed"
+        : "Ready to search";
   return (
     <section className="rounded-xl border bg-panel/70 p-3.5" aria-label="Understood trip request">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 text-xs font-semibold"><CheckIcon className="size-3.5 text-emerald-700" />I understood your trip</span>
-        {conversation.missing_fields.length ? <span className="text-[10px] text-amber-700">{conversation.missing_fields.length} details missing</span> : <span className="text-[10px] text-emerald-700">Ready to search</span>}
+        <span className={cn("text-[10px]", conversation.missing_fields.length ? "text-amber-700" : "text-emerald-700")}>{summaryStatus}</span>
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-5">
         <div><dt className="text-[10px] text-muted-foreground">Route</dt><dd className="mt-0.5 font-semibold">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
@@ -391,7 +444,7 @@ function WorkingStatus({ state }: { state: TravelBotState }) {
     ? "Locking the offer and preparing your review…"
     : state === "AWAITING_AUTHORITY_CONFIRMATION"
       ? "Validating the authorization and processing securely…"
-      : "Checking available flights on Google Flights…";
+    : "Finding the best flight and preparing your review…";
   return (
     <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3.5" aria-live="polite" role="status">
       <span className="relative mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm">
@@ -400,77 +453,6 @@ function WorkingStatus({ state }: { state: TravelBotState }) {
       </span>
       <div><strong className="block text-xs">{label}</strong><p className="mt-1 text-[11px] leading-5 text-muted-foreground">This may take a few seconds. You can stay on this screen.</p></div>
     </div>
-  );
-}
-
-function OfferCard({
-  offer,
-  passengerCount,
-}: {
-  offer: OfferCandidate;
-  passengerCount: number;
-}) {
-  const fulfillment = offer.fulfillment;
-  const airline = fulfillment.airline_names?.join(" + ") ?? "Airline";
-  const partyTotal = offer.total.amount * passengerCount;
-  const officialHref = officialFlightHref(offer);
-  const isExternal = officialHref.startsWith("http");
-  return (
-    <article className="min-w-0 max-w-full overflow-hidden rounded-xl border border-blue-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.07)]">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-panel px-4 py-3">
-        <span className="flex min-w-0 items-center gap-2 text-[11px] font-medium">
-          <i className="size-2 rounded-full bg-emerald-600" aria-hidden="true" />
-          {offer.source === "GOOGLE_FLIGHTS" ? "Google Flights" : "VuelaYa"} · checked {freshnessLabel(offer.observed_at)}
-        </span>
-        <span className="panel-label text-blue-700">TravelBot&apos;s choice</span>
-      </header>
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <span className="mb-1 block text-[9px] font-medium tracking-[0.12em] text-emerald-800 uppercase">Best matching available flight</span>
-            <strong className="block truncate text-sm">{airline}</strong>
-            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{fulfillment.flight_numbers?.join(" · ") ?? "Number confirmed at checkout"}</span>
-          </div>
-          <Link
-            className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-blue-700 hover:underline"
-            href={officialHref}
-            {...(isExternal ? { rel: "noreferrer", target: "_blank" } : {})}
-          >
-            View official flight <ArrowUpRightIcon className="size-3" />
-          </Link>
-        </div>
-        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
-          <div className="min-w-0">
-            <strong className="font-serif text-3xl font-normal">{formatLocalTime(fulfillment.departure_local, fulfillment.departure_at)}</strong>
-            <span className="mt-0.5 block text-xs font-semibold">{fulfillment.origin}</span>
-          </div>
-          <div className="grid min-w-20 place-items-center text-center sm:min-w-24">
-            <span className="text-[9px] text-muted-foreground">{formatDuration(fulfillment.duration_minutes) ?? "Duration"}</span>
-            <span className="my-1 flex w-full items-center"><i className="h-px flex-1 bg-border" /><PlaneIcon className="mx-1.5 size-3.5 text-blue-700" /><i className="h-px flex-1 bg-border" /></span>
-            <span className="text-[9px] font-medium text-muted-foreground">{stopLabel(fulfillment.stops) ?? cabinLabel(fulfillment.cabin)}</span>
-          </div>
-          <div className="min-w-0 text-right">
-            <strong className="font-serif text-3xl font-normal">{formatLocalTime(fulfillment.arrival_local, fulfillment.arrival_at)}</strong>
-            <span className="mt-0.5 block text-xs font-semibold">{fulfillment.destination}</span>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><CalendarDaysIcon className="size-3" />{formatLocalDate(fulfillment.departure_local, fulfillment.departure_at)}</span>
-          <span>{cabinLabel(fulfillment.cabin)}</span>
-          <span className="inline-flex items-center gap-1.5"><UsersIcon className="size-3" />{passengerCount} {passengerCount === 1 ? "traveler" : "travelers"}</span>
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-          <div>
-            <span className="block text-[10px] text-muted-foreground">Total for {passengerCount}</span>
-            <strong className="mt-0.5 block text-xl tabular-nums">{formatMoney(partyTotal, offer.total.currency)}</strong>
-            {passengerCount > 1 ? <span className="text-[9px] text-muted-foreground">{formatMoney(offer.total.amount, offer.total.currency)} per person</span> : null}
-          </div>
-          <span className="text-[9px] text-muted-foreground">Available until {formatTime(offer.available_until)}</span>
-        </div>
-        <p className="mt-4 border-t pt-3 text-[11px] leading-5 text-muted-foreground">TravelBot compared the compatible inventory and selected this option. Your explicit approval is still required before payment.</p>
-        <p className="mt-3 flex items-start gap-1.5 text-[9px] leading-4 text-muted-foreground"><InfoIcon className="mt-0.5 size-3 shrink-0" />Observed price, subject to confirmation at checkout.</p>
-      </div>
-    </article>
   );
 }
 
@@ -487,75 +469,358 @@ function ApprovalCard({
   if (!approval) return null;
   const offer = conversation.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
   const travelers = conversation.intent.passenger_count ?? 1;
+  if (!offer) return null;
+  const { fulfillment } = offer;
+  const airline = fulfillment.airline_names?.join(" + ") ?? "Airline";
+  const flightNumbers = fulfillment.flight_numbers?.join(" · ") ?? "Flight details at checkout";
+  const originCity = airportCityLabels[fulfillment.origin];
+  const destinationCity = airportCityLabels[fulfillment.destination];
+  const sourceName = offer.source === "GOOGLE_FLIGHTS" ? "Google Flights" : "VuelaYa";
+  const officialHref = officialFlightHref(offer);
+  const officialLinkIsExternal = officialHref.startsWith("http");
+  const selectionReason = [
+    offer.ranking === "BEST" ? "Best match" : "Selected option",
+    conversation.intent.max_total_budget ? `within ${formatMoneyCompact(conversation.intent.max_total_budget.amount, conversation.intent.max_total_budget.currency)} limit` : undefined,
+  ].filter(Boolean).join(" · ");
   return (
-    <article className="overflow-hidden rounded-xl border border-blue-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.08)]">
-      <div className="h-1 bg-blue-600" />
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-700">
-            <ShieldCheckIcon className="size-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="panel-label">Your decision</p>
-            <h2 className="mt-1 font-serif text-2xl">Approve TravelBot&apos;s choice?</h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Review the details below. TravelBot can pay <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> to VuelaYa only after your confirmation.
-            </p>
-          </div>
-        </div>
-        {offer ? (
-          <div className="mt-5 rounded-lg bg-panel p-3.5">
-            <div className="flex items-start justify-between gap-4">
-              <div><strong className="text-sm">{offer.fulfillment.origin} → {offer.fulfillment.destination}</strong><p className="mt-0.5 text-[10px] text-muted-foreground">{offer.fulfillment.airline_names?.join(" + ") ?? "VuelaYa"} · {offer.fulfillment.flight_numbers?.join(" · ")}</p></div>
-              <strong className="text-sm tabular-nums">{formatMoney(approval.amount, approval.currency)}</strong>
+    <div className="lg:-mx-6 xl:-mx-8">
+      <article
+        aria-label={`Purchase approval for ${fulfillment.origin} to ${fulfillment.destination}`}
+        className="overflow-hidden rounded-[10px] border border-[#d8dadd] bg-[#fffefb]"
+      >
+        <div className="grid sm:grid-cols-[minmax(0,1fr)_18rem]">
+          <section className="flex min-w-0 flex-col" aria-labelledby="selected-flight-title">
+            <header className="flex h-9 items-center bg-[#222326] px-4 text-[#f8f5ed] sm:px-6">
+              <span className="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase" id="selected-flight-title">Flight purchase ticket · Review</span>
+            </header>
+
+            <div className="flex flex-1 flex-col px-4 pt-4 pb-3.5 sm:px-6 sm:pt-5 sm:pb-4">
+              <div className="grid grid-cols-3 items-center gap-3 font-mono text-[8px] font-semibold tracking-[0.1em] text-[#555b64] uppercase">
+                <span>{airline}</span>
+                <span className="text-center">Flight {flightNumbers}</span>
+                <span className="text-right">{formatTicketDate(fulfillment.departure_local, fulfillment.departure_at)}</span>
+              </div>
+
+              <div className="mt-8 grid grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]">
+                <div className="min-w-0">
+                  <strong className="block text-[3.35rem] leading-[0.9] font-semibold tracking-[-0.07em] [font-family:var(--font-display)] sm:text-[3.8rem]">{fulfillment.origin}</strong>
+                  {originCity ? <span className="mt-2 block text-[11px] font-medium text-[#555b64]">{originCity}</span> : null}
+                </div>
+
+                <div className="flex items-center" aria-hidden="true">
+                  <i className="h-px flex-1 bg-[#aeb3ba]" />
+                  <PlaneIcon className="mx-2 size-4 rotate-45 stroke-[1.6] text-[#34373d]" />
+                  <i className="h-px flex-1 bg-[#aeb3ba]" />
+                </div>
+
+                <div className="min-w-0 text-right">
+                  <strong className="block text-[3.35rem] leading-[0.9] font-semibold tracking-[-0.07em] [font-family:var(--font-display)] sm:text-[3.8rem]">{fulfillment.destination}</strong>
+                  {destinationCity ? <span className="mt-2 block text-[11px] font-medium text-[#555b64]">{destinationCity}</span> : null}
+                </div>
+              </div>
+
+              <dl className="mt-5 grid grid-cols-2 border-y border-[#d9dadd] sm:grid-cols-4 sm:divide-x sm:divide-[#d9dadd]">
+                <div className="border-b border-[#d9dadd] py-4 pr-3 sm:border-b-0">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Departs</dt>
+                  <dd className="mt-1 text-[0.9rem] font-semibold tabular-nums [font-family:var(--font-display)]">{formatLocalTime(fulfillment.departure_local, fulfillment.departure_at)}</dd>
+                </div>
+                <div className="border-b border-l border-[#d9dadd] py-4 pl-3 sm:border-b-0 sm:px-3">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Arrives</dt>
+                  <dd className="mt-1 text-[0.9rem] font-semibold tabular-nums [font-family:var(--font-display)]">{formatLocalTime(fulfillment.arrival_local, fulfillment.arrival_at)}</dd>
+                </div>
+                <div className="py-4 pr-3 sm:px-3">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Duration</dt>
+                  <dd className="mt-1 text-[0.9rem] font-semibold tabular-nums [font-family:var(--font-display)]">{formatTicketDuration(fulfillment.duration_minutes) ?? "Pending"}</dd>
+                </div>
+                <div className="border-l border-[#d9dadd] py-4 pl-3">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Stops</dt>
+                  <dd className="mt-1 text-[0.9rem] font-semibold uppercase [font-family:var(--font-display)]">{stopLabel(fulfillment.stops) ?? "Pending"}</dd>
+                </div>
+              </dl>
+
+              <dl className="grid grid-cols-2 gap-x-3 border-b border-[#d9dadd] sm:grid-cols-[5.5rem_6.5rem_minmax(0,1fr)]">
+                <div className="py-4">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Traveler</dt>
+                  <dd className="mt-1 text-[11px] font-semibold">{travelers}</dd>
+                </div>
+                <div className="py-4">
+                  <dt className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#777b82] uppercase">Class</dt>
+                  <dd className="mt-1 text-[11px] font-semibold uppercase">{cabinLabel(fulfillment.cabin)}</dd>
+                </div>
+                <div className="col-span-2 flex items-center gap-2 border-t border-[#d9dadd] py-4 text-[9px] font-semibold tracking-[0.02em] text-emerald-800 uppercase sm:col-span-1 sm:border-t-0 sm:pl-2">
+                  <span className="grid size-4 shrink-0 place-items-center rounded-full bg-emerald-800 text-white"><CheckIcon className="size-2.5 stroke-[3]" /></span>
+                  {selectionReason}
+                </div>
+              </dl>
+
+              <div className="grid min-h-[4.75rem] grid-cols-2 items-center gap-5 py-3 text-[9px] leading-[1.45] text-[#777b82]">
+                <p>{fulfillment.departure_airport_name ?? "Departure airport"} ({fulfillment.origin})</p>
+                <p className="text-right">{fulfillment.arrival_airport_name ?? "Arrival airport"} ({fulfillment.destination})</p>
+              </div>
+
+              <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[#d9dadd] pt-3 text-[9px] text-[#777b82]">
+                <span>Fare checked {freshnessLabel(offer.observed_at)}</span>
+                {offer.source === "GOOGLE_FLIGHTS" ? (
+                  <Link
+                    className="inline-flex items-center gap-1 font-medium hover:text-foreground hover:underline"
+                    href={officialHref}
+                    {...(officialLinkIsExternal ? { rel: "noreferrer", target: "_blank" } : {})}
+                  >
+                    {sourceName}<ExternalLinkIcon className="size-3" />
+                  </Link>
+                ) : <span>{sourceName}</span>}
+              </footer>
             </div>
-            <dl className="mt-3 grid grid-cols-2 gap-3 border-t pt-3 text-[11px] sm:grid-cols-4">
-              <div><dt className="text-muted-foreground">Date</dt><dd className="mt-0.5 font-medium">{formatLocalDate(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
-              <div><dt className="text-muted-foreground">Local time</dt><dd className="mt-0.5 font-medium">{formatLocalTime(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}–{formatLocalTime(offer.fulfillment.arrival_local, offer.fulfillment.arrival_at)}</dd></div>
-              <div><dt className="text-muted-foreground">Travelers</dt><dd className="mt-0.5 font-medium">{travelers}</dd></div>
-              <div><dt className="text-muted-foreground">Cabin</dt><dd className="mt-0.5 font-medium">{cabinLabel(offer.fulfillment.cabin)}</dd></div>
-            </dl>
-          </div>
-        ) : null}
-        <dl className="mt-3 grid gap-2 border-y py-3 text-[10px] sm:grid-cols-2">
-          <div><dt className="text-muted-foreground">Recipient</dt><dd className="mt-0.5 font-mono">{approval.merchant_id}</dd></div>
-          <div><dt className="text-muted-foreground">Limited authority</dt><dd className="mt-0.5 font-mono">{shortId(approval.mandate_id)}</dd></div>
-        </dl>
-        <p className="mt-3 flex items-start gap-2 text-[10px] leading-4 text-muted-foreground"><ShieldCheckIcon className="mt-0.5 size-3 shrink-0 text-emerald-700" />One-time use, limited to this flight and amount. No money has moved yet.</p>
-        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button className="h-11" disabled={disabled} onClick={() => onDecision(false)} variant="outline">Do not authorize</Button>
-          <Button className="h-11" disabled={disabled} onClick={() => onDecision(true)}>
-            <CheckIcon /> Authorize {formatMoney(approval.amount, approval.currency)}
-          </Button>
+          </section>
+
+          <aside className="relative flex min-w-0 flex-col border-t border-dashed border-[#aeb4bd] bg-[#f5f7fa] sm:border-t-0 sm:border-l" aria-labelledby="purchase-approval-title">
+            <header className="flex h-9 items-center bg-[#222326] px-5 text-[#f8f5ed]">
+              <span className="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">One-time authority</span>
+            </header>
+
+            <div className="flex flex-1 flex-col px-5 pt-4">
+              <div className="grid grid-cols-[1fr_auto_auto] items-end gap-3 border-b border-[#d3d6db] pb-3">
+                <div>
+                  <strong className="block text-xl leading-none font-semibold tracking-[-0.04em] [font-family:var(--font-display)]">{fulfillment.origin} <ArrowRightIcon className="inline size-3.5" /> {fulfillment.destination}</strong>
+                  <span className="mt-1.5 block font-mono text-[8px] tracking-[0.08em] text-[#73777e] uppercase">Flight route</span>
+                </div>
+                <div className="text-right">
+                  <strong className="block text-[10px] font-semibold">{formatTicketShortDate(fulfillment.departure_local, fulfillment.departure_at)}</strong>
+                  <span className="mt-1 block font-mono text-[7px] tracking-[0.08em] text-[#73777e] uppercase">Date</span>
+                </div>
+                <div className="text-right">
+                  <strong className="block text-[10px] font-semibold">{flightNumbers}</strong>
+                  <span className="mt-1 block font-mono text-[7px] tracking-[0.08em] text-[#73777e] uppercase">Flight</span>
+                </div>
+              </div>
+
+              <p className="mt-4 font-mono text-[8px] font-semibold tracking-[0.12em] text-[#73777e] uppercase">Purchase approval</p>
+              <h2 className="mt-2 text-[1.5rem] leading-[1.08] font-semibold tracking-[-0.045em] [font-family:var(--font-display)] sm:whitespace-nowrap" id="purchase-approval-title">Authorize this flight?</h2>
+              <strong className="mt-4 block text-[2.75rem] leading-none font-semibold tracking-[-0.06em] tabular-nums [font-family:var(--font-display)]">{formatMoney(approval.amount, approval.currency)}</strong>
+              <span className="mt-2 font-mono text-[8px] font-semibold tracking-[0.1em] text-[#73777e] uppercase">Total to VuelaYa</span>
+
+              <div className="mt-5 grid gap-2">
+                <Button className="h-11 w-full rounded-md" disabled={disabled} onClick={() => onDecision(true)}>
+                  <CheckIcon />{disabled ? "Processing…" : `Authorize ${formatMoney(approval.amount, approval.currency)}`}
+                </Button>
+                <Button className="h-11 w-full rounded-md border-[#cfd3d9] bg-[#fffefb]" disabled={disabled} onClick={() => onDecision(false)} variant="outline">Not now</Button>
+              </div>
+
+              <p className="mt-4 flex items-start gap-2 text-[9px] leading-4 text-[#686d75]"><ShieldCheckIcon className="mt-0.5 size-3 shrink-0" />Nothing is charged until you authorize.</p>
+
+              <details className="group -mx-5 mt-auto border-t border-[#d3d6db]">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring">
+                  <span><strong className="block text-[10px]">Authority details</strong><span className="mt-0.5 block text-[9px] leading-4 text-[#73777e]">Only this flight, merchant, and amount</span></span>
+                  <ChevronRightIcon className="size-4 shrink-0 transition-transform duration-150 group-open:rotate-90" />
+                </summary>
+                <dl className="grid gap-2 border-t border-[#d3d6db] bg-white/70 px-5 py-3 text-[9px]">
+                  <div><dt className="text-muted-foreground">Recipient</dt><dd className="mt-0.5 break-all font-mono">{approval.merchant_id}</dd></div>
+                  <div><dt className="text-muted-foreground">One-time mandate</dt><dd className="mt-0.5 break-all font-mono">{shortId(approval.mandate_id, 12, 8)}</dd></div>
+                </dl>
+              </details>
+            </div>
+          </aside>
         </div>
-      </div>
-    </article>
+      </article>
+    </div>
   );
 }
 
+const auditEventContent: Record<string, { title: string; detail: string }> = {
+  "mandate.created": { title: "Authority recorded", detail: "The one-time spending terms were stored." },
+  "mandate.activated": { title: "Authority activated", detail: "Marta's signed mandate became valid." },
+  "authorization.reserved": { title: "Purchase allowed", detail: "Bound verified the flight, merchant, and amount." },
+  "payment.attempt_started": { title: "Payment initiated", detail: "The approved amount was sent for processing." },
+  "payment.approved": { title: "Payment approved", detail: "The provider returned a successful result." },
+  "order.confirmed": { title: "Order and receipt issued", detail: "VuelaYa confirmed the purchase and Bound saved the record." },
+};
+
+function auditLabel(event: AuditTimelineEvent) {
+  return auditEventContent[event.event_type] ?? {
+    title: event.event_type.split(".").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" · "),
+    detail: "Recorded in the Bound audit ledger.",
+  };
+}
+
+type PurchaseEvidence = {
+  receipt?: OrderReceipt;
+  timeline?: AuditTimeline;
+  error?: string;
+};
+
+const purchaseEvidenceRequests = new Map<string, Promise<PurchaseEvidence>>();
+
+function loadPurchaseEvidence(receiptId: string, correlationId: string) {
+  const key = `${receiptId}:${correlationId}`;
+  const cached = purchaseEvidenceRequests.get(key);
+  if (cached) return cached;
+  const request = Promise.allSettled([
+    boundApi.getReceipt(receiptId),
+    boundApi.getAuditTimeline(correlationId),
+  ]).then(([receiptResult, timelineResult]) => {
+    const receipt = receiptResult.status === "fulfilled" ? receiptResult.value.data : undefined;
+    const timeline = timelineResult.status === "fulfilled" ? timelineResult.value.data : undefined;
+    return {
+      receipt,
+      timeline,
+      error: receipt && timeline ? undefined : "Some audit evidence could not be loaded. The saved receipt remains available.",
+    };
+  });
+  purchaseEvidenceRequests.set(key, request);
+  return request;
+}
+
 function PurchaseReceipt({ conversation }: { conversation: TravelBotConversation }) {
-  if (conversation.state !== "COMPLETED" || !conversation.operation.receipt_id) return null;
+  const receiptId = conversation.operation.receipt_id;
+  const auditCorrelationId = conversation.messages.filter(({ role }) => role === "USER").at(-1)?.correlation_id;
+  const [evidence, setEvidence] = useState<{
+    key?: string;
+    receipt?: OrderReceipt;
+    timeline?: AuditTimeline;
+    error?: string;
+  }>({});
+  const expectedEvidenceKey = receiptId && auditCorrelationId ? `${receiptId}:${auditCorrelationId}` : undefined;
+  const evidenceLoading = Boolean(expectedEvidenceKey && evidence.key !== expectedEvidenceKey);
+  const currentEvidence = evidence.key === expectedEvidenceKey ? evidence : {};
+
+  useEffect(() => {
+    if (conversation.state !== "COMPLETED" || !receiptId || !auditCorrelationId) return;
+    const completedReceiptId = receiptId;
+    const completedCorrelationId = auditCorrelationId;
+    const key = `${completedReceiptId}:${completedCorrelationId}`;
+    let cancelled = false;
+    void loadPurchaseEvidence(completedReceiptId, completedCorrelationId).then((result) => {
+      if (!cancelled) setEvidence({ key, ...result });
+    });
+    return () => { cancelled = true; };
+  }, [auditCorrelationId, conversation.state, receiptId]);
+
+  if (conversation.state !== "COMPLETED" || !receiptId) return null;
   const offer = conversation.offers.find(({ offer_id: offerId }) => offerId === conversation.intent.selected_offer_id);
   if (!offer) return null;
+  const receipt = currentEvidence.receipt;
+  const fulfillment = receipt?.fulfillment ?? offer.fulfillment;
   const travelers = conversation.intent.passenger_count ?? 1;
+  const total = receipt?.total ?? { amount: offer.total.amount * travelers, currency: offer.total.currency };
+  const events = currentEvidence.timeline?.events.filter(({ event_type: type }) => type !== "agent.registered") ?? [];
+  const lastEvent = events.at(-1);
+  const originCity = airportCityLabels[fulfillment.origin];
+  const destinationCity = airportCityLabels[fulfillment.destination];
+
   return (
-    <article className="overflow-hidden rounded-xl border border-emerald-200 bg-card shadow-[0_8px_30px_rgb(22_31_55/0.07)]" aria-label="Purchase confirmed">
-      <div className="flex items-center gap-3 border-b border-emerald-100 bg-emerald-50/70 px-4 py-3.5">
-        <span className="grid size-8 place-items-center rounded-full bg-emerald-700 text-white"><CheckIcon className="size-4" /></span>
-        <div><strong className="block text-sm">Purchase confirmed</strong><span className="text-[10px] text-emerald-800">Receipt issued and saved in Bound</span></div>
-      </div>
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div><p className="panel-label">Your flight</p><h2 className="mt-1 font-serif text-2xl">{offer.fulfillment.origin} → {offer.fulfillment.destination}</h2><p className="mt-1 text-xs text-muted-foreground">{offer.fulfillment.airline_names?.join(" + ")} · {offer.fulfillment.flight_numbers?.join(" · ")}</p></div>
-          <ReceiptTextIcon className="size-5 text-emerald-700" />
-        </div>
-        <dl className="mt-4 grid grid-cols-2 gap-3 border-y py-3 text-xs sm:grid-cols-4">
-          <div><dt className="text-muted-foreground">Date</dt><dd className="mt-1 font-medium">{formatLocalDate(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
-          <div><dt className="text-muted-foreground">Departure</dt><dd className="mt-1 font-medium">{formatLocalTime(offer.fulfillment.departure_local, offer.fulfillment.departure_at)}</dd></div>
-          <div><dt className="text-muted-foreground">Travelers</dt><dd className="mt-1 font-medium">{travelers}</dd></div>
-          <div><dt className="text-muted-foreground">Total paid</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(offer.total.amount * travelers, offer.total.currency)}</dd></div>
-        </dl>
-        <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-muted-foreground"><span>Receipt</span><code className="truncate">{shortId(conversation.operation.receipt_id, 18, 8)}</code></div>
+    <article className="overflow-hidden rounded-[10px] border border-[#d4d9d6] bg-[#fffefb] lg:-mx-6 xl:-mx-8" aria-label="Purchase confirmed">
+      <header className="flex min-h-10 items-center justify-between gap-3 bg-[#202326] px-4 py-2 text-[#f8f5ed] sm:px-6">
+        <span className="font-mono text-[9px] font-semibold tracking-[0.14em] uppercase">Bound purchase receipt</span>
+        <span className="inline-flex items-center gap-2 font-mono text-[8px] font-semibold tracking-[0.12em] text-[#8de0b7] uppercase"><CheckCheckIcon className="size-3.5" />Paid · Recorded</span>
+      </header>
+
+      <div className="px-4 pt-5 sm:px-6 sm:pt-6">
+        <section className="grid gap-5 border-b border-[#d9dcda] pb-5 sm:grid-cols-[minmax(0,1fr)_13rem] sm:items-end" aria-labelledby="purchase-confirmed-title">
+          <div className="min-w-0">
+            <p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-emerald-800 uppercase">Purchase confirmed</p>
+            <h2 className="mt-2 text-[2.65rem] leading-none font-semibold tracking-[-0.065em] [font-family:var(--font-display)]" id="purchase-confirmed-title">{fulfillment.origin} <ArrowRightIcon className="mx-1 inline size-6 stroke-[1.7]" /> {fulfillment.destination}</h2>
+            <p className="mt-3 text-[11px] text-[#656a70]">{fulfillment.airline_names?.join(" + ") ?? "Airline"} · {fulfillment.flight_numbers?.join(" · ") ?? "Flight confirmed"} · {formatTicketDate(fulfillment.departure_local, fulfillment.departure_at)}</p>
+          </div>
+          <div className="border-l-2 border-emerald-700 pl-4 sm:text-right">
+            <span className="block font-mono text-[8px] font-semibold tracking-[0.12em] text-[#70757c] uppercase">Total paid to VuelaYa</span>
+            <strong className="mt-2 block text-[2.35rem] leading-none font-semibold tracking-[-0.055em] tabular-nums [font-family:var(--font-display)]">{formatMoney(total.amount, total.currency)}</strong>
+            <span className="mt-2 inline-flex items-center gap-1.5 text-[9px] font-medium text-emerald-800"><ShieldCheckIcon className="size-3" />Payment approved</span>
+          </div>
+        </section>
+
+        <section className="py-5" aria-labelledby="confirmed-itinerary-title">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#70757c] uppercase" id="confirmed-itinerary-title">Confirmed itinerary · Local times</h3>
+            <span className="font-mono text-[8px] tracking-[0.08em] text-[#70757c] uppercase">One way</span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]">
+            <div className="min-w-0">
+              <strong className="block text-[1.85rem] leading-none font-semibold tracking-[-0.04em] tabular-nums [font-family:var(--font-display)]">{formatLocalTime(fulfillment.departure_local, fulfillment.departure_at)}</strong>
+              <span className="mt-2 block text-sm font-semibold">{fulfillment.origin}</span>
+              <span className="mt-1 block text-[9px] text-[#777b82]">{originCity ?? fulfillment.departure_airport_name ?? "Departure airport"}</span>
+            </div>
+            <div className="text-center">
+              <span className="block font-mono text-[8px] text-[#70757c] uppercase">{formatTicketDuration(fulfillment.duration_minutes) ?? "Pending"}</span>
+              <span className="my-2 flex items-center" aria-hidden="true"><i className="h-px flex-1 bg-[#b8bdc2]" /><PlaneIcon className="mx-2 size-3.5 rotate-45 stroke-[1.6]" /><i className="h-px flex-1 bg-[#b8bdc2]" /></span>
+              <span className="block font-mono text-[8px] text-[#70757c] uppercase">{stopLabel(fulfillment.stops) ?? "Stops pending"}</span>
+            </div>
+            <div className="min-w-0 text-right">
+              <strong className="block text-[1.85rem] leading-none font-semibold tracking-[-0.04em] tabular-nums [font-family:var(--font-display)]">{formatLocalTime(fulfillment.arrival_local, fulfillment.arrival_at)}</strong>
+              <span className="mt-2 block text-sm font-semibold">{fulfillment.destination}</span>
+              <span className="mt-1 block text-[9px] text-[#777b82]">{destinationCity ?? fulfillment.arrival_airport_name ?? "Arrival airport"}</span>
+            </div>
+          </div>
+
+          <dl className="mt-5 grid grid-cols-3 border-y border-[#d9dcda] py-3 text-[9px]">
+            <div><dt className="font-mono text-[7px] tracking-[0.1em] text-[#777b82] uppercase">Traveler</dt><dd className="mt-1 font-semibold">{travelers}</dd></div>
+            <div className="border-l border-[#d9dcda] px-3"><dt className="font-mono text-[7px] tracking-[0.1em] text-[#777b82] uppercase">Class</dt><dd className="mt-1 font-semibold uppercase">{cabinLabel(fulfillment.cabin)}</dd></div>
+            <div className="border-l border-[#d9dcda] pl-3"><dt className="font-mono text-[7px] tracking-[0.1em] text-[#777b82] uppercase">Date</dt><dd className="mt-1 font-semibold">{formatTicketShortDate(fulfillment.departure_local, fulfillment.departure_at)}</dd></div>
+          </dl>
+        </section>
+
+        <section className="border-y border-[#d9dcda] py-4" aria-labelledby="payment-record-title">
+          <div className="flex items-end justify-between gap-3">
+            <div><p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-[#70757c] uppercase">Payment record</p><h3 className="mt-1 text-sm font-semibold" id="payment-record-title">Charge details</h3></div>
+            {receipt?.issued_at ? <time className="text-[9px] text-[#777b82]" dateTime={receipt.issued_at}>{formatDateTime(receipt.issued_at)}</time> : null}
+          </div>
+          <dl className="mt-3 grid grid-cols-2 text-[10px] sm:grid-cols-4 sm:divide-x sm:divide-[#d9dcda]">
+            <div className="pb-3 sm:pb-0 sm:pr-3"><dt className="text-[#777b82]">Merchant</dt><dd className="mt-1 font-semibold">VuelaYa</dd></div>
+            <div className="border-l border-[#d9dcda] pb-3 pl-3 sm:border-l-0 sm:pb-0"><dt className="text-[#777b82]">Status</dt><dd className="mt-1 font-semibold text-emerald-800">{receipt?.status ?? "CONFIRMED"}</dd></div>
+            <div className="border-t border-[#d9dcda] pt-3 sm:border-t-0 sm:px-3 sm:pt-0"><dt className="text-[#777b82]">Payment</dt><dd className="mt-1 truncate font-mono text-[9px]" title={receipt?.payment_id}>{receipt ? shortId(receipt.payment_id, 9, 5) : "Loading…"}</dd></div>
+            <div className="border-t border-l border-[#d9dcda] pt-3 pl-3 sm:border-t-0 sm:border-l-0 sm:pt-0"><dt className="text-[#777b82]">Order</dt><dd className="mt-1 truncate font-mono text-[9px]" title={receipt?.order_id}>{receipt ? shortId(receipt.order_id, 9, 5) : "Loading…"}</dd></div>
+          </dl>
+        </section>
+
+        <section className="-mx-4 border-b border-[#d9dcda] bg-[#f3f7f4] px-4 py-5 sm:-mx-6 sm:px-6" aria-labelledby="audit-trail-title">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div><p className="font-mono text-[8px] font-semibold tracking-[0.12em] text-emerald-800 uppercase">Bound audit</p><h3 className="mt-1 text-base font-semibold" id="audit-trail-title">Authorization path</h3></div>
+            {currentEvidence.timeline ? <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-emerald-800"><FingerprintIcon className="size-3.5" />{events.length} checks · Chain validated</span> : null}
+          </div>
+
+          {evidenceLoading ? (
+            <div className="mt-4 min-h-[28rem] sm:min-h-48" aria-live="polite">
+              <Shimmer className="text-xs text-[#68716b]">Loading the signed receipt and audit trail…</Shimmer>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2"><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /><i className="h-14 animate-pulse border-t border-emerald-200" /></div>
+            </div>
+          ) : events.length ? (
+            <ol className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {events.map((event) => {
+                const content = auditLabel(event);
+                return (
+                  <li className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-2.5 border-t border-emerald-200 pt-3" key={event.event_id}>
+                    <span className="mt-0.5 grid size-[1.125rem] place-items-center rounded-full bg-emerald-800 text-white"><CheckIcon className="size-2.5 stroke-[3]" /></span>
+                    <div className="min-w-0"><strong className="block text-[11px]">{content.title}</strong><p className="mt-0.5 text-[9px] leading-4 text-[#68716b]">{content.detail}</p></div>
+                    <time className="font-mono text-[8px] text-[#68716b]" dateTime={event.recorded_at}>{formatTime(event.recorded_at)}</time>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : <p className="mt-4 text-xs text-[#68716b]">The receipt is saved; its detailed audit trail is not available in this view.</p>}
+
+          {currentEvidence.error ? <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-4 text-amber-800"><CircleAlertIcon className="mt-0.5 size-3 shrink-0" />{currentEvidence.error}</p> : null}
+        </section>
+
+        <details className="group border-b border-[#d9dcda]">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 py-3 text-[11px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring">
+            <span className="inline-flex items-center gap-2"><FingerprintIcon className="size-3.5 text-emerald-800" />Cryptographic evidence</span>
+            <span className="inline-flex items-center gap-2 font-mono text-[8px] font-normal tracking-[0.08em] text-[#70757c]">HASH-LINKED<ChevronRightIcon className="size-3.5 transition-transform group-open:rotate-90" /></span>
+          </summary>
+          <dl className="grid gap-3 border-t border-[#d9dcda] bg-[#f7f8f7] p-4 text-[9px] sm:grid-cols-2">
+            <div><dt className="text-[#777b82]">Receipt</dt><dd className="mt-0.5 break-all font-mono">{receiptId}</dd></div>
+            <div><dt className="text-[#777b82]">Correlation</dt><dd className="mt-0.5 break-all font-mono">{currentEvidence.timeline?.correlation_id ?? auditCorrelationId ?? "Unavailable"}</dd></div>
+            <div><dt className="text-[#777b82]">Receipt evidence hash</dt><dd className="mt-0.5 break-all font-mono">{receipt?.evidence.event_hash ?? "Loading…"}</dd></div>
+            <div><dt className="text-[#777b82]">Latest chain hash</dt><dd className="mt-0.5 break-all font-mono">{lastEvent?.event_hash ?? "Loading…"}</dd></div>
+          </dl>
+        </details>
+
+        <footer className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-1.5 text-[9px] leading-4 text-[#777b82]"><InfoIcon className="mt-0.5 size-3 shrink-0" />Trip receipt only · not a boarding pass.</p>
+          <div className="flex gap-2">
+            <Button className="h-11 flex-1 rounded-md sm:flex-none" onClick={() => void navigator.clipboard.writeText(receiptId)} variant="outline"><CopyIcon />Copy receipt ID</Button>
+            <Button className="h-11 flex-1 rounded-md sm:flex-none" nativeButton={false} render={<Link href="/purchases" />} variant="outline"><ReceiptTextIcon />Purchases</Button>
+          </div>
+        </footer>
       </div>
     </article>
   );
@@ -680,7 +945,7 @@ export function TrustedSurface() {
     });
   }, []);
 
-  const createConversation = useCallback(async () => {
+  const createConversation = useCallback(async (signal?: AbortSignal) => {
     setBusy("creating");
     setError(undefined);
     const identity = createRequestIdentity("conversation_create");
@@ -688,7 +953,9 @@ export function TrustedSurface() {
       const result = await boundApi.createConversation(
         { principal_id: PRINCIPAL_ID, agent_id: TRAVELBOT_ID },
         identity,
+        signal,
       );
+      if (signal?.aborted) return;
       rememberConversation(result.data);
       setLastCorrelationId(result.correlationId ?? identity.correlationId);
       setComposerValue("");
@@ -696,12 +963,13 @@ export function TrustedSurface() {
       setFailedTurn(undefined);
       setLoadState("ready");
     } catch (caught) {
+      if (signal?.aborted || (caught instanceof DOMException && caught.name === "AbortError")) return;
       const apiError = asApiError(caught);
       setError(apiError);
       setLastCorrelationId(apiError.correlationId ?? identity.correlationId);
       setLoadState("error");
     } finally {
-      setBusy(null);
+      if (!signal?.aborted) setBusy(null);
     }
   }, [rememberConversation]);
 
@@ -737,7 +1005,7 @@ export function TrustedSurface() {
           setLoadState("ready");
           return;
         }
-        await createConversation();
+        await createConversation(controller.signal);
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
         const apiError = asApiError(caught);
@@ -802,10 +1070,6 @@ export function TrustedSurface() {
   const updateComposer = useCallback((value: string) => setComposerValue(value), []);
   const speech = useSpeechInput(composerValue, updateComposer, busy !== null || loadState !== "ready");
   const lastMessage = conversation?.messages.at(-1);
-  const selectedOffer = conversation?.offers.find(({ offer_id: offerId }) => (
-    offerId === conversation.intent.selected_offer_id
-  ));
-  const showChosenOffer = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && selectedOffer !== undefined;
   const showApproval = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && Boolean(conversation.operation.pending_approval);
   const isBusy = busy !== null;
 
@@ -860,8 +1124,6 @@ export function TrustedSurface() {
               ) : null}
 
               {busy === "sending" ? <WorkingStatus state={conversation?.state ?? "COLLECTING"} /> : null}
-
-              {showChosenOffer ? <OfferCard offer={selectedOffer} passengerCount={conversation.intent.passenger_count ?? 1} /> : null}
 
               {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.")} /> : null}
 
