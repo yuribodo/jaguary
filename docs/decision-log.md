@@ -1,6 +1,6 @@
 # Jaguary Decision Log
 
-> This is the fastest way to understand why Jaguary works the way it does. It records the decisions, discoveries, corrections, and tradeoffs that shaped the current product.
+> This is the standalone technical narrative of Jaguary. A reviewer should be able to understand the problem, architecture, provider roles, trust boundaries, delivered behavior, tradeoffs, and remaining risks without opening another document.
 
 | Metadata | Value |
 | --- | --- |
@@ -11,16 +11,9 @@
 
 ## Purpose
 
-This log records how Jaguary evolved, which decisions guided the implementation, what the team learned while building it, and which improvements or corrections followed from those discoveries.
+This log records how Jaguary evolved, which decisions guided the implementation, what the team learned while building it, and which improvements or corrections followed from those discoveries. It intentionally includes the essential reasoning that also exists in deeper architecture records; those records are optional evidence, not required reading.
 
-It complements, but does not replace:
-
-- the [ADRs](adr/), which explain durable architecture decisions in depth;
-- the [technical documentation](technical/README.md), which describes the code's current behavior;
-- the [known implementation gaps](technical/known-gaps.md), which prioritize the work still required for production;
-- implementation plans and spikes, which record intent or investigation but do not guarantee delivered behavior.
-
-This history was reconstructed from Git, code, tests, migrations, and existing documentation. When initial intent and final behavior differ, this log gives precedence to implemented behavior and records the change in direction.
+This history was reconstructed from Git, code, tests, migrations, and deployed behavior. When initial intent and final behavior differ, this log gives precedence to implemented behavior and records the change in direction. “Implemented” means present in the repository and covered by tests; “production-connected” means selected by the deployed composition root; “sandbox” or “demo” is stated explicitly.
 
 ## Evolution at a glance
 
@@ -38,6 +31,53 @@ The work then evolved in five movements:
 4. add authentication, external trust, biometric consent, and durable autonomy;
 5. distinguish the platform operating TravelBot from the customer delegating a purchase.
 
+## What exists today
+
+Jaguary is a transactional modular monolith with two deployables: a Next.js Trusted Surface and a Fastify API. PostgreSQL is the source of truth for sessions, conversations, mandates, nonces, authorizations, payment attempts, orders, receipts, disputes, travel watches, and a hash-chained audit ledger. The browser never authors prices, payment authority, or reusable credentials.
+
+The normal purchase path is:
+
+```text
+Customer request
+  → TravelBot interprets and completes trip context
+  → flight adapter returns normalized offers and source provenance
+  → VuelaYa creates a merchant-signed checkout
+  → customer approves exact terms or activates bounded prior authority
+  → Bound Verify deterministically returns DENY, ESCALATE, or ALLOW
+  → ALLOW and a single-use reservation commit atomically in PostgreSQL
+  → the selected payment executor runs outside the database transaction
+  → order, receipt, dispute capability, and audit evidence become durable
+```
+
+### Components and authority
+
+| Component | Role in the implemented system | Authority it does **not** have |
+| --- | --- | --- |
+| Trusted Surface (Next.js) | Shows trip context, mandates, exact approval terms, purchases, receipts, disputes, and audit evidence | Cannot author price, create `ALLOW`, resolve credentials, or call a payment provider directly |
+| TravelBot + OpenAI Agents SDK | Interprets natural language into strict trip proposals and invokes only state-legal tools | Model output is untrusted; it cannot grant authority, choose idempotency keys, or pay |
+| VuelaYa merchant adapter | Owns catalog data and creates canonical, signed checkout economics and fulfillment | Cannot use the customer's mandate without Bound verification |
+| Bound Verify | Applies pure ordered policy rules to trusted snapshots and produces `DENY`, `ESCALATE`, or `ALLOW` | Performs no model, identity-provider, flight-provider, or payment-provider call |
+| Authorization and payment services | Reserve authority atomically, enforce one execution path, normalize payment results, and seal receipts | Cannot expand mandate scope or treat an ambiguous provider response as success |
+| PostgreSQL / Neon | Stores current authority and workflow state and supplies transaction, locking, replay, and audit guarantees | The local hash chain alone is not external immutable storage |
+
+### External providers and their exact roles
+
+| Provider | What Jaguary uses it for | Integration status and trust boundary |
+| --- | --- | --- |
+| OpenAI | Agents SDK runtime for structured conversation interpretation and tool proposals | Production-connected. Provider storage and parallel tool calls are disabled; persisted application state, not provider run state, is authoritative |
+| SerpApi / Google Flights | Searches flights and returns price, itinerary, and an official Google Flights source URL | Production-connected through a backend-only adapter. Results are validated and normalized as offer evidence; they never authorize a purchase |
+| Didit | Customer identity assurance and liveness/biometric consent evidence | Production-connected behind a vendor-neutral adapter. Webhooks are signature-checked and statuses normalized; Didit never produces `ALLOW` |
+| Google OIDC | Authenticates the human into an opaque, owner-scoped Jaguary session | Production-connected. Authentication proves the session identity, not purchase consent or agent integrity |
+| Yuno | Tested server-side payment executor and provider-result normalization | Implemented and sandbox-tested, but **not selected by the current production composition root**; the demo currently uses an explicit deterministic fake executor |
+
+### Protocol vocabulary used in this log
+
+- **UCP-like commerce subset:** capability discovery, catalog, signed checkout, order, and fulfillment contracts used by the VuelaYa vertical. It is a normalized experimental subset, not a claim of complete upstream UCP conformance.
+- **AP2-shaped mandate:** signed proof describing who delegated what purchase scope, amount, time window, merchant, and usage. It supplies authority evidence; it does not replace commerce or payment processing.
+- **Bound Verify:** Jaguary's deterministic enforcement point. It evaluates normalized identity, mandate, checkout, time, revocation, usage, and replay state.
+- **Reservation:** a single-use economic capability created in the same database transaction as `ALLOW`, preventing concurrent requests from spending the same authority.
+- **Agent Passport:** a short-lived ES256 token containing privacy-safe trust claims and cryptographic bindings; it is evidence, not a payment credential.
+
 ## Timeline of decisions, discoveries, and improvements
 
 ### 1. Define the problem and the authority boundary
@@ -48,7 +88,9 @@ The work then evolved in five movements:
 
 **Decision.** Bound became the exclusive economic decision point. The LLM may interpret language and propose actions, but it cannot create an `ALLOW`, move money, define prices, choose credentials, or alter authority.
 
-**Discovery and outcome.** Commerce, proof of authority, enforcement, and payment are separate problems. The project adopted a multi-protocol architecture with normalized contracts and a transactional modular monolith, documented in [ADR-001](adr/ADR-001-bound-mvp-architecture.md) and [ADR-002](adr/ADR-002-commerce-protocol-layering.md).
+**Discovery and outcome.** Commerce, proof of authority, enforcement, credential resolution, and payment are separate problems. The project therefore adopted normalized internal contracts instead of making any provider protocol its domain model: the commerce adapter creates an authoritative checkout; the mandate supplies delegation evidence; Bound Verify alone enforces it; a credential adapter resolves a logical reference only after reservation; and a payment executor talks to the provider. This separation allows SerpApi, Didit, Yuno, or a future commerce adapter to change without changing who can create `ALLOW`.
+
+**Rejected alternative and consequence.** A single “agent buys” integration would be faster to sketch but would let provider tools or model output bypass revocation, limits, and audit. The chosen boundary adds explicit adapters and state transitions, but makes every economic effect explainable and independently testable.
 
 ### 2. Choose a simple, transactional, and explainable architecture
 
@@ -88,7 +130,9 @@ The work then evolved in five movements:
 
 **Decisions.** Active mandates are signed and bounded; changing an economic condition requires a new mandate. Every financial request must prove possession of the agent's registered key. Bound Verify runs pure, ordered rules and returns only `ALLOW`, `ESCALATE`, or `DENY`.
 
-**Discovery and outcome.** Declared identity is not proven identity, and key possession is not external certification of the operator or build. [ADR-003](adr/ADR-003-agent-identity-assurance.md) records that distinction. Verify remains reproducible and makes no LLM, identity-provider, or payment-provider calls.
+**Discovery and outcome.** Declared identity is not proven identity, and key possession is not external certification of the operator or build. Jaguary separates four claims: the registered agent key proves request possession; the platform record identifies the agent operator and build; Didit supplies customer-bound external assurance and liveness evidence; and the signed mandate proves economic delegation. Verify consumes normalized snapshots of those claims but remains reproducible and makes no LLM, identity-provider, or payment-provider calls.
+
+**Rejected alternative and consequence.** Treating one provider badge or one authenticated user as sufficient proof would collapse distinct trust questions and make multi-customer operation unsafe. The separation requires more bindings, but a failed or unavailable provider can only remove evidence and fail closed—it cannot silently grant authority.
 
 ### 7. Reserve atomically and protect against replay
 
@@ -112,7 +156,9 @@ The work then evolved in five movements:
 
 **Investigation.** The team evaluated Yuno's sandbox and credential model before making it a runtime requirement. A credential vaulted in Yuno is not a universal card, and sandbox access, commercial onboarding, and network-product access are distinct.
 
-**Decision and outcome.** Implement and test `YunoPaymentExecutor`, retain an explicit deterministic fake executor for the demo, and keep enrollment on the provider's secure surface. PAN, CVV, and reusable tokens never reach TravelBot or public contracts. [ADR-004](adr/ADR-004-credential-enrollment-and-external-checkout.md) has the full reasoning. The current composition root still installs the fake executor even when Yuno variables exist, so the real integration remains an open high-severity gap.
+**Decision and outcome.** Implement and test `YunoPaymentExecutor`, retain an explicit deterministic fake executor for the demo, and keep enrollment on the provider's secure surface. The database exposes only a logical credential reference; only the server-side adapter may resolve provider material after a reserved authorization exists. PAN, CVV, and reusable tokens never reach TravelBot, the browser, logs, receipts, or public contracts. Provider calls reuse the persisted authorization identity for idempotency and normalize `APPROVED`, `DECLINED`, `TIMEOUT`, and `UNKNOWN` without guessing.
+
+**Current limitation.** The current production composition root still installs the fake executor even when Yuno variables exist. The adapter demonstrates and tests the intended integration boundary, but the deployed demo must not be described as processing real Yuno payments. Wiring the real executor, credential resolver, webhook authentication, and reconciliation worker is a high-severity requirement before real money.
 
 ### 10. Build a Trusted Surface and evolve chat
 
@@ -128,7 +174,9 @@ The work then evolved in five movements:
 
 **Decision.** Use the OpenAI Agents SDK behind a dedicated port, with structured output, strict tools, disabled parallel tool calls, and PostgreSQL-backed conversation persistence.
 
-**Discovery and outcome.** Structured output remains untrusted input, SDK `needsApproval` is not sufficient consent, and provider IDs are correlation data rather than workflow truth. The application owns the state machine, legal-tool calculation, replayable SSE events, and encrypted approval binding. The model does not select idempotency keys or invoke payment. [ADR-005](adr/ADR-005-travelbot-agents-runtime.md) formalizes this split.
+**Discovery and outcome.** Structured output remains untrusted input, SDK `needsApproval` is not sufficient consent, and provider IDs are correlation data rather than workflow truth. After every model proposal, the application recomputes missing fields, valid tools, and the legal next state from durable data. Tool handlers reload the conversation and reject stale calls. Approval interruptions are encrypted with AES-256-GCM and bound to merchant, checkout hash, amount, currency, and mandate; they resume at most once. Corrections invalidate pending approval. The model does not select idempotency keys, mint authorization decisions, or invoke payment.
+
+**Operational consequence.** PostgreSQL stores ordered sanitized messages, intent snapshots, normalized tool executions, approval state, and replayable SSE events. A disconnect can replay presentation events without repeating committed side effects, while provider tracing excludes raw prompts, proofs, credentials, and receipt bodies.
 
 ### 12. Make chat contextual and English, add real search, and simplify approval
 
@@ -168,7 +216,9 @@ The work then evolved in five movements:
 
 **Problem.** A synchronous search ends without a result when no flight fits the budget. Waiting to request approval until a later offer appears prevents genuine autonomy.
 
-**Decision and outcome.** A durable travel watch uses a pre-approved, single-use conditional mandate bounded by route, date window, cabin, passengers, merchant, currency, and budget. Activation requires liveness, while every future purchase still passes Verify. Persisted watches, recoverable leases, stable idempotency identities, backoff, and cancellation-by-revocation survive restarts without duplicating authority or purchases. [ADR-006](adr/ADR-006-durable-autonomous-travel-watch.md) records the decision.
+**Decision and outcome.** A durable travel watch uses a pre-approved, single-use conditional mandate bounded by route, date window, cabin, passengers, merchant, currency, and budget. Activation requires liveness once, before unattended monitoring begins; a later match still receives a fresh merchant checkout and passes Verify against current revocation, scope, price, and usage state immediately before payment.
+
+**Reliability and safety mechanics.** PostgreSQL stores watches and attempts. Workers claim due rows with `FOR UPDATE SKIP LOCKED`, use reclaimable leases, stable checkout/Verify/payment idempotency identities, and bounded provider backoff. No inventory reschedules the watch; an over-budget fare is diagnostic only; changing the budget requires a new mandate and consent; cancellation revokes the active mandate. This survives process restarts without relying on one in-memory timer or duplicating a purchase.
 
 ### 17. Refine trust, purchasing, voice, and real-data integration
 
@@ -186,7 +236,9 @@ The work then evolved in five movements:
 
 **Correction.** `principal_jaguary_platform` operates public `agent_travelbot` and owns its key and build. Each authenticated customer independently owns their session, conversation, Didit attestation, mandate, consent, logical credential, authorization, and receipt.
 
-**Outcome.** TravelBot is `PUBLIC`; external trust is keyed by `(agent_id, principal_id)`; logical credentials are customer-isolated; agent snapshots use the platform's cryptographic trust; economic authority uses the customer's policy evidence. A public agent can serve multiple customers without sharing authority or data. [ADR-007](adr/ADR-007-agent-operator-and-customer-authority.md) formalizes the correction.
+**Outcome.** TravelBot is `PUBLIC`; external trust is keyed by `(agent_id, principal_id)`; logical credentials are customer-isolated; agent snapshots use the platform's cryptographic trust; economic authority uses the customer's policy evidence. Conversation APIs derive the customer from the opaque authenticated session. Biometric consent loads only that mandate customer's assessment, and Verify independently requires one agent identity across request/mandate/authorization and one customer identity across mandate/authorization. A public agent can therefore serve multiple customers without sharing sessions, portraits, credentials, authority, or receipts.
+
+**Evidence.** Route tests cover cross-principal privacy, CSRF, Origin, and session-derived ownership. Trust tests give two customers distinct attestations for the same public agent. PostgreSQL integration tests cover migration, isolated onboarding and credential references, and the complete chat → Verify → payment → receipt path.
 
 ### 19. Preserve flight-source provenance through the receipt
 
@@ -229,19 +281,23 @@ The work then evolved in five movements:
 
 ## Open gaps discovered or accepted
 
-This project cycle ended with a functional reference vertical, not a platform ready for real money. The main known gaps are:
+This project cycle ended with a functional reference vertical, not a platform ready for real money. Severity below describes the risk of deploying or presenting the current repository as a complete implementation.
 
-- general mandate and travel-watch routes do not consistently enforce session ownership;
-- the composition root still installs fake payment even when Yuno configuration exists;
-- authoritative checkouts and some signing keys are ephemeral and process-local;
-- advertised UCP and AP2 capabilities are broader than the implemented wire protocol;
-- pending payments have no runtime-connected webhook or reconciliation worker;
-- multi-passenger search still derives totals from a one-adult quote;
-- local flight times can still be confused with UTC instants;
-- catalogs, offers, rate limiting, and some keys need shared storage or rotation;
-- some workflow-table relationships are enforced by the application rather than the database.
+| Severity | Gap and present behavior | Impact | Required next step |
+| --- | --- | --- | --- |
+| High | General mandate and travel-watch routes do not consistently derive ownership from the opaque session, although conversations and purchases do | A caller with a resource identifier could attempt cross-customer API access; downstream economic checks still fail closed, but resource authorization must not rely on identifier secrecy | Require session ownership on every public read/mutation, Origin and CSRF on browser mutations, `404` for foreign resources, and two-principal IDOR tests |
+| High | `YunoPaymentExecutor` is implemented and tested, but the production composition root selects `FakePaymentExecutor` | A successful demo payment is not evidence that Yuno processed money | Select Yuno only when fully configured, resolve credentials server-side, forbid fake payment outside explicit demo/test mode, and add a production composition test |
+| High | Merchant checkout state and default merchant/mandate signing keys are process-local | A restart can lose authoritative checkout lookup or rotate the verification key; multiple API instances can disagree | Persist authoritative checkouts; use durable KMS/HSM-backed keys with stable `kid`, discovery, overlap, and rotation tests |
+| High | The public UCP/AP2 labels are broader than the custom normalized wire subset actually implemented | An external standards-based client could interpret capability discovery as full conformance and fail to interoperate | Either publish a clearly experimental namespace or implement pinned upstream schemas, negotiation, proof placement, key discovery, and conformance vectors |
+| High | `TIMEOUT` and `UNKNOWN` correctly remain `PAYMENT_PENDING`, but no deployed Yuno webhook or polling worker reconciles them | A real provider payment could remain economically ambiguous indefinitely | Authenticate provider webhooks, poll by original provider/idempotency identity, prohibit state regression, and alert on aged pending attempts |
+| Medium | Google Flights is queried with one adult and the price is later multiplied by passenger count | The arithmetic is deterministic, but the provider may not have quoted availability or a fare bucket for the whole party | Query the true party size, normalize whether price is per traveler or total, and test two-to-nine passenger cases |
+| Medium | Airport-local flight times are preserved but a legacy field appends `Z` | Code can mistake wall time for a real UTC instant, affecting duration, order, policy, or audit | Resolve airport time zones and offsets or remove the misleading instant field |
+| Medium | Search cache and remembered offers are process-local; remembered offers are not fully bounded | Restarts lose lookup, instances disagree, and high-cardinality traffic can increase memory/provider calls | Add expiry and capacity limits, shared quote storage where correctness requires it, request budgets, and cache/provider metrics |
+| Medium | Agent Passport keys rotate on every restart | Unexpired passports fail verification after deployment and safe overlapping rotation is impossible | Load durable keys, publish overlapping JWKS entries, and define rotation/revocation operations |
+| Medium | Some workflow identifiers are validated by services but lack database foreign keys | A migration, regression, or alternate writer could create orphaned references | Define deletion/retention semantics, then add validated foreign keys for shared lifecycles and correlation tests for intentionally polymorphic ledger subjects |
+| Lower | Provider retries, distributed rate limits, diagnostic classification, and live sandbox smoke tests are incomplete | Operational failures may be noisy, instance-local, or diagnosed too generically even when the economic path fails closed | Add bounded SerpApi retry/backoff, shared expiring rate limits, finer error taxonomy, and gated provider sandbox smoke checks |
 
-[Known implementation gaps](technical/known-gaps.md) documents the details, impact, and recommended order.
+**Recommended production order.** (1) prohibit fake payments outside explicit demo mode and wire the selected executor; (2) persist checkout state and signing keys; (3) narrow or complete UCP/AP2 conformance claims; (4) add payment reconciliation; (5) correct party-size and time-zone semantics; (6) add shared caches, distributed rate limits, key rotation, and sandbox smoke coverage.
 
 ## Maintaining this log
 
@@ -256,4 +312,4 @@ For every new entry, record:
 5. the consequence for product, code, security, or operations;
 6. any limitations that remain open.
 
-Create a separate ADR when a decision is expensive to reverse, affects several system boundaries, or needs to preserve alternatives and acceptance criteria in depth.
+Deeper architecture records may still preserve extended alternatives and acceptance criteria, but every future entry must keep the reviewer-facing explanation complete here.
