@@ -258,6 +258,119 @@ test("delegated airport and month choices are retained without asking for an exa
   );
 });
 
+test("an English compact budget defaults to USD without asking for the amount again", async () => {
+  let searched = false;
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: null,
+            destination_iata: null,
+            departure_date: null,
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "I need more details.",
+        };
+      },
+    },
+    tools: {
+      findOffers: async (intent) => {
+        searched = true;
+        assert.deepEqual(intent.max_total_budget, { amount: 300_000, currency: "USD" });
+        return [];
+      },
+    },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_english_budget_create_001",
+    correlation_id: "corr_english_budget_create_001",
+  });
+
+  const first = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "I want to buy a flight to Rio de Janeiro in September and my max budget is around 3K",
+    idempotency_key: "idem_english_budget_first_001",
+    correlation_id: "corr_english_budget_first_001",
+  });
+
+  assert.deepEqual(first.intent.max_total_budget, { amount: 300_000, currency: "USD" });
+  assert.deepEqual(first.missing_fields, ["origin_iata"]);
+  assert.equal(first.messages.at(-1)?.content, "To continue, tell me where you want to depart from.");
+
+  const second = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "I want to leave from São Paulo (GRU).",
+    idempotency_key: "idem_english_budget_second_001",
+    correlation_id: "corr_english_budget_second_001",
+  });
+
+  assert.equal(second.intent.origin_iata, "GRU");
+  assert.deepEqual(second.intent.max_total_budget, { amount: 300_000, currency: "USD" });
+  assert.deepEqual(second.missing_fields, []);
+  assert.equal(searched, true);
+});
+
+test("a Portuguese compact budget defaults to BRL", async () => {
+  const repository = new InMemoryTravelBotRepository();
+  const service = new TravelBotService({
+    repository,
+    runtime: {
+      async run() {
+        return {
+          proposal: {
+            origin_iata: "GRU",
+            destination_iata: "GIG",
+            departure_date: "2026-09",
+            passenger_count: null,
+            cabin: null,
+            max_total_budget: null,
+            selected_offer_id: null,
+            explicit_confirmation: null,
+            ambiguities: [],
+            requested_action: "NONE" as const,
+          },
+          assistant_message: "Preciso de mais detalhes.",
+        };
+      },
+    },
+    tools: {
+      findOffers: async (intent) => {
+        assert.deepEqual(intent.max_total_budget, { amount: 300_000, currency: "BRL" });
+        return [];
+      },
+    },
+    clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
+  });
+  const conversation = await service.createConversation({
+    principal_id: "principal_marta",
+    agent_id: "agent_travelbot",
+    idempotency_key: "idem_portuguese_budget_create_001",
+    correlation_id: "corr_portuguese_budget_create_001",
+  });
+
+  const result = await service.postMessage({
+    conversation_id: conversation.conversation_id,
+    content: "Quero comprar uma passagem para o Rio e meu orçamento máximo é cerca de 3 mil.",
+    idempotency_key: "idem_portuguese_budget_message_001",
+    correlation_id: "corr_portuguese_budget_message_001",
+  });
+
+  assert.deepEqual(result.intent.max_total_budget, { amount: 300_000, currency: "BRL" });
+  assert.deepEqual(result.missing_fields, []);
+});
+
 test("a broad destination is chosen automatically while budget remains required", async () => {
   let turn = 0;
   const repository = new InMemoryTravelBotRepository();

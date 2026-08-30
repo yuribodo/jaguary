@@ -73,6 +73,7 @@ import {
   createRequestIdentity,
 } from "@/lib/bound-api";
 import { writePendingBiometricConsent } from "@/lib/biometric-consent";
+import { useRealtimeVoice } from "@/hooks/use-realtime-voice";
 import { cn } from "@/lib/utils";
 import {
   travelQuickReplyGroup,
@@ -143,22 +144,6 @@ type SubmitTurnOptions = {
   identity?: ReturnType<typeof createRequestIdentity>;
   mode?: TurnMode;
 };
-
-type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
-type SpeechResultEvent = { results: ArrayLike<SpeechResult> };
-type SpeechErrorEvent = { error: string };
-type SpeechRecognitionLike = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechResultEvent) => void) | null;
-  onerror: ((event: SpeechErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-};
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function asApiError(error: unknown) {
   if (error instanceof BoundApiError) {
@@ -339,80 +324,6 @@ function messageCorrelationId(conversation?: TravelBotConversation) {
   return conversation?.messages.at(-1)?.correlation_id;
 }
 
-function useSpeechInput(
-  value: string,
-  onChange: (value: string) => void,
-  disabled: boolean,
-) {
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const baseValueRef = useRef("");
-  const [supported, setSupported] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    const frame = requestAnimationFrame(() => {
-      setSupported(Boolean(speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition));
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-      recognitionRef.current?.abort();
-    };
-  }, []);
-
-  const toggle = useCallback(() => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!Recognition || disabled) return;
-
-    setError(undefined);
-    baseValueRef.current = value.trim();
-    const recognition = new Recognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        transcript += event.results[index]?.[0]?.transcript ?? "";
-      }
-      const separator = baseValueRef.current && transcript ? " " : "";
-      onChange(`${baseValueRef.current}${separator}${transcript}`);
-    };
-    recognition.onerror = (event) => {
-      const label = event.error === "not-allowed"
-        ? "Allow microphone access to dictate a message."
-        : event.error === "no-speech"
-          ? "I did not hear any speech. Try again."
-          : "Your speech could not be recognized right now.";
-      setError(label);
-      setListening(false);
-    };
-    recognition.onend = () => setListening(false);
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setListening(true);
-    } catch {
-      setError("The microphone could not be started.");
-    }
-  }, [disabled, listening, onChange, value]);
-
-  return { supported, listening, error, toggle };
-}
-
 function AssistantMessage({ message }: { message: TravelBotMessage }) {
   return (
     <div className="w-full">
@@ -588,7 +499,7 @@ function Welcome({
   onSubmit,
   onSuggestion,
   principalName,
-  speech,
+  voice,
 }: {
   composerValue: string;
   disabled: boolean;
@@ -596,7 +507,7 @@ function Welcome({
   onSubmit: (value: string) => void;
   onSuggestion: (value: string) => void;
   principalName: string;
-  speech: ReturnType<typeof useSpeechInput>;
+  voice: ReturnType<typeof useRealtimeVoice>;
 }) {
   const firstName = principalName.split(/\s+/)[0];
 
@@ -628,19 +539,19 @@ function Welcome({
         <PromptInputFooter className="border-t border-border/70 px-4 py-3">
           <PromptInputTools>
             <Button
-              aria-label={speech.listening ? "Stop dictation" : speech.supported ? "Dictate message" : "Dictation is not supported in this browser"}
-              aria-pressed={speech.listening}
-              className={cn("rounded-md", speech.listening && "bg-red-50 text-destructive hover:bg-red-100")}
-              disabled={!speech.supported || disabled}
-              onClick={speech.toggle}
+              aria-label={voice.active ? "End voice conversation" : voice.supported ? "Start voice conversation" : "Voice mode is not supported in this browser"}
+              aria-pressed={voice.active}
+              className={cn("rounded-md", voice.active && "bg-red-50 text-destructive hover:bg-red-100")}
+              disabled={!voice.supported || (disabled && !voice.active)}
+              onClick={voice.toggle}
               size="icon-sm"
-              title={speech.supported ? "Dictate message" : "Your browser does not support speech recognition"}
+              title={voice.supported ? voice.label : "Your browser does not support realtime voice"}
               type="button"
               variant="ghost"
             >
-              {speech.listening ? <SquareIcon className="size-3.5 fill-current" /> : speech.supported ? <MicIcon /> : <MicOffIcon />}
+              {voice.active ? <SquareIcon className="size-3.5 fill-current" /> : voice.supported ? <MicIcon /> : <MicOffIcon />}
             </Button>
-            {speech.listening ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />listening</span> : null}
+            {voice.active ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />{voice.label}</span> : null}
           </PromptInputTools>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 text-[10px] text-muted-foreground sm:inline-flex">
@@ -684,8 +595,8 @@ function Welcome({
           );
         })}
       </div>
-      <p className={cn("mt-3 min-h-4 text-center text-[10px]", speech.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
-        {speech.error ?? (speech.supported ? "Use the microphone to dictate, then review before sending." : "Enter sends · Shift+Enter adds a new line")}
+      <p className={cn("mt-3 min-h-4 text-center text-[10px]", voice.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+        {voice.error ?? (voice.active ? `${voice.label}. AI-generated voice.` : voice.supported ? "Start voice mode for a hands-free conversation." : "Enter sends · Shift+Enter adds a new line")}
       </p>
     </div>
   );
@@ -1821,6 +1732,7 @@ export function TrustedSurface() {
       rememberConversation(result.data);
       setLastCorrelationId(result.correlationId ?? identity.correlationId);
       setPendingMessage(undefined);
+      return result.data;
     } catch (caught) {
       const apiError = asApiError(caught);
       setError(apiError);
@@ -1968,12 +1880,25 @@ export function TrustedSurface() {
     }
   }, [busy, rememberWatch]);
 
+  const updateComposer = useCallback((value: string) => setComposerValue(value), []);
+  const handleVoiceTurn = useCallback(async (transcript: string) => {
+    const existingMessageIds = new Set(conversation?.messages.map(({ message_id: messageId }) => messageId) ?? []);
+    const updated = await submitTurn(transcript);
+    return updated?.messages
+      .filter(({ message_id: messageId, role }) => role === "ASSISTANT" && !existingMessageIds.has(messageId))
+      .at(-1)?.content;
+  }, [conversation?.messages, submitTurn]);
+  const voice = useRealtimeVoice({
+    conversationId: conversation?.conversation_id,
+    csrfToken: principalSession.csrf_token,
+    enabled: loadState === "ready",
+    onTranscriptChange: updateComposer,
+    onTurn: handleVoiceTurn,
+  });
+
   function handleSubmit(message: PromptInputMessage) {
     void submitTurn(message.text);
   }
-
-  const updateComposer = useCallback((value: string) => setComposerValue(value), []);
-  const speech = useSpeechInput(composerValue, updateComposer, busy !== null || loadState !== "ready");
   const showApproval = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && Boolean(conversation.operation.pending_approval);
   const enteringHistory = conversation?.conversation_id === enteringConversationId && arrivingAssistantMessageId === undefined;
   const hasIntentSummary = Boolean(
@@ -2059,7 +1984,7 @@ export function TrustedSurface() {
                       onSubmit={(value) => void submitTurn(value)}
                       onSuggestion={(value) => void submitTurn(value)}
                       principalName={principalSession.principal.display_name}
-                      speech={speech}
+                      voice={voice}
                     />
                   </ChatPresenceItem>
                 ) : null}
@@ -2179,8 +2104,8 @@ export function TrustedSurface() {
                         ? "Waiting for Jaguary…"
                         : loadState === "error" && !conversation
                           ? "Connect the API to begin…"
-                          : speech.listening
-                            ? "Listening…"
+                            : voice.active
+                            ? voice.label
                             : quickReplyGroup?.inputPlaceholder ?? "Talk to TravelBot…"
                     }
                     ref={composerRef}
@@ -2190,26 +2115,26 @@ export function TrustedSurface() {
                 <PromptInputFooter>
                   <PromptInputTools>
                     <Button
-                      aria-label={speech.listening ? "Stop dictation" : speech.supported ? "Dictate message" : "Dictation is not supported in this browser"}
-                      aria-pressed={speech.listening}
-                      className={cn("rounded-md", speech.listening && "bg-red-50 text-destructive hover:bg-red-100")}
-                      disabled={!speech.supported || !conversation || (isBusy && !speech.listening)}
-                      onClick={speech.toggle}
+                      aria-label={voice.active ? "End voice conversation" : voice.supported ? "Start voice conversation" : "Voice mode is not supported in this browser"}
+                      aria-pressed={voice.active}
+                      className={cn("rounded-md", voice.active && "bg-red-50 text-destructive hover:bg-red-100")}
+                      disabled={!voice.supported || !conversation || (isBusy && !voice.active)}
+                      onClick={voice.toggle}
                       size="icon-sm"
-                      title={speech.supported ? "Dictate message" : "Your browser does not support speech recognition"}
+                      title={voice.supported ? voice.label : "Your browser does not support realtime voice"}
                       type="button"
                       variant="ghost"
                     >
-                      {speech.listening ? <SquareIcon className="size-3.5 fill-current" /> : speech.supported ? <MicIcon /> : <MicOffIcon />}
+                      {voice.active ? <SquareIcon className="size-3.5 fill-current" /> : voice.supported ? <MicIcon /> : <MicOffIcon />}
                     </Button>
-                    {speech.listening ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />listening</span> : null}
+                    {voice.active ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />{voice.label}</span> : null}
                   </PromptInputTools>
                   <PromptInputSubmit disabled={!composerValue.trim() || !conversation || isBusy || loadState !== "ready"} status={busy === "sending" ? "submitted" : "ready"} />
                 </PromptInputFooter>
               </PromptInput>
               <div className="mt-1.5 flex min-h-4 items-center justify-between gap-3 px-1">
-                <p className={cn("text-[10px]", speech.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
-                  {speech.error ?? (speech.supported ? "Click the microphone to dictate. Review before sending." : "Enter sends · Shift+Enter adds a new line")}
+                <p className={cn("text-[10px]", voice.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+                  {voice.error ?? (voice.active ? `${voice.label}. AI-generated voice.` : voice.supported ? "Start voice mode for a hands-free conversation." : "Enter sends · Shift+Enter adds a new line")}
                 </p>
                 <span className="hidden truncate font-mono text-[9px] text-muted-foreground sm:block">{shortId(apiUrl, 28, 0)}</span>
               </div>

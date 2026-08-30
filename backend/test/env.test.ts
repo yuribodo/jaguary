@@ -149,6 +149,9 @@ test("OpenAI chat configuration validates the model and fails closed when incomp
     apiKey: secret,
     model: "gpt-5.2",
     requestTimeoutMs: 15_000,
+    realtimeModel: "gpt-realtime-2.1",
+    transcriptionModel: "gpt-live-transcribe",
+    voice: "marin",
   });
 });
 

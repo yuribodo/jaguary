@@ -15,6 +15,7 @@ export * from "./service.js";
 export * from "./telemetry.js";
 export * from "./tool-executor.js";
 export * from "./types.js";
+export * from "./voice.js";
 export * from "./watch.js";
 export * from "./watch-simulation.js";
 export * from "./watch-purchase.js";

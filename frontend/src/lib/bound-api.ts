@@ -27,6 +27,11 @@ export type ApiResult<T> = {
   correlationId?: string;
 };
 
+export type VoiceSessionClientSecret = {
+  value: string;
+  expires_at?: number;
+};
+
 type ApiErrorBody = {
   error?: { code?: string; message?: string; details?: Record<string, unknown> };
   correlation_id?: string;
@@ -339,6 +344,24 @@ export const boundApi = {
           "X-Correlation-Id": requestIdentity.correlationId,
         },
         body: JSON.stringify({ content }),
+      },
+    );
+  },
+
+  createVoiceSession(
+    conversationId: string,
+    csrfToken: string,
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<VoiceSessionClientSecret>(
+      `/v1/conversations/${encodeURIComponent(conversationId)}/voice-sessions`,
+      {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": requestIdentity.idempotencyKey,
+          "X-Correlation-Id": requestIdentity.correlationId,
+          "X-CSRF-Token": csrfToken,
+        },
       },
     );
   },

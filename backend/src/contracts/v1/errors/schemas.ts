@@ -10,6 +10,7 @@ export const transportErrorCodeSchema = z.enum([
   "missing_idempotency_key",
   "invalid_idempotency_key",
   "idempotency_conflict",
+  "voice_unavailable",
   "internal_error",
 ]);
 
