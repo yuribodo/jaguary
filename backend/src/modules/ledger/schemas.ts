@@ -24,6 +24,8 @@ const mandateTransitionSchema = z.object({
   from_status: z.enum(["DRAFT", "ACTIVE"]),
   to_status: z.enum(["ACTIVE", "REVOKED"]),
   terms_hash: sha256Schema.optional(),
+  biometric_consent_id: identifierSchema.optional(),
+  biometric_evidence_hash: sha256Schema.optional(),
   payment_executor_called: z.literal(false).optional(),
   occurred_at: utcRfc3339Schema,
 }).strict();
@@ -79,10 +81,42 @@ export const ledgerPayloadSchemas = {
     status: z.literal("DRAFT"),
     created_at: utcRfc3339Schema,
   }).strict(),
+  "mandate.biometric_consent_started": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.literal("PREPARING"),
+    expires_at: utcRfc3339Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_verified": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.literal("VERIFIED"),
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_failed": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.enum(["REJECTED", "EXPIRED", "ERROR"]),
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_consumed": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
   "mandate.activated": mandateTransitionSchema.refine(
     (payload) => payload.from_status === "DRAFT"
       && payload.to_status === "ACTIVE"
       && payload.terms_hash !== undefined
+      && ((payload.biometric_consent_id === undefined) === (payload.biometric_evidence_hash === undefined))
       && payload.payment_executor_called === undefined,
     "Mandate activation must bind DRAFT to ACTIVE and include terms_hash",
   ),

@@ -181,6 +181,22 @@ export const boundApi = {
       headers: { "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
     });
   },
+
+  startMandateBiometricConsent(mandateId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<MandateBiometricConsent>(`/v1/mandates/${encodeURIComponent(mandateId)}/biometric-consent-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ consent: true }),
+    });
+  },
+
+  refreshMandateBiometricConsent(mandateId: string, consentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<MandateBiometricConsent>(`/v1/mandates/${encodeURIComponent(mandateId)}/biometric-consent-sessions/${encodeURIComponent(consentId)}/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: "{}",
+    });
+  },
   health(signal?: AbortSignal) {
     return request<{ status: string }>("/health", { signal });
   },
@@ -335,4 +351,12 @@ export type AgentAssurance = {
   issued_at: string | null;
   expires_at: string | null;
   eligibility: { eligible: boolean; reason?: string };
+};
+export type MandateBiometricConsent = {
+  consent_id: string;
+  mandate_id: string;
+  status: "PREPARING" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "ERROR" | "CONSUMED";
+  terms_hash: string;
+  expires_at: string;
+  hosted_verification_url: string | null;
 };

@@ -66,6 +66,7 @@ import {
   BoundApiError,
   createRequestIdentity,
 } from "@/lib/bound-api";
+import { writePendingBiometricConsent } from "@/lib/biometric-consent";
 import { cn } from "@/lib/utils";
 import {
   conversationStateLabels,
@@ -93,7 +94,7 @@ const STARTER_PROMPTS = [
 ];
 
 type LoadState = "loading" | "ready" | "error";
-type BusyState = "authorizing" | "creating" | "switching" | "sending" | null;
+type BusyState = "authorizing" | "creating" | "switching" | "sending" | "verifying" | null;
 type TurnMode = "authority" | "chat";
 type FailedTurn = {
   text: string;
@@ -123,6 +124,15 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function asApiError(error: unknown) {
   if (error instanceof BoundApiError) {
+    if (error.code === "agent_attestation_provider_unavailable") {
+      return new BoundApiError({
+        message: "The secure selfie session could not be opened. Your authority remains inactive; try again.",
+        code: error.code,
+        status: error.status,
+        correlationId: error.correlationId,
+        offline: error.offline,
+      });
+    }
     if (error.status === 503) {
       return new BoundApiError({
         message: "The search or TravelBot did not respond in time. Your data is still saved; try again.",
@@ -701,13 +711,13 @@ function ApprovalCard({
                       Processing securely
                     </>
                   ) : (
-                    <><CheckIcon />Authorize {formatMoney(approval.amount, approval.currency)}</>
+                    <><FingerprintIcon />Confirm with selfie</>
                   )}
                 </Button>
                 <Button className="h-11 w-full rounded-md border-[#cfd3d9] bg-[#fffefb]" disabled={disabled} onClick={() => onDecision(false)} variant="outline">Not now</Button>
               </div>
 
-              <p className="mt-4 flex items-start gap-2 text-[9px] leading-4 text-[#686d75]"><ShieldCheckIcon className="mt-0.5 size-3 shrink-0" />Nothing is charged until you authorize.</p>
+              <p className="mt-4 flex items-start gap-2 text-[9px] leading-4 text-[#686d75]"><ShieldCheckIcon className="mt-0.5 size-3 shrink-0" />Your live selfie is matched to the approved onboarding before this exact authority becomes active.</p>
 
               <details className="group -mx-5 mt-auto border-t border-[#d3d6db]">
                 <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring">
@@ -1256,6 +1266,41 @@ export function TrustedSurface() {
     }
   }, [busy, conversation, rememberConversation]);
 
+  const beginBiometricAuthorization = useCallback(async () => {
+    const approval = conversation?.operation.pending_approval;
+    if (!conversation || !approval || busy) return;
+    setBusy("verifying");
+    setError(undefined);
+    setFailedTurn(undefined);
+    try {
+      const principal = await boundApi.getPrincipalSession();
+      if (!principal.data.authenticated) {
+        throw new BoundApiError({ message: "Your session expired. Sign in again before authorizing.", code: "session_expired", status: 401 });
+      }
+      const started = await boundApi.startMandateBiometricConsent(
+        approval.mandate_id,
+        principal.data.csrf_token,
+        createRequestIdentity("biometric_consent"),
+      );
+      if (started.data.hosted_verification_url === null) {
+        throw new BoundApiError({ message: "The secure selfie session could not be opened. Try again.", code: "biometric_session_unavailable" });
+      }
+      writePendingBiometricConsent({
+        conversationId: conversation.conversation_id,
+        mandateId: approval.mandate_id,
+        consentId: started.data.consent_id,
+        refreshIdentity: createRequestIdentity("biometric_refresh"),
+        confirmationIdentity: createRequestIdentity("biometric_confirmation"),
+      });
+      window.location.assign(started.data.hosted_verification_url);
+    } catch (caught) {
+      const apiError = asApiError(caught);
+      setError(apiError);
+      setLastCorrelationId(apiError.correlationId);
+      setBusy(null);
+    }
+  }, [busy, conversation]);
+
   function handleSubmit(message: PromptInputMessage) {
     void submitTurn(message.text);
   }
@@ -1374,10 +1419,9 @@ export function TrustedSurface() {
                     <AuthoritySurface
                       conversation={conversation}
                       disabled={isBusy}
-                      onDecision={(approved) => void submitTurn(
-                        approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.",
-                        { mode: "authority" },
-                      )}
+                      onDecision={(approved) => approved
+                        ? void beginBiometricAuthorization()
+                        : void submitTurn("I do not authorize this purchase.", { mode: "authority" })}
                     />
                   </ChatPresenceItem>
                 ) : null}

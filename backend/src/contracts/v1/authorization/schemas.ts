@@ -30,6 +30,11 @@ export const reasonCodeSchema = z.enum([
   "agent_attestation_revoked",
   "agent_attestation_binding_mismatch",
   "agent_attestation_provider_unavailable",
+  "biometric_consent_required",
+  "biometric_consent_pending",
+  "biometric_consent_rejected",
+  "biometric_consent_expired",
+  "biometric_consent_binding_mismatch",
 ]);
 
 export type ReasonCode = z.infer<typeof reasonCodeSchema>;

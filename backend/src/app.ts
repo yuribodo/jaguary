@@ -21,7 +21,12 @@ import {
   PostgresAuditEventRepository,
   PostgresReceiptStore,
 } from "./modules/ledger/index.js";
-import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
+import {
+  mandateRoutes,
+  MandateBiometricConsentService,
+  MandateService,
+  type MandateBiometricConsentGate,
+} from "./modules/mandates/index.js";
 import {
   FakePaymentExecutor,
   PostgresPaymentClaimStore,
@@ -130,6 +135,8 @@ export interface BuildAppOptions {
     baseUrl?: string;
     apiKey?: string;
     workflowId?: string;
+    biometricWorkflowId?: string;
+    biometricCallbackUrl?: string;
     webhookSecret?: string;
   };
 }
@@ -273,6 +280,9 @@ export async function buildApp(options: BuildAppOptions = {}) {
   }
   if (configuredAuth !== undefined) await app.register(authRoutes, configuredAuth);
   let configuredTrust = options.trust;
+  let configuredDiditProvider: DiditAgentAttestationProvider | undefined;
+  let configuredTrustRepository: PostgresAgentTrustRepository | undefined;
+  let biometricConsentService: MandateBiometricConsentService | undefined;
   if (configuredTrust === undefined && options.agentTrust !== undefined && database !== undefined && ledger !== undefined && configuredAuth !== undefined) {
     const config = options.agentTrust;
     const encryptionSecret = config.provider === "didit" ? config.apiKey! : "bound-development-fake-kya-key";
@@ -280,11 +290,25 @@ export async function buildApp(options: BuildAppOptions = {}) {
       mode: config.mode, provider: config.provider, attestationTtlSeconds: config.attestationTtlSeconds, encryptionSecret,
     });
     const provider = config.provider === "didit"
-      ? new DiditAgentAttestationProvider({ baseUrl: config.baseUrl!, apiKey: config.apiKey!, workflowId: config.workflowId!, webhookSecret: config.webhookSecret!,
-        timeoutMs: config.requestTimeoutMs, allowedCallbackUrls: [config.callbackUrl] })
+      ? new DiditAgentAttestationProvider({ baseUrl: config.baseUrl!, apiKey: config.apiKey!, workflowId: config.workflowId!, biometricWorkflowId: config.biometricWorkflowId, webhookSecret: config.webhookSecret!,
+        timeoutMs: config.requestTimeoutMs, allowedCallbackUrls: [config.callbackUrl, ...(config.biometricCallbackUrl === undefined ? [] : [config.biometricCallbackUrl])] })
       : new DeterministicFakeAttestationProvider(clock.now());
+    if (provider instanceof DiditAgentAttestationProvider) {
+      configuredDiditProvider = provider;
+      configuredTrustRepository = repository;
+    }
     const passports = await BoundAgentPassportService.create({ issuer: config.passportIssuer, audience: config.passportAudience ?? "bound-verify", ttlSeconds: Math.min(900, config.attestationTtlSeconds), now: clock.now });
-    configuredTrust = { service: new AgentTrustService({ provider, providerName: config.provider, repository, passports, clock, callbackUrl: config.callbackUrl }), auth: configuredAuth.service, allowedOrigin: configuredAuth.allowedOrigin, secureCookies: configuredAuth.secureCookies, sessionTtlSeconds: configuredAuth.sessionTtlSeconds };
+    configuredTrust = { service: new AgentTrustService({
+      provider,
+      providerName: config.provider,
+      repository,
+      passports,
+      clock,
+      callbackUrl: config.callbackUrl,
+      secondaryProviderEventConsumer: {
+        applyProviderEvent: async (event, correlationId) => biometricConsentService?.applyProviderEvent(event, correlationId) ?? false,
+      },
+    }), auth: configuredAuth.service, allowedOrigin: configuredAuth.allowedOrigin, secureCookies: configuredAuth.secureCookies, sessionTtlSeconds: configuredAuth.sessionTtlSeconds };
   }
   if (configuredTrust !== undefined) await app.register(trustRoutes, configuredTrust);
   const agentRegistry = options.agentRegistry
@@ -312,9 +336,37 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   let mandateService: MandateService | undefined;
   if (database !== undefined && ledger !== undefined) {
-    mandateService = new MandateService(database, signer, clock, ledger, configuredTrust?.service.eligibility);
+    const biometricEnabled = configuredDiditProvider !== undefined
+      && configuredTrustRepository !== undefined
+      && configuredAuth !== undefined
+      && options.agentTrust?.biometricWorkflowId !== undefined
+      && options.agentTrust.biometricCallbackUrl !== undefined;
+    const biometricGate: MandateBiometricConsentGate | undefined = biometricEnabled ? {
+      consumeInTransaction: (transaction, input) => {
+        if (biometricConsentService === undefined) throw new Error("Biometric consent service is unavailable");
+        return biometricConsentService.consumeInTransaction(transaction, input);
+      },
+    } : undefined;
+    mandateService = new MandateService(database, signer, clock, ledger, configuredTrust?.service.eligibility, biometricGate);
+    if (biometricEnabled) {
+      biometricConsentService = new MandateBiometricConsentService({
+        database,
+        mandates: mandateService,
+        trust: configuredTrustRepository!,
+        provider: configuredDiditProvider!,
+        ledger,
+        clock,
+        callbackUrl: options.agentTrust!.biometricCallbackUrl!,
+        encryptionSecret: options.agentTrust!.apiKey!,
+      });
+    }
     await app.register(mandateRoutes, {
       service: mandateService,
+      ...(biometricConsentService === undefined || configuredAuth === undefined ? {} : {
+        biometricConsent: biometricConsentService,
+        auth: configuredAuth.service,
+        allowedOrigin: configuredAuth.allowedOrigin,
+      }),
     });
   }
   let verifyOrchestrator = options.verifyOrchestrator;

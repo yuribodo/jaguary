@@ -347,6 +347,51 @@ export const mandates = pgTable("mandates", {
   index("mandates_supersedes_idx").on(table.supersedesMandateId),
 ]);
 
+export const mandateBiometricConsents = pgTable("mandate_biometric_consents", {
+  consentId: varchar("consent_id", { length: 128 }).primaryKey(),
+  mandateId: varchar("mandate_id", { length: 128 }).notNull().references(() => mandates.mandateId),
+  principalId: varchar("principal_id", { length: 128 }).notNull(),
+  agentId: varchar("agent_id", { length: 128 }).notNull(),
+  termsHash: char("terms_hash", { length: 64 }).notNull(),
+  onboardingAttestationId: varchar("onboarding_attestation_id", { length: 128 }).notNull().references(() => agentAttestations.attestationId),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  providerVendorDataHash: char("provider_vendor_data_hash", { length: 64 }).notNull(),
+  providerVendorDataCiphertext: text("provider_vendor_data_ciphertext").notNull(),
+  providerAssessmentHash: char("provider_assessment_hash", { length: 64 }),
+  providerAssessmentCiphertext: text("provider_assessment_ciphertext"),
+  hostedUrlCiphertext: text("hosted_url_ciphertext"),
+  status: varchar("status", { length: 16 }).notNull(),
+  evidenceHash: char("evidence_hash", { length: 64 }).notNull(),
+  failureCode: varchar("failure_code", { length: 64 }),
+  correlationId: varchar("correlation_id", { length: 128 }).notNull(),
+  creationIdempotencyKey: varchar("creation_idempotency_key", { length: 128 }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  unique("mandate_biometric_consents_creation_idempotency_unique").on(table.creationIdempotencyKey),
+  unique("mandate_biometric_consents_provider_assessment_unique").on(table.provider, table.providerAssessmentHash),
+  foreignKey({
+    name: "mandate_biometric_consents_identity_fk",
+    columns: [table.mandateId, table.agentId, table.principalId],
+    foreignColumns: [mandates.mandateId, mandates.agentId, mandates.principalId],
+  }),
+  check("mandate_biometric_consents_id_check", identifierCheck(table.consentId)),
+  check("mandate_biometric_consents_status_check", sql`${table.status} IN ('PREPARING', 'PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED', 'ERROR', 'CONSUMED')`),
+  check("mandate_biometric_consents_hashes_check", sql`${hashCheck(table.termsHash)} AND ${hashCheck(table.providerVendorDataHash)} AND ${hashCheck(table.evidenceHash)} AND (${table.providerAssessmentHash} IS NULL OR ${hashCheck(table.providerAssessmentHash)})`),
+  check("mandate_biometric_consents_provider_shape_check", sql`
+    (${table.status} IN ('PREPARING', 'ERROR') OR (${table.providerAssessmentHash} IS NOT NULL AND ${table.providerAssessmentCiphertext} IS NOT NULL))
+    AND (${table.status} <> 'VERIFIED' OR ${table.verifiedAt} IS NOT NULL)
+    AND (${table.status} <> 'CONSUMED' OR (${table.verifiedAt} IS NOT NULL AND ${table.consumedAt} IS NOT NULL))
+  `),
+  check("mandate_biometric_consents_idempotency_check", sql`length(${table.creationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.creationIdempotencyKey)}`),
+  check("mandate_biometric_consents_validity_check", sql`${table.createdAt} < ${table.expiresAt}`),
+  index("mandate_biometric_consents_mandate_status_idx").on(table.mandateId, table.status, table.expiresAt),
+  index("mandate_biometric_consents_provider_idx").on(table.provider, table.providerAssessmentHash),
+]);
+
 export const checkouts = pgTable("checkouts", {
   checkoutId: varchar("checkout_id", { length: 128 }).primaryKey(),
   merchantId: varchar("merchant_id", { length: 128 }).notNull(),
@@ -765,6 +810,7 @@ export const databaseSchema = {
   agentAttestationEvents,
   paymentCredentials,
   mandates,
+  mandateBiometricConsents,
   checkouts,
   nonces,
   authorizations,

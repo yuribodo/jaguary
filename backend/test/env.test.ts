@@ -77,6 +77,7 @@ test("BE-14 external KYA is complete and pinned to the official Didit origin", (
     KYA_API_BASE_URL: "https://attacker.example",
     KYA_API_KEY: "secret",
     KYA_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440000",
+    KYA_BIOMETRIC_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440010",
     KYA_WEBHOOK_SECRET: "webhook-secret",
   }), ConfigurationError);
   const env = loadEnv({
@@ -84,10 +85,12 @@ test("BE-14 external KYA is complete and pinned to the official Didit origin", (
     KYA_API_BASE_URL: "https://verification.didit.me",
     KYA_API_KEY: "secret",
     KYA_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440000",
+    KYA_BIOMETRIC_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440010",
     KYA_WEBHOOK_SECRET: "webhook-secret",
   });
   assert.equal(env.kya.mode, "EXTERNAL_REQUIRED");
   assert.equal(env.kya.provider, "didit");
+  assert.equal(env.kya.biometricWorkflowId, "550e8400-e29b-41d4-a716-446655440010");
 });
 
 test("Google Flights search is backend-only, optional, and validates its controls", () => {

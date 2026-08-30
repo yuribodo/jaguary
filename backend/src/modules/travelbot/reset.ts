@@ -2,6 +2,7 @@ import type { DatabaseConnection } from "../../db/database.js";
 import {
   authorizations,
   checkouts,
+  mandateBiometricConsents,
   mandates,
   nonces,
   orders,
@@ -33,6 +34,7 @@ export async function resetLocalDemoTransactions(database: DatabaseConnection): 
     await transaction.delete(authorizations);
     await transaction.delete(nonces);
     await transaction.delete(checkouts);
+    await transaction.delete(mandateBiometricConsents);
     await transaction.delete(mandates);
     // The append-only audit ledger is intentionally retained.
   });

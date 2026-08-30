@@ -20,6 +20,7 @@ import {
   orderReceiptSchema,
   paymentResultSchema,
   purchaseIntentFixture,
+  PublicApiError,
   reservedAuthorizationFixture,
   reservedAuthorizationSchema,
   sha256CanonicalJson,
@@ -562,6 +563,7 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
       "audit_events",
       "authorizations",
       "checkouts",
+      "mandate_biometric_consents",
       "mandates",
       "nonces",
       "orders",
@@ -1600,6 +1602,67 @@ integrationTest("a changed mandate creates a linked version without mutating act
     payload: { cabin: "BUSINESS" },
   });
   assert.equal(mutation.statusCode, 404);
+});
+
+integrationTest("mandate activation fails closed until biometric consent matches the exact immutable terms hash", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const now = new Date("2026-08-29T12:05:00.000Z");
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  let observedTermsHash: string | undefined;
+  const service = new MandateService(
+    database,
+    new EphemeralEs256Signer(),
+    { now: () => now },
+    ledger,
+    undefined,
+    {
+      async consumeInTransaction(_transaction, input) {
+        observedTermsHash = input.termsHash;
+        throw new PublicApiError(403, "biometric_consent_required", "Biometric consent is required before mandate activation");
+      },
+    },
+  );
+  const input = mandateDraftRequest("mandate_biometric_gate_001");
+  const { mandate } = await service.createDraft(input, "idem_biometric_gate_create_001", "corr_biometric_gate_001");
+
+  await assert.rejects(
+    service.activate(input.mandate_id, "idem_biometric_gate_activate_001", "corr_biometric_gate_001"),
+    (error: unknown) => error instanceof PublicApiError && error.code === "biometric_consent_required",
+  );
+  assert.equal(observedTermsHash, sha256CanonicalJson(mandate.terms));
+  assert.equal((await service.getMandate(input.mandate_id)).status, "DRAFT");
+});
+
+integrationTest("a verified biometric consent is consumed in the same transaction that activates the bound mandate", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const now = new Date("2026-08-29T12:05:00.000Z");
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const service = new MandateService(
+    database,
+    new EphemeralEs256Signer(),
+    { now: () => now },
+    ledger,
+    undefined,
+    {
+      async consumeInTransaction(_transaction, input) {
+        return {
+          consentId: "bioconsent_verified_001",
+          evidenceHash: sha256CanonicalJson({ terms_hash: input.termsHash, result: "VERIFIED" }),
+        };
+      },
+    },
+  );
+  const input = mandateDraftRequest("mandate_biometric_gate_002");
+  await service.createDraft(input, "idem_biometric_gate_create_002", "corr_biometric_gate_002");
+  const active = await service.activate(input.mandate_id, "idem_biometric_gate_activate_002", "corr_biometric_gate_002");
+
+  assert.equal(active.status, "ACTIVE");
+  const timeline = await ledger.getTimeline("corr_biometric_gate_002");
+  const activation = timeline.events.find(({ event_type: eventType }) => eventType === "mandate.activated");
+  assert.equal(activation?.payload?.biometric_consent_id, "bioconsent_verified_001");
+  assert.equal(activation?.payload?.terms_hash, sha256CanonicalJson(active.terms));
 });
 
 integrationTest("mandate responses defensively mask malformed credential displays", async (t) => {

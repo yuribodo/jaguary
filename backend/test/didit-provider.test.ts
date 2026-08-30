@@ -5,7 +5,18 @@ import test from "node:test";
 import { DiditAgentAttestationProvider, diditCanonicalJson } from "../src/modules/trust/didit-provider.js";
 
 const now = new Date("2026-08-29T12:00:00.000Z");
-const baseOptions = { baseUrl: "https://verification.didit.me", apiKey: "api-secret", workflowId: "550e8400-e29b-41d4-a716-446655440000", webhookSecret: "webhook-secret", timeoutMs: 1000, allowedCallbackUrls: ["https://bound.example/trust/callback"] };
+const baseOptions = {
+  baseUrl: "https://verification.didit.me",
+  apiKey: "api-secret",
+  workflowId: "550e8400-e29b-41d4-a716-446655440000",
+  biometricWorkflowId: "550e8400-e29b-41d4-a716-446655440010",
+  webhookSecret: "webhook-secret",
+  timeoutMs: 1000,
+  allowedCallbackUrls: [
+    "https://bound.example/trust/callback",
+    "https://bound.example/biometric-callback",
+  ],
+};
 
 test("Didit creates a backend-only hosted session without sending PII", async () => {
   let requestBody: Record<string, unknown> | undefined;
@@ -20,6 +31,60 @@ test("Didit creates a backend-only hosted session without sending PII", async ()
   assert.equal(result.hostedUrl, "https://verify.didit.me/en/session/opaque-token");
   assert.deepEqual(requestBody, { workflow_id: baseOptions.workflowId, vendor_data: "opaque-bound-reference", callback: "https://bound.example/trust/callback", callback_method: "both" });
   assert.equal(JSON.stringify(requestBody).includes("principal_marta"), false);
+});
+
+test("Didit creates biometric authentication from the approved onboarding portrait without persisting or returning it", async () => {
+  const portrait = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+  const calls: string[] = [];
+  let requestBody: Record<string, unknown> | undefined;
+  const provider = new DiditAgentAttestationProvider({
+    ...baseOptions,
+    fetch: async (input, init) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/v3/session/550e8400-e29b-41d4-a716-446655440001/decision/")) {
+        return new Response(JSON.stringify({
+          session_id: "550e8400-e29b-41d4-a716-446655440001",
+          status: "Approved",
+          id_verifications: [{
+            portrait_image: "https://service-didit-verification-production-a1c5f9b8.s3.amazonaws.com/reference.png",
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === "https://service-didit-verification-production-a1c5f9b8.s3.amazonaws.com/reference.png") {
+        return new Response(portrait, { status: 200, headers: { "content-type": "image/png", "content-length": String(portrait.byteLength) } });
+      }
+      assert.equal(url, "https://verification.didit.me/v3/session/");
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        session_id: "550e8400-e29b-41d4-a716-446655440011",
+        url: "https://verify.didit.me/en/session/biometric-token",
+        status: "Not Started",
+      }), { status: 201 });
+    },
+  });
+
+  const result = await provider.createBiometricAuthentication({
+    referenceAssessmentId: "550e8400-e29b-41d4-a716-446655440001",
+    vendorData: "opaque-consent-reference",
+    callbackUrl: "https://bound.example/biometric-callback",
+  });
+
+  assert.equal(result.assessmentId, "550e8400-e29b-41d4-a716-446655440011");
+  assert.equal(result.hostedUrl, "https://verify.didit.me/en/session/biometric-token");
+  assert.deepEqual(requestBody, {
+    workflow_id: baseOptions.biometricWorkflowId,
+    vendor_data: "opaque-consent-reference",
+    callback: "https://bound.example/biometric-callback",
+    callback_method: "both",
+    portrait_image: portrait.toString("base64"),
+  });
+  assert.deepEqual(calls, [
+    "https://verification.didit.me/v3/session/550e8400-e29b-41d4-a716-446655440001/decision/",
+    "https://service-didit-verification-production-a1c5f9b8.s3.amazonaws.com/reference.png",
+    "https://verification.didit.me/v3/session/",
+  ]);
+  assert.equal(JSON.stringify(result).includes(portrait.toString("base64")), false);
 });
 
 test("Didit normalizes all ten official statuses without ever producing ALLOW", async () => {

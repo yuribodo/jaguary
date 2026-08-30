@@ -13,7 +13,15 @@ type ExtendedTrustRepository = AgentTrustRepositoryPort & {
   recordPassportIssued?(input: { passportId: string; trust: Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>; expiresAt: Date; correlationId: string; now: Date }): Promise<void>;
   recordPassportInvalidated?(input: { passportId: string; trust: Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>; reason: "attestation_expired" | "attestation_revoked" | "binding_changed" | "agent_not_active"; correlationId: string; now: Date }): Promise<void>;
 };
-export interface AgentTrustServiceOptions { provider: AgentAttestationProviderPort; providerName: "fake" | "didit"; repository: ExtendedTrustRepository; passports: BoundAgentPassportService; clock: { now(): Date }; callbackUrl: string }
+export interface AgentTrustServiceOptions {
+  provider: AgentAttestationProviderPort;
+  providerName: "fake" | "didit";
+  repository: ExtendedTrustRepository;
+  passports: BoundAgentPassportService;
+  clock: { now(): Date };
+  callbackUrl: string;
+  secondaryProviderEventConsumer?: { applyProviderEvent(event: Awaited<ReturnType<AgentAttestationProviderPort["verifyWebhook"]>>, correlationId: string): Promise<boolean> };
+}
 export class AgentEligibilityService implements AgentEligibilityPort {
   constructor(private readonly repository: AgentTrustRepositoryPort) {}
   async evaluate(agentId: string, principalId: string | undefined, now: Date) { return evaluateAgentEligibility(await this.repository.getCurrent(agentId, now), principalId, now); }
@@ -86,8 +94,15 @@ export class AgentTrustService {
   async webhook(provider: string, rawBody: string, headers: Record<string, string | undefined>, correlationId: string) {
     if (provider !== this.options.providerName || provider !== "didit") throw new PublicApiError(404, "not_found", "Webhook provider is unavailable");
     const event = await this.options.provider.verifyWebhook({ rawBody, headers, now: this.options.clock.now() });
-    const result = await this.options.repository.applyProviderEvent({ event, now: this.options.clock.now(), correlationId });
-    return { received: true, applied: result.applied };
+    try {
+      const result = await this.options.repository.applyProviderEvent({ event, now: this.options.clock.now(), correlationId });
+      return { received: true, applied: result.applied };
+    } catch (error) {
+      if (!(error instanceof PublicApiError) || error.code !== "not_found" || this.options.secondaryProviderEventConsumer === undefined) throw error;
+      const applied = await this.options.secondaryProviderEventConsumer.applyProviderEvent(event, correlationId);
+      if (!applied) throw error;
+      return { received: true, applied: true };
+    }
   }
   async passport(session: PrincipalSession, agentId: string, correlationId: string) {
     await this.options.repository.getAgentBinding(agentId, session.principal.principal_id);
