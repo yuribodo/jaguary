@@ -34,6 +34,9 @@ pnpm check
 
 ## Documentation
 
+- [Documentation home](docs/README.md)
+- [Technical architecture and integration guides](docs/technical/README.md)
+- [Known implementation gaps](docs/technical/known-gaps.md)
 - [Initial deployment — Vercel + Neon](docs/deployment.md)
 - [Current implementation — complete visual guide](docs/diagrams/bound-current-system.html)
 - [Diagram index](docs/diagrams/README.md)
@@ -55,6 +58,6 @@ pnpm check
 
 > UCP gives the agent a commerce language. AP2 gives it verifiable authority. Bound enforces that authority. Yuno resolves and executes the payment.
 
-The primary demo path is `UCP → AP2 → Bound Verify → Yuno → receipt`. Visa TAP and Visa Intelligent Commerce are complementary paths for agent recognition and payment credentials on legacy web checkouts; they are not required to complete P0.
+The target provider path is `UCP → AP2 → Bound Verify → Yuno → receipt`. The current application entry point still installs the deterministic fake payment executor; the isolated Yuno adapter is not yet wired into the runtime and has no complete webhook/reconciliation surface. Visa TAP and Visa Intelligent Commerce are complementary paths for agent recognition and payment credentials on legacy web checkouts; they are not required to complete P0.
 
-A financial mandate requires a previously enrolled, active payment credential owned by the same principal. Enrollment happens on a provider-controlled secure surface; Bound stores only a logical reference and masked display metadata. P0 creates a sandbox payment and a VuelaYa order. A real purchase on an external production site is a separate, gated route that requires network credential onboarding such as Visa Intelligent Commerce or Mastercard Agent Pay.
+A financial mandate requires a previously enrolled, active payment credential owned by the same principal. Enrollment happens on a provider-controlled secure surface; Bound stores only a logical reference and masked display metadata. The current demo creates a fake approved payment and a VuelaYa receipt. A real sandbox or production purchase is a separate, gated route that requires runtime provider composition, credential onboarding, and reconciliation.
