@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif, Sora } from "next/font/google";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { EnglishUi } from "@/components/english-ui";
 import { cn } from "@/lib/utils";
 
 import "react-19-credit-card/dist/es/index.css";
@@ -30,9 +31,9 @@ const mono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Jaguary — the authority rail",
+  title: "JaguaryAI — authorized purchases with evidence",
   description:
-    "Jaguary decides whether an agent may perform an economic action — identity, mandate, scope, and replay — before any payment.",
+    "JaguaryAI controls identity, permission scope, and evidence before any payment.",
 };
 
 export default function RootLayout({
@@ -46,7 +47,7 @@ export default function RootLayout({
       lang="en"
     >
       <body>
-        <TooltipProvider>{children}</TooltipProvider>
+        <TooltipProvider><EnglishUi />{children}</TooltipProvider>
       </body>
     </html>
   );

@@ -10,5 +10,6 @@ export const metadata: Metadata = {
 };
 
 export default function DemoPage() {
+  if (process.env.NODE_ENV === "development") return <TrustedSurface />;
   return <AuthenticatedPage><TrustedSurface /></AuthenticatedPage>;
 }

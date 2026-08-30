@@ -6,13 +6,14 @@ import { useEffect, useState } from "react";
 import {
   BotIcon,
   CreditCardIcon,
-  FingerprintIcon,
   HandshakeIcon,
   HistoryIcon,
+  LayoutDashboardIcon,
   LoaderCircleIcon,
   LogOutIcon,
   PlusIcon,
   ShieldCheckIcon,
+  ScrollTextIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,13 +37,16 @@ import {
 import { boundApi, createRequestIdentity, type PrincipalSessionView } from "@/lib/bound-api";
 import type { TravelBotConversation } from "@/lib/contracts";
 
-export type AccountPage = "payment-methods" | "purchases" | "merchants" | "trust";
+export type AccountPage = "dashboard" | "agents" | "opportunities" | "approvals" | "payment-methods" | "purchases" | "merchants" | "audit" | "trust";
 
 const accountPages = [
+  { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
+  { key: "agents", href: "/connected-agents", label: "Connected agents", icon: BotIcon },
+  { key: "opportunities", href: "/opportunities", label: "Opportunities", icon: HandshakeIcon },
+  { key: "approvals", href: "/approval-center", label: "Approval Center", icon: ScrollTextIcon },
   { key: "payment-methods", href: "/payment-methods", label: "Payment methods", icon: CreditCardIcon },
   { key: "purchases", href: "/purchases", label: "Purchases", icon: HistoryIcon },
-  { key: "merchants", href: "/connected-merchants", label: "Connected merchants", icon: HandshakeIcon },
-  { key: "trust", href: "/trust", label: "Identity & trust", icon: FingerprintIcon },
+  { key: "audit", href: "/trilha-de-auditoria", label: "Audit trail", icon: ScrollTextIcon },
 ] as const;
 
 export function AppSidebar({
