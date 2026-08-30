@@ -42,12 +42,23 @@ export interface FlightSearchProvider {
   search(intent: TravelIntent): Promise<OfferCandidate[]>;
 }
 
+interface FlightSearchHttpResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  json(): Promise<unknown>;
+}
+
+type FlightSearchFetch = (
+  input: string,
+  init: { headers: { Accept: string }; signal: AbortSignal },
+) => Promise<FlightSearchHttpResponse>;
+
 export interface GoogleFlightsSearchOptions {
   apiKey: string;
   timeoutMs: number;
   clock: ClockPort;
   deepSearch?: boolean;
-  fetch?: typeof fetch;
+  fetch?: FlightSearchFetch;
 }
 
 type SearchableTravelIntent = TravelIntent & {
@@ -106,10 +117,12 @@ function safeItemName(airlines: string[], flightNumbers: string[], origin: strin
 }
 
 export class GoogleFlightsSearchProvider implements FlightSearchProvider {
-  readonly #fetch: typeof fetch;
+  readonly #fetch: FlightSearchFetch;
 
   constructor(private readonly options: GoogleFlightsSearchOptions) {
-    this.#fetch = options.fetch ?? fetch;
+    this.#fetch = options.fetch ?? ((input, init) => (
+      fetch(input, init) as unknown as Promise<FlightSearchHttpResponse>
+    ));
   }
 
   async search(intent: TravelIntent): Promise<OfferCandidate[]> {
@@ -162,7 +175,7 @@ export class GoogleFlightsSearchProvider implements FlightSearchProvider {
     });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
-    let response: Response;
+    let response: FlightSearchHttpResponse;
     try {
       response = await this.#fetch(`https://serpapi.com/search.json?${params}`, {
         headers: { Accept: "application/json" },

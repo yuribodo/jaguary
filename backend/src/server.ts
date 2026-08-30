@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "fastify";
 
 import { buildApp } from "./build-app.js";
 import { ConfigurationError, loadEnv } from "./config/env.js";
