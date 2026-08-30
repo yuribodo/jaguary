@@ -12,8 +12,16 @@ import {
   type AgentRuntimeRequest,
 } from "../src/modules/travelbot/index.js";
 
-test("a complete one-message request automatically reaches offer selection", async () => {
+test("a complete one-message request keeps only the best offer and asks for purchase approval", async () => {
   const runtimeRequests: AgentRuntimeRequest[] = [];
+  let checkouts = 0;
+  let authorities = 0;
+  const moreExpensiveOffer = {
+    ...structuredClone(offerCandidateFixture),
+    offer_id: "offer_vy_999_gru_cor",
+    total: { amount: 14900, currency: "USD" },
+    source_url: "https://demo.vuelaya.example/flights/vy-999",
+  };
   const runtime: AgentRuntimePort = {
     async run(request) {
       runtimeRequests.push(request);
@@ -36,6 +44,29 @@ test("a complete one-message request automatically reaches offer selection", asy
         usage: { input_tokens: 10, output_tokens: 8 },
       };
     },
+    async prepareApproval() {
+      return {
+        proposal: {
+          origin_iata: null,
+          destination_iata: null,
+          departure_date: null,
+          passenger_count: null,
+          cabin: null,
+          max_total_budget: null,
+          selected_offer_id: null,
+          explicit_confirmation: null,
+          ambiguities: [],
+          requested_action: "REQUEST_PURCHASE",
+        },
+        assistant_message: "Paused for approval.",
+        interruption: {
+          tool_call_id: "call_auto_purchase_001",
+          tool_name: "request_purchase",
+          arguments: {},
+          sdk_run_state: "sdk-auto-selection-state",
+        },
+      };
+    },
   };
   const repository = new InMemoryTravelBotRepository();
   const service = new TravelBotService({
@@ -43,8 +74,27 @@ test("a complete one-message request automatically reaches offer selection", asy
     runtime,
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
     tools: {
-      findOffers: async () => [offerCandidateFixture],
+      findOffers: async () => [moreExpensiveOffer, offerCandidateFixture],
+      createCheckout: async ({ conversation: current, offer }) => {
+        checkouts += 1;
+        assert.equal(current.state, "AWAITING_OFFER_SELECTION");
+        assert.equal(offer.offer_id, offerCandidateFixture.offer_id);
+        return {
+          checkout_id: "checkout_auto_001",
+          checkout_hash: "a".repeat(64),
+          merchant_id: offer.merchant_id,
+          total: offer.total,
+        };
+      },
+      prepareAuthority: async ({ conversation: current }) => {
+        authorities += 1;
+        assert.equal(current.state, "AWAITING_OFFER_SELECTION");
+        return { mandate_id: "mandate_auto_001", status: "DRAFT" };
+      },
     },
+    approvalStateProtector: new Aes256GcmApprovalStateProtector(
+      Buffer.alloc(32, 7).toString("base64"),
+    ),
     telemetry: { emit: async () => { throw new Error("langfuse unavailable"); } },
   });
   const conversation = await service.createConversation({
@@ -61,12 +111,19 @@ test("a complete one-message request automatically reaches offer selection", asy
     correlation_id: "corr_chat_message_001",
   });
 
-  assert.equal(result.state, "AWAITING_OFFER_SELECTION");
+  assert.equal(result.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.equal(result.offers.length, 1);
   assert.equal(result.offers[0]?.offer_id, offerCandidateFixture.offer_id);
+  assert.equal(result.offers[0]?.source_url, offerCandidateFixture.source_url);
+  assert.equal(result.intent.selected_offer_id, offerCandidateFixture.offer_id);
+  assert.equal(result.operation.checkout_id, "checkout_auto_001");
+  assert.equal(result.operation.pending_approval?.mandate_id, "mandate_auto_001");
+  assert.equal(result.operation.pending_approval?.amount, offerCandidateFixture.total.amount);
   assert.deepEqual(result.missing_fields, []);
   assert.deepEqual(runtimeRequests[0]?.available_tools, []);
   assert.equal(runtimeRequests.length, 1);
+  assert.equal(checkouts, 1);
+  assert.equal(authorities, 1);
 });
 
 test("delegated airport and month choices are retained without asking for an exact day", async () => {
@@ -423,7 +480,7 @@ test("rate limit preserves state and the same idempotency key retries without du
   assert.equal(attempts, 2);
 });
 
-test("offer selection creates a bound approval and duplicate confirmation never repeats purchase", async () => {
+test("automatic offer choice creates a bound approval and duplicate confirmation never repeats purchase", async () => {
   let purchases = 0;
   let resumes = 0;
   const protector = new Aes256GcmApprovalStateProtector(Buffer.alloc(32, 9).toString("base64"));
@@ -454,17 +511,6 @@ test("offer selection creates a bound approval and duplicate confirmation never 
             requested_action: "FIND_OFFERS",
           },
           assistant_message: "Searching.",
-        };
-      }
-      if (request.user_message === "I select the offer") {
-        assert.deepEqual(request.available_tools, ["create_checkout"]);
-        return {
-          proposal: {
-            ...empty,
-            selected_offer_id: offerCandidateFixture.offer_id,
-            requested_action: "CREATE_CHECKOUT",
-          },
-          assistant_message: "Preparing.",
         };
       }
       assert.deepEqual(request.available_tools, []);
@@ -534,17 +580,11 @@ test("offer selection creates a bound approval and duplicate confirmation never 
     idempotency_key: "idem_bound_create_001",
     correlation_id: "corr_bound_create_001",
   });
-  await service.postMessage({
+  const selected = await service.postMessage({
     conversation_id: conversation.conversation_id,
     content: "complete request",
     idempotency_key: "idem_bound_complete_001",
     correlation_id: "corr_bound_complete_001",
-  });
-  const selected = await service.postMessage({
-    conversation_id: conversation.conversation_id,
-    content: "I select the offer",
-    idempotency_key: "idem_bound_selection_001",
-    correlation_id: "corr_bound_selection_001",
   });
   assert.equal(selected.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.equal(selected.operation.pending_approval?.checkout_hash, "a".repeat(64));

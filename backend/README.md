@@ -112,6 +112,8 @@ TravelBot is a backend-only OpenAI Agents SDK runtime behind `AgentRuntimePort`.
 
 The flight inventory is the existing deterministic VuelaYa catalog returned by `GET /merchant/flights`: the MVP has one GRU → COR economy flight on 2026-09-15 for USD 137. TravelBot does not browse external travel sites. Its only available function tools are the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from the persisted state and every economic operation is revalidated by application services.
 
+When the intent is complete, the service filters compatible flights and deterministically chooses one recommendation by lowest total price, earliest departure and stable offer ID. It persists only that offer, prepares checkout and authority, then asks for explicit purchase approval with the complete flight details and official source URL. `AWAITING_OFFER_SELECTION` is retained only as an internal/legacy checkout seam; the normal UI has no flight-selection step.
+
 Configure these backend-only environment names to enable OpenAI chat; `.env.example` intentionally contains no values:
 
 ```text

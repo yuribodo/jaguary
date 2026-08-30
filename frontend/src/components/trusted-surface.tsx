@@ -9,10 +9,10 @@ import {
 } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowUpRightIcon,
   BotIcon,
   CalendarDaysIcon,
   CheckIcon,
-  ChevronRightIcon,
   CircleAlertIcon,
   CircleIcon,
   Clock3Icon,
@@ -156,6 +156,21 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatDuration(departure: string, arrival: string) {
+  const minutes = Math.max(0, Math.round((Date.parse(arrival) - Date.parse(departure)) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${hours}h ${String(remainder).padStart(2, "0")}m`;
+}
+
+function officialFlightHref(offer: OfferCandidate) {
+  const source = new URL(offer.source_url);
+  if (offer.merchant_id === "merchant_vuelaya" && source.hostname === "demo.vuelaya.example") {
+    return `/connected-merchants/vuelaya${source.pathname}`;
+  }
+  return offer.source_url;
+}
+
 function shortId(value: string, start = 10, end = 6) {
   if (value.length <= start + end + 1) return value;
   return `${value.slice(0, start)}…${end ? value.slice(-end) : ""}`;
@@ -164,7 +179,7 @@ function shortId(value: string, start = 10, end = 6) {
 const stateLabels: Record<TravelBotState, string> = {
   COLLECTING: "Collecting details",
   READY_TO_SEARCH: "Ready to search",
-  AWAITING_OFFER_SELECTION: "Awaiting your choice",
+  AWAITING_OFFER_SELECTION: "Preparing the best option",
   AWAITING_AUTHORITY_CONFIRMATION: "Confirmation required",
   READY_TO_PURCHASE: "Purchase authorized",
   EXECUTING: "Executing purchase",
@@ -346,26 +361,22 @@ function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: 
   );
 }
 
-function OfferCard({
-  offer,
-  disabled,
-  onSelect,
-}: {
-  offer: OfferCandidate;
-  disabled: boolean;
-  onSelect: () => void;
-}) {
+function OfferCard({ offer }: { offer: OfferCandidate }) {
+  const officialHref = officialFlightHref(offer);
+  const isExternal = officialHref.startsWith("http");
   return (
-    <article className="overflow-hidden rounded-lg border bg-card shadow-[0_6px_24px_rgb(0_0_0/0.06)]">
+    <article className="overflow-hidden rounded-lg border border-blue-200 bg-card shadow-[0_6px_24px_rgb(0_0_0/0.06)]">
       <header className="flex items-center justify-between border-b bg-panel px-4 py-3">
         <span className="flex items-center gap-2 text-xs font-medium">
           <PlaneIcon className="size-3.5 text-blue-700" />
           VuelaYa
         </span>
-        <span className="panel-label">Merchant offer</span>
+        <span className="panel-label text-blue-700">TravelBot&apos;s choice</span>
       </header>
-      <div className="grid gap-5 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-        <div>
+      <div className="p-4 sm:p-5">
+        <div className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
+          <div>
+            <p className="text-[10px] font-medium tracking-[0.12em] text-emerald-800 uppercase">Best matching available flight</p>
           <div className="flex items-center gap-3">
             <strong className="font-serif text-3xl font-normal">{offer.fulfillment.origin}</strong>
             <span className="h-px w-10 bg-border" aria-hidden="true" />
@@ -376,17 +387,28 @@ function OfferCard({
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><CalendarDaysIcon className="size-3" />{formatDate(offer.fulfillment.departure_at)}</span>
             <span className="inline-flex items-center gap-1.5"><Clock3Icon className="size-3" />{formatTime(offer.fulfillment.departure_at)}–{formatTime(offer.fulfillment.arrival_at)}</span>
+            <span>{formatDuration(offer.fulfillment.departure_at, offer.fulfillment.arrival_at)}</span>
             <span>{offer.fulfillment.cabin === "ECONOMY" ? "Economy" : offer.fulfillment.cabin}</span>
           </div>
+            <p className="mt-3 text-xs text-muted-foreground">{offer.items[0]?.name} · {offer.items[0]?.quantity ?? 1} passenger</p>
         </div>
-        <div className="flex items-center justify-between gap-5 border-t pt-4 sm:block sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5 sm:text-right">
+          <div className="flex items-center justify-between gap-5 border-t pt-4 sm:block sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5 sm:text-right">
           <div>
-            <span className="block text-[10px] text-muted-foreground">Total per person</span>
+              <span className="block text-[10px] text-muted-foreground">Total trip price</span>
             <strong className="mt-0.5 block text-lg tabular-nums">{formatMoney(offer.total.amount, offer.total.currency)}</strong>
           </div>
-          <Button className="mt-0 sm:mt-3" disabled={disabled} onClick={onSelect} size="sm">
-            Select <ChevronRightIcon />
-          </Button>
+            <span className="mt-2 block text-[10px] text-muted-foreground">Available until {formatTime(offer.available_until)}</span>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-muted-foreground">TravelBot compared the compatible inventory and selected this option. Your approval is still required before payment.</p>
+          <Link
+            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-blue-800 hover:underline"
+            href={officialHref}
+            {...(isExternal ? { rel: "noreferrer", target: "_blank" } : {})}
+          >
+            View official flight <ArrowUpRightIcon className="size-3.5" />
+          </Link>
         </div>
       </div>
     </article>
@@ -414,7 +436,7 @@ function ApprovalCard({
           </span>
           <div className="min-w-0 flex-1">
             <p className="panel-label">Your decision</p>
-            <h2 className="mt-1 font-serif text-2xl">Authorize this purchase?</h2>
+            <h2 className="mt-1 font-serif text-2xl">Approve TravelBot&apos;s choice?</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               TravelBot is asking for permission to pay <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> to VuelaYa. Nothing will move without your confirmation.
             </p>
@@ -454,7 +476,7 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
   const operation = conversation?.operation;
   const steps = [
     { label: "Understand request", done: Boolean(conversation && conversation.missing_fields.length === 0) },
-    { label: "Find options", done: Boolean(conversation?.offers.length) },
+    { label: "Choose best flight", done: Boolean(conversation?.intent.selected_offer_id) },
     { label: "Lock checkout", done: Boolean(operation?.checkout_id) },
     { label: "Obtain authority", done: Boolean(operation?.mandate_id) },
     { label: "Purchase and issue", done: Boolean(operation?.receipt_id) },
@@ -671,7 +693,10 @@ export function TrustedSurface() {
   const updateComposer = useCallback((value: string) => setComposerValue(value), []);
   const speech = useSpeechInput(composerValue, updateComposer, busy !== null || loadState !== "ready");
   const lastMessage = conversation?.messages.at(-1);
-  const showOffers = conversation?.state === "AWAITING_OFFER_SELECTION" && conversation.offers.length > 0;
+  const selectedOffer = conversation?.offers.find(({ offer_id: offerId }) => (
+    offerId === conversation.intent.selected_offer_id
+  ));
+  const showChosenOffer = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && selectedOffer !== undefined;
   const showApproval = conversation?.state === "AWAITING_AUTHORITY_CONFIRMATION" && Boolean(conversation.operation.pending_approval);
   const isBusy = busy !== null;
 
@@ -789,11 +814,7 @@ export function TrustedSurface() {
                 </div>
               ) : null}
 
-              {showOffers ? (
-                <div className="grid gap-3">
-                  {conversation.offers.map((offer) => <OfferCard disabled={isBusy} key={offer.offer_id} offer={offer} onSelect={() => void submitTurn(`I select offer ${offer.offer_id}.`)} />)}
-                </div>
-              ) : null}
+              {showChosenOffer ? <OfferCard offer={selectedOffer} /> : null}
 
               {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.")} /> : null}
 

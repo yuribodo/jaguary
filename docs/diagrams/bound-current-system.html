@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bound — Como o sistema funciona hoje</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --paper: #f5f5f5;
+      --paper-2: #ececec;
+      --white: #ffffff;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --soft: #7a8399;
+      --rule: rgba(45,49,66,.12);
+      --rule-strong: rgba(45,49,66,.28);
+      --accent: #eb6c36;
+      --accent-tint: rgba(235,108,54,.08);
+      --link: #2e5aa8;
+      --sans: 'Geist', system-ui, sans-serif;
+      --serif: 'Instrument Serif', Georgia, serif;
+      --mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 48px 32px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+    main { width: min(100%, 1280px); margin: 0 auto; }
+    header { max-width: 920px; margin-bottom: 32px; }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font: 500 8px/1.5 var(--mono);
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -.02em; }
+    h1 { margin: 0 0 12px; font-size: 40px; line-height: 1.05; }
+    h2 { margin: 0 0 8px; font-size: 28px; line-height: 1.1; }
+    .lead, .section-copy { color: var(--muted); line-height: 1.65; }
+    .lead { max-width: 76ch; margin: 0; font-size: 16px; }
+    .section-copy { max-width: 88ch; margin: 0 0 20px; font-size: 12px; }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 24px 0 48px;
+      padding: 16px 0;
+      border-block: 1px solid var(--rule);
+    }
+    nav a {
+      border: 1px solid var(--rule-strong);
+      border-radius: 4px;
+      padding: 8px 12px;
+      color: var(--ink);
+      font: 500 8px/1 var(--mono);
+      letter-spacing: .08em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+    nav a:hover, nav a:focus-visible { border-color: var(--accent); color: var(--accent); }
+    section { margin: 0 0 64px; scroll-margin-top: 24px; }
+    figure { margin: 0; }
+    .diagram { width: 100%; overflow-x: auto; }
+    svg { display: block; width: 100%; min-width: 960px; height: auto; }
+    svg text { font-family: var(--sans); }
+    svg .mono { font-family: var(--mono); }
+    svg .label { fill: var(--ink); font-size: 12px; font-weight: 600; }
+    svg .sub { fill: var(--muted); font-family: var(--mono); font-size: 8px; }
+    svg .tag { fill: var(--soft); font-family: var(--mono); font-size: 8px; letter-spacing: .08em; }
+    svg .edge-label { fill: var(--muted); font-family: var(--mono); font-size: 8px; letter-spacing: .04em; }
+    svg .edge-label-link { fill: var(--link); font-family: var(--mono); font-size: 8px; letter-spacing: .04em; }
+    svg .edge-label-accent { fill: var(--accent); font-family: var(--mono); font-size: 8px; letter-spacing: .04em; }
+    svg .zone { fill: rgba(45,49,66,.02); stroke: rgba(45,49,66,.24); stroke-width: .8; stroke-dasharray: 4 4; }
+    svg .box { fill: var(--white); stroke: var(--ink); stroke-width: 1; }
+    svg .box-store { fill: rgba(45,49,66,.05); stroke: var(--muted); stroke-width: 1; }
+    svg .box-external { fill: rgba(45,49,66,.03); stroke: rgba(45,49,66,.3); stroke-width: 1; }
+    svg .box-input { fill: rgba(79,93,117,.1); stroke: var(--soft); stroke-width: 1; }
+    svg .box-focal { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.2; }
+    svg .box-optional { fill: rgba(45,49,66,.02); stroke: rgba(45,49,66,.24); stroke-width: 1; stroke-dasharray: 4 3; }
+    figcaption {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr .85fr;
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .note {
+      min-height: 104px;
+      padding: 16px;
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      background: var(--white);
+    }
+    .note strong { display: block; margin-bottom: 8px; font-size: 12px; }
+    .note p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .note code { font-family: var(--mono); font-size: 11px; }
+    .callout {
+      margin: 20px 0 0;
+      padding: 16px 20px;
+      border-left: 2px solid var(--accent);
+      color: var(--muted);
+      font: italic 16px/1.5 var(--serif);
+    }
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--rule);
+      color: var(--soft);
+      font: 400 8px/1.5 var(--mono);
+      letter-spacing: .06em;
+    }
+    @media (max-width: 760px) {
+      body { padding: 28px 16px; }
+      h1 { font-size: 32px; }
+      figcaption { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { padding: 20px; }
+      nav { display: none; }
+      section { break-before: page; }
+      section:first-of-type { break-before: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Bound · implementação atual · 29 ago 2026</p>
+      <h1>Como cada parte do Bound funciona hoje</h1>
+      <p class="lead">Um mapa fiel ao código atual: da interface Next.js até a conversa persistida, a autoridade assinada, o Verify determinístico, a reserva atômica, o pagamento idempotente e a prova auditável.</p>
+    </header>
+
+    <nav aria-label="Diagramas desta página">
+      <a href="#architecture">Arquitetura</a>
+      <a href="#surfaces">Telas</a>
+      <a href="#chat-turn">Turno do chat</a>
+      <a href="#chat-state">Estados do bot</a>
+      <a href="#purchase">Compra</a>
+      <a href="#lifecycles">Ciclos</a>
+      <a href="#ledger">Ledger</a>
+      <a href="#persistence">Persistência</a>
+    </nav>
+
+    <section id="architecture">
+      <p class="eyebrow">01 · Architecture · Secure paved road</p>
+      <h2>Arquitetura executável do MVP</h2>
+      <p class="section-copy">A rota privilegiada passa pelo backend Bound. O navegador conversa apenas com a API; o modelo propõe intenção e ferramentas, enquanto serviços determinísticos mantêm a autoridade, a reserva e o pagamento.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="current-architecture-title current-architecture-desc">
+            <title id="current-architecture-title">Arquitetura atual do Bound</title>
+            <desc id="current-architecture-desc">Arquitetura com navegador, serviços privados do Bound, OpenAI, VuelaYa e executor de pagamento, mostrando que toda compra precisa passar pelo gate determinístico e pelo PostgreSQL.</desc>
+            <defs>
+              <marker id="arch-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="arch-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+              <marker id="arch-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+            </defs>
+            <rect width="1200" height="720" fill="#f5f5f5"/>
+
+            <rect class="zone" x="40" y="96" width="208" height="492" rx="8"/>
+            <rect x="56" y="100" width="104" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="tag" x="108" y="108" text-anchor="middle">NAVEGADOR</text>
+            <rect class="zone" x="272" y="96" width="640" height="492" rx="8"/>
+            <rect x="288" y="100" width="176" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="tag" x="376" y="108" text-anchor="middle">BOUND PRIVATE RUNTIME</text>
+            <rect class="zone" x="936" y="96" width="224" height="492" rx="8"/>
+            <rect x="952" y="100" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="tag" x="1020" y="108" text-anchor="middle">INTEGRAÇÕES</text>
+
+            <!-- connectors first -->
+            <line x1="216" y1="176" x2="336" y2="176" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arch-link)"/>
+            <rect x="240" y="152" width="72" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="276" y="160" text-anchor="middle">HTTPS / JSON</text>
+
+            <line x1="512" y1="176" x2="976" y2="176" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arch-link)"/>
+            <rect x="688" y="152" width="112" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="744" y="160" text-anchor="middle">AGENTS SDK</text>
+
+            <line x1="424" y1="208" x2="424" y2="304" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arch-arrow)"/>
+            <rect x="436" y="244" width="88" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="480" y="252" text-anchor="middle">VALIDA PROPOSTA</text>
+
+            <path d="M 512 320 H 864 Q 872 320 872 312 V 248 Q 872 240 880 240 H 1056 V 304" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arch-link)"/>
+            <rect x="760" y="296" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="800" y="304" text-anchor="middle">UCP</text>
+
+            <line x1="512" y1="344" x2="576" y2="344" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arch-accent)"/>
+            <rect x="516" y="320" width="56" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="544" y="328" text-anchor="middle">COMMIT</text>
+
+            <path d="M 632 376 V 416 Q 632 424 624 424 H 552 Q 544 424 544 464" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arch-arrow)"/>
+            <rect x="548" y="400" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="588" y="408" text-anchor="middle">TRANSAÇÃO</text>
+
+            <path d="M 696 376 V 416 Q 696 424 704 424 H 776 Q 784 424 784 464" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arch-arrow)"/>
+            <rect x="704" y="400" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="736" y="408" text-anchor="middle">EVIDÊNCIA</text>
+
+            <path d="M 752 352 H 896 Q 904 352 904 360 V 496 Q 904 504 912 504 H 976" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arch-link)"/>
+            <rect x="860" y="328" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="900" y="336" text-anchor="middle">PAY OUTSIDE TX</text>
+
+            <line x1="976" y1="520" x2="872" y2="520" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#arch-arrow)"/>
+            <rect x="884" y="496" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="924" y="504" text-anchor="middle">RESULTADO</text>
+
+            <path d="M 144 208 V 616 Q 144 624 152 624 H 920" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4"/>
+            <circle cx="928" cy="624" r="8" fill="#f5f5f5" stroke="#4f5d75" stroke-width="1.2"/>
+            <line x1="924" y1="620" x2="932" y2="628" stroke="#4f5d75" stroke-width="1.2"/>
+            <line x1="932" y1="620" x2="924" y2="628" stroke="#4f5d75" stroke-width="1.2"/>
+            <rect x="496" y="600" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="564" y="608" text-anchor="middle">BYPASS DE PAGAMENTO</text>
+
+            <!-- nodes -->
+            <rect x="72" y="144" width="144" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-input" x="72" y="144" width="144" height="64" rx="6"/>
+            <text class="tag" x="84" y="160">WEB</text>
+            <text class="label" x="144" y="176" text-anchor="middle">Next.js</text>
+            <text class="sub" x="144" y="192" text-anchor="middle">/demo · conta</text>
+
+            <rect x="336" y="144" width="176" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="336" y="144" width="176" height="64" rx="6"/>
+            <text class="tag" x="348" y="160">API</text>
+            <text class="label" x="424" y="176" text-anchor="middle">TravelBot Service</text>
+            <text class="sub" x="424" y="192" text-anchor="middle">Fastify · SSE opcional</text>
+
+            <rect x="336" y="304" width="176" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="336" y="304" width="176" height="72" rx="6"/>
+            <text class="tag" x="348" y="320">APP</text>
+            <text class="label" x="424" y="340" text-anchor="middle">Application Tools</text>
+            <text class="sub" x="424" y="356" text-anchor="middle">state guards · bindings</text>
+
+            <rect x="576" y="304" width="176" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-focal" x="576" y="304" width="176" height="72" rx="6"/>
+            <text class="tag" x="588" y="320" fill="#eb6c36">GATE</text>
+            <text class="label" x="664" y="340" text-anchor="middle">Trust Core</text>
+            <text class="sub" x="664" y="356" text-anchor="middle">mandate · verify · payment</text>
+
+            <rect x="456" y="464" width="176" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-store" x="456" y="464" width="176" height="72" rx="6"/>
+            <text class="tag" x="468" y="480">DB</text>
+            <text class="label" x="544" y="500" text-anchor="middle">PostgreSQL 17</text>
+            <text class="sub" x="544" y="516" text-anchor="middle">Drizzle · locks · FKs</text>
+
+            <rect x="696" y="464" width="176" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-store" x="696" y="464" width="176" height="72" rx="6"/>
+            <text class="tag" x="708" y="480">AUD</text>
+            <text class="label" x="784" y="500" text-anchor="middle">Ledger + Receipts</text>
+            <text class="sub" x="784" y="516" text-anchor="middle">hash chain · evidence</text>
+
+            <rect x="976" y="144" width="152" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="976" y="144" width="152" height="64" rx="6"/>
+            <text class="tag" x="988" y="160">LLM</text>
+            <text class="label" x="1052" y="176" text-anchor="middle">OpenAI</text>
+            <text class="sub" x="1052" y="192" text-anchor="middle">store:false · 1 tool/vez</text>
+
+            <rect x="976" y="304" width="152" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="976" y="304" width="152" height="64" rx="6"/>
+            <text class="tag" x="988" y="320">UCP</text>
+            <text class="label" x="1052" y="336" text-anchor="middle">VuelaYa</text>
+            <text class="sub" x="1052" y="352" text-anchor="middle">catálogo determinístico</text>
+
+            <rect x="976" y="464" width="152" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="976" y="464" width="152" height="72" rx="6"/>
+            <text class="tag" x="988" y="480">PAY</text>
+            <text class="label" x="1052" y="500" text-anchor="middle">Payment Executor</text>
+            <text class="sub" x="1052" y="516" text-anchor="middle">fake padrão · Yuno boundary</text>
+
+            <line x1="40" y1="672" x2="1160" y2="672" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="tag" x="40" y="692">LEGENDA</text>
+            <line x1="160" y1="688" x2="192" y2="688" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arch-link)"/>
+            <text class="sub" x="204" y="692">API / integração</text>
+            <line x1="384" y1="688" x2="416" y2="688" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arch-accent)"/>
+            <text class="sub" x="428" y="692">caminho privilegiado</text>
+            <line x1="672" y1="688" x2="704" y2="688" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4"/>
+            <text class="sub" x="716" y="692">retorno / bloqueio</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Quem decide</strong><p>O LLM ajuda a extrair intenção e escolher uma ferramenta, mas <code>TravelBotService</code>, os guards e o Verify revalidam toda ação econômica.</p></div>
+          <div class="note"><strong>Onde está a verdade</strong><p>PostgreSQL guarda conversa, mandato, nonce, autorização, tentativa de pagamento, ordem e evidência. IDs do provedor são apenas metadados.</p></div>
+          <div class="note"><strong>Estado atual</strong><p>O executor fake aprovado é o default. O adapter Yuno sandbox existe e é testado, porém ainda não é conectado no bootstrap.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="surfaces">
+      <p class="eyebrow">02 · Architecture · Product surfaces</p>
+      <h2>O que existe no frontend</h2>
+      <p class="section-copy">As rotas se dividem entre aquisição, operação real do demo e páginas de conta. O workspace de chat consome a conversa do backend e leva da recomendação escolhida à página oficial do voo; cartões e histórico são demonstrações visuais explícitas.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 608" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="surface-map-title surface-map-desc">
+            <title id="surface-map-title">Mapa das superfícies frontend do Bound</title>
+            <desc id="surface-map-desc">Mapa das rotas Next.js separando landing page, workspace de chat conectado, páginas estáticas de conta, perfil da VuelaYa e página oficial do voo recomendado.</desc>
+            <defs>
+              <marker id="surface-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="surface-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+              <marker id="surface-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="608" fill="#f5f5f5"/>
+            <rect class="zone" x="40" y="80" width="1120" height="408" rx="8"/>
+            <rect x="56" y="84" width="144" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="tag" x="128" y="92" text-anchor="middle">NEXT.JS APP ROUTER</text>
+
+            <!-- connectors -->
+            <line x1="208" y1="192" x2="288" y2="192" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#surface-accent)"/>
+            <rect x="216" y="168" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="248" y="176" text-anchor="middle">ENTRAR</text>
+            <line x1="480" y1="192" x2="560" y2="192" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#surface-link)"/>
+            <rect x="488" y="168" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="520" y="176" text-anchor="middle">CLIENT</text>
+            <line x1="752" y1="192" x2="832" y2="192" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#surface-link)"/>
+            <rect x="760" y="168" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="792" y="176" text-anchor="middle">HTTP</text>
+            <path d="M 432 224 V 248 Q 432 256 440 256 H 1044 Q 1052 256 1052 264 V 360" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#surface-accent)"/>
+            <rect x="768" y="232" width="96" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="816" y="240" text-anchor="middle">VOO OFICIAL</text>
+            <path d="M 384 224 V 304 Q 384 312 392 312 H 448" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#surface-arrow)"/>
+            <rect x="392" y="288" width="48" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="416" y="296" text-anchor="middle">CONTA</text>
+            <line x1="608" y1="344" x2="688" y2="344" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#surface-arrow)"/>
+            <line x1="608" y1="400" x2="688" y2="400" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#surface-arrow)"/>
+            <line x1="608" y1="456" x2="688" y2="456" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#surface-arrow)"/>
+            <path d="M 880 456 H 920 Q 928 456 928 448 V 400 Q 928 392 936 392 H 976" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#surface-link)"/>
+            <rect x="892" y="432" width="56" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="920" y="440" text-anchor="middle">PROFILE</text>
+
+            <!-- nodes -->
+            <rect x="72" y="160" width="136" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-input" x="72" y="160" width="136" height="64" rx="6"/>
+            <text class="tag" x="84" y="176">PUBLIC</text>
+            <text class="label" x="140" y="192" text-anchor="middle">Landing</text>
+            <text class="sub" x="140" y="208" text-anchor="middle">GET /</text>
+
+            <rect x="288" y="152" width="192" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-focal" x="288" y="152" width="192" height="72" rx="6"/>
+            <text class="tag" x="300" y="168" fill="#eb6c36">LIVE</text>
+            <text class="label" x="384" y="188" text-anchor="middle">Trusted Surface</text>
+            <text class="sub" x="384" y="204" text-anchor="middle">GET /demo · chat real</text>
+
+            <rect x="560" y="152" width="192" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="560" y="152" width="192" height="72" rx="6"/>
+            <text class="tag" x="572" y="168">CLIENT</text>
+            <text class="label" x="656" y="188" text-anchor="middle">boundApi</text>
+            <text class="sub" x="656" y="204" text-anchor="middle">correlation + idempotency</text>
+
+            <rect x="832" y="152" width="192" height="72" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="832" y="152" width="192" height="72" rx="6"/>
+            <text class="tag" x="844" y="168">API</text>
+            <text class="label" x="928" y="188" text-anchor="middle">Fastify Backend</text>
+            <text class="sub" x="928" y="204" text-anchor="middle">localhost:3001</text>
+
+            <rect x="448" y="304" width="160" height="168" rx="6" fill="#f5f5f5"/>
+            <rect class="box-store" x="448" y="304" width="160" height="168" rx="6"/>
+            <text class="tag" x="460" y="320">SHELL</text>
+            <text class="label" x="528" y="344" text-anchor="middle">AccountPageShell</text>
+            <text class="sub" x="528" y="368" text-anchor="middle">sidebar compartilhada</text>
+            <text class="sub" x="528" y="392" text-anchor="middle">navegação responsiva</text>
+            <text class="sub" x="528" y="416" text-anchor="middle">payment methods</text>
+            <text class="sub" x="528" y="440" text-anchor="middle">purchases · merchants</text>
+
+            <rect x="688" y="312" width="192" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-optional" x="688" y="312" width="192" height="64" rx="6"/>
+            <text class="tag" x="700" y="328">DEMO</text>
+            <text class="label" x="784" y="344" text-anchor="middle">Payment Methods</text>
+            <text class="sub" x="784" y="360" text-anchor="middle">/payment-methods · estático</text>
+
+            <rect x="688" y="368" width="192" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-optional" x="688" y="368" width="192" height="64" rx="6"/>
+            <text class="tag" x="700" y="384">DEMO</text>
+            <text class="label" x="784" y="400" text-anchor="middle">Purchases</text>
+            <text class="sub" x="784" y="416" text-anchor="middle">/purchases · ficcional</text>
+
+            <rect x="688" y="424" width="192" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="688" y="424" width="192" height="64" rx="6"/>
+            <text class="tag" x="700" y="440">TRUST</text>
+            <text class="label" x="784" y="456" text-anchor="middle">Connected Merchants</text>
+            <text class="sub" x="784" y="472" text-anchor="middle">/connected-merchants</text>
+
+            <rect x="976" y="360" width="152" height="64" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="976" y="360" width="152" height="64" rx="6"/>
+            <text class="tag" x="988" y="376">UCP</text>
+            <text class="label" x="1052" y="392" text-anchor="middle">VuelaYa Page</text>
+            <text class="sub" x="1052" y="408" text-anchor="middle">perfil + voo oficial</text>
+
+            <line x1="40" y1="544" x2="1160" y2="544" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="tag" x="40" y="568">LEGENDA</text>
+            <rect x="160" y="556" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142"/>
+            <text class="sub" x="188" y="568">conectado</text>
+            <rect x="344" y="556" width="16" height="12" rx="2" fill="rgba(45,49,66,.02)" stroke="rgba(45,49,66,.24)" stroke-dasharray="4 3"/>
+            <text class="sub" x="372" y="568">demonstração local</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Workspace real</strong><p><code>/demo</code> cria e recupera conversas, mostra uma única recomendação detalhada e leva ao voo oficial antes da aprovação.</p></div>
+          <div class="note"><strong>UX resiliente</strong><p>O frontend mantém IDs recentes no <code>localStorage</code>, permite retry com a mesma identidade de request e oferece ditado quando o browser suporta.</p></div>
+          <div class="note"><strong>Dados de demonstração</strong><p>Os cartões e o histórico de compras são arrays locais. A própria UI avisa que não representam credenciais ou transações reais.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="chat-turn">
+      <p class="eyebrow">03 · Sequence · Durable chat turn</p>
+      <h2>Como um turno do TravelBot é processado</h2>
+      <p class="section-copy">O turno é reivindicado no banco antes do modelo rodar. Se a mesma chave reaparecer, a conversa persistida é devolvida; se o runtime falhar, o run é marcado sem inventar uma resposta.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 760" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="chat-sequence-title chat-sequence-desc">
+            <title id="chat-sequence-title">Sequência de um turno persistido do TravelBot</title>
+            <desc id="chat-sequence-desc">Sequência entre frontend, rota Fastify, repositório PostgreSQL, runtime OpenAI e executor de ferramentas, incluindo claim idempotente, validação determinística e commit dos eventos.</desc>
+            <defs>
+              <marker id="chat-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="chat-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+              <marker id="chat-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="760" fill="#f5f5f5"/>
+
+            <!-- lifelines and messages -->
+            <line x1="140" y1="136" x2="140" y2="680" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="372" y1="136" x2="372" y2="680" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="604" y1="136" x2="604" y2="680" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="836" y1="136" x2="836" y2="680" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="1068" y1="136" x2="1068" y2="680" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+
+            <rect x="368" y="168" width="8" height="464" fill="rgba(45,49,66,.06)" stroke="#4f5d75" stroke-width=".8"/>
+            <rect x="600" y="208" width="8" height="384" fill="rgba(45,49,66,.06)" stroke="#4f5d75" stroke-width=".8"/>
+            <rect x="832" y="296" width="8" height="176" fill="rgba(45,49,66,.06)" stroke="#4f5d75" stroke-width=".8"/>
+            <rect x="1064" y="376" width="8" height="56" fill="rgba(45,49,66,.06)" stroke="#4f5d75" stroke-width=".8"/>
+
+            <line x1="140" y1="176" x2="372" y2="176" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#chat-link)"/>
+            <rect x="184" y="152" width="144" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="256" y="160" text-anchor="middle">POST /messages + idem</text>
+
+            <line x1="372" y1="216" x2="604" y2="216" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#chat-arrow)"/>
+            <rect x="424" y="192" width="128" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="200" text-anchor="middle">claimTurn + user msg</text>
+
+            <line x1="604" y1="256" x2="372" y2="256" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#chat-arrow)"/>
+            <rect x="448" y="232" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="240" text-anchor="middle">run claimed</text>
+
+            <line x1="372" y1="304" x2="836" y2="304" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#chat-link)"/>
+            <rect x="528" y="280" width="152" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="604" y="288" text-anchor="middle">state + safe history</text>
+
+            <line x1="836" y1="344" x2="1068" y2="344" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#chat-arrow)"/>
+            <rect x="888" y="320" width="128" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="952" y="328" text-anchor="middle">allowed tool only</text>
+
+            <line x1="1068" y1="392" x2="604" y2="392" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#chat-arrow)"/>
+            <rect x="760" y="368" width="152" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="836" y="376" text-anchor="middle">record execution status</text>
+
+            <line x1="1068" y1="432" x2="836" y2="432" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#chat-arrow)"/>
+            <rect x="912" y="408" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="952" y="416" text-anchor="middle">safe result</text>
+
+            <line x1="836" y1="480" x2="372" y2="480" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#chat-arrow)"/>
+            <rect x="520" y="456" width="168" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="604" y="464" text-anchor="middle">structured proposal / interrupt</text>
+
+            <path d="M 372 520 H 416 Q 424 520 424 528 V 552 Q 424 560 416 560 H 380" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#chat-accent)"/>
+            <rect x="432" y="528" width="144" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="504" y="536">policy + state guards</text>
+
+            <line x1="372" y1="592" x2="604" y2="592" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#chat-arrow)"/>
+            <rect x="420" y="568" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="576" text-anchor="middle">completeTurn + events</text>
+
+            <line x1="604" y1="632" x2="140" y2="632" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#chat-accent)"/>
+            <rect x="312" y="608" width="120" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="372" y="616" text-anchor="middle">durable response</text>
+
+            <!-- actors -->
+            <rect x="60" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+            <rect class="box-input" x="60" y="80" width="160" height="56" rx="6"/>
+            <text class="label" x="140" y="108" text-anchor="middle">Frontend</text>
+            <text class="sub" x="140" y="124" text-anchor="middle">Trusted Surface</text>
+            <rect x="292" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="292" y="80" width="160" height="56" rx="6"/>
+            <text class="label" x="372" y="108" text-anchor="middle">TravelBot Route</text>
+            <text class="sub" x="372" y="124" text-anchor="middle">Fastify service</text>
+            <rect x="524" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+            <rect class="box-store" x="524" y="80" width="160" height="56" rx="6"/>
+            <text class="label" x="604" y="108" text-anchor="middle">Repository</text>
+            <text class="sub" x="604" y="124" text-anchor="middle">PostgreSQL</text>
+            <rect x="756" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+            <rect class="box-external" x="756" y="80" width="160" height="56" rx="6"/>
+            <text class="label" x="836" y="108" text-anchor="middle">OpenAI Runtime</text>
+            <text class="sub" x="836" y="124" text-anchor="middle">Agents SDK</text>
+            <rect x="988" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+            <rect class="box" x="988" y="80" width="160" height="56" rx="6"/>
+            <text class="label" x="1068" y="108" text-anchor="middle">Tool Executor</text>
+            <text class="sub" x="1068" y="124" text-anchor="middle">state guarded</text>
+
+            <line x1="40" y1="704" x2="1160" y2="704" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="tag" x="40" y="728">TEMPO</text>
+            <text class="sub" x="160" y="728">de cima para baixo · retornos tracejados · coral = commit confiável</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Idempotência primeiro</strong><p><code>claimTurn</code> persiste a mensagem e o run. Repetir a mesma chave retorna o resultado anterior sem repetir ferramenta ou pagamento.</p></div>
+          <div class="note"><strong>Contexto controlado</strong><p>O runtime recebe estado normalizado, as dez mensagens recentes sanitizadas e somente as ferramentas legais para aquele estado.</p></div>
+          <div class="note"><strong>Falha segura</strong><p>Saída inválida recebe uma única tentativa de repair; indisponibilidade vira <code>503 retryable</code> e fica registrada no run.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="chat-state">
+      <p class="eyebrow">04 · State machine · TravelBot</p>
+      <h2>Máquina de estados da conversa</h2>
+      <p class="section-copy">Ferramentas são liberadas por estado. Ao completar a intenção, o backend ranqueia as opções compatíveis, conserva só a melhor e prepara a aprovação. Alterar um campo necessário depois disso apaga checkout, mandato e aprovação pendente.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 648" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="chat-state-title chat-state-desc">
+            <title id="chat-state-title">Estados determinísticos do TravelBot</title>
+            <desc id="chat-state-desc">Máquina de estados desde coleta de intenção até compra concluída ou falha. A seleção da melhor oferta é automática; uma negativa limpa a preparação e retorna à conversa.</desc>
+            <defs>
+              <marker id="state-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="state-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="648" fill="#f5f5f5"/>
+
+            <!-- transitions -->
+            <line x1="56" y1="176" x2="104" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#state-arrow)"/>
+            <line x1="280" y1="176" x2="336" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#state-arrow)"/>
+            <rect x="280" y="152" width="56" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="308" y="160" text-anchor="middle">completo</text>
+            <line x1="512" y1="176" x2="824" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#state-arrow)"/>
+            <rect x="604" y="152" width="128" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="668" y="160" text-anchor="middle">escolhe + prepara</text>
+
+            <line x1="912" y1="216" x2="912" y2="336" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#state-accent)"/>
+            <rect x="924" y="264" width="72" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="960" y="272" text-anchor="middle">CONFIRMA</text>
+
+            <line x1="824" y1="376" x2="768" y2="376" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#state-arrow)"/>
+            <rect x="768" y="352" width="56" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="796" y="360" text-anchor="middle">executa</text>
+            <line x1="568" y1="376" x2="512" y2="376" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#state-accent)"/>
+            <rect x="508" y="352" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="540" y="360" text-anchor="middle">APPROVED</text>
+            <path d="M 668 416 V 472 Q 668 480 660 480 H 280 Q 272 480 272 472 V 416" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#state-arrow)"/>
+            <rect x="432" y="456" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="472" y="464" text-anchor="middle">DENY / ERROR</text>
+
+            <path d="M 912 136 V 104 Q 912 96 904 96 H 200 Q 192 96 192 136" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#state-arrow)"/>
+            <rect x="504" y="72" width="112" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="560" y="80" text-anchor="middle">nega / stale → limpa</text>
+
+            <path d="M 192 136 V 80 Q 192 72 200 72 H 424 Q 432 72 432 136" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#state-arrow)"/>
+            <rect x="256" y="48" width="112" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="312" y="56" text-anchor="middle">sem resultado</text>
+
+            <path d="M 424 416 V 520 Q 424 528 416 528 H 184 Q 176 528 176 216" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#state-arrow)"/>
+            <rect x="232" y="504" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="300" y="512" text-anchor="middle">campo obrigatório muda</text>
+
+            <!-- states -->
+            <circle cx="48" cy="176" r="6" fill="#2d3142"/>
+            <rect class="box" x="104" y="136" width="176" height="80" rx="8"/>
+            <text class="label" x="192" y="172" text-anchor="middle">COLLECTING</text>
+            <text class="sub" x="192" y="192" text-anchor="middle">clarifica campos</text>
+
+            <rect class="box" x="336" y="136" width="176" height="80" rx="8"/>
+            <text class="label" x="424" y="172" text-anchor="middle">READY_TO_SEARCH</text>
+            <text class="sub" x="424" y="192" text-anchor="middle">find_offers</text>
+
+            <rect class="box-optional" x="568" y="248" width="200" height="64" rx="8"/>
+            <text class="label" x="668" y="276" text-anchor="middle">OFFER_SELECTION</text>
+            <text class="sub" x="668" y="296" text-anchor="middle">fallback técnico · sem tela</text>
+
+            <rect class="box-focal" x="824" y="136" width="176" height="80" rx="8"/>
+            <text class="label" x="912" y="168" text-anchor="middle">AWAITING</text>
+            <text class="label" x="912" y="184" text-anchor="middle">CONFIRMATION</text>
+            <text class="sub" x="912" y="204" text-anchor="middle">approval vinculada</text>
+
+            <rect class="box" x="824" y="336" width="176" height="80" rx="8"/>
+            <text class="label" x="912" y="372" text-anchor="middle">READY_TO_PURCHASE</text>
+            <text class="sub" x="912" y="392" text-anchor="middle">resume approval</text>
+
+            <rect class="box" x="568" y="336" width="200" height="80" rx="8"/>
+            <text class="label" x="668" y="372" text-anchor="middle">EXECUTING</text>
+            <text class="sub" x="668" y="392" text-anchor="middle">verify + pay</text>
+
+            <rect class="box-focal" x="336" y="336" width="176" height="80" rx="8"/>
+            <text class="label" x="424" y="372" text-anchor="middle">COMPLETED</text>
+            <text class="sub" x="424" y="392" text-anchor="middle">receipt + audit</text>
+
+            <rect class="box-optional" x="104" y="336" width="176" height="80" rx="8"/>
+            <text class="label" x="192" y="372" text-anchor="middle">FAILED</text>
+            <text class="sub" x="192" y="392" text-anchor="middle">motivo normalizado</text>
+
+            <circle cx="424" cy="448" r="8" fill="#f5f5f5" stroke="#2d3142" stroke-width="1.2"/>
+            <circle cx="424" cy="448" r="5" fill="#2d3142"/>
+
+            <rect x="744" y="536" width="384" height="48" rx="6" fill="rgba(45,49,66,.03)" stroke="rgba(45,49,66,.2)"/>
+            <text class="tag" x="760" y="556">REGRA GLOBAL</text>
+            <text class="sub" x="760" y="572">mudança pós-oferta limpa checkout, mandato e aprovação</text>
+
+            <line x1="40" y1="608" x2="1160" y2="608" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="tag" x="40" y="632">LEGENDA</text>
+            <text class="sub" x="160" y="632">coral = consentimento / conclusão · tracejado = retorno ou invalidação</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Tools por estado</strong><p><code>find_offers</code> só em busca; <code>create_checkout</code> usa a seleção técnica automática; receipt e audit apenas após conclusão.</p></div>
+          <div class="note"><strong>Consentimento vinculante</strong><p>A aprovação carrega merchant, hash do checkout, valor, moeda e mandato. Qualquer divergência impede o resume.</p></div>
+          <div class="note"><strong>Negar é reversível</strong><p>Uma negativa limpa oferta, checkout, mandato e aprovação, voltando à conversa. Nenhuma autorização ou cobrança é executada.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="purchase">
+      <p class="eyebrow">05 · Sequence · Purchase split in two phases</p>
+      <h2>Da oferta ao receipt, sem esconder o consentimento</h2>
+      <p class="section-copy">A compra foi dividida em duas sequências para preservar a leitura: primeiro o sistema prepara um artefato de aprovação; depois a confirmação explícita ativa a autoridade e libera Verify + Payment.</p>
+
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="prepare-purchase-title prepare-purchase-desc">
+            <title id="prepare-purchase-title">Fase um da compra: preparar confirmação</title>
+            <desc id="prepare-purchase-desc">Sequência na qual Marta informa a viagem, TravelBot escolhe a melhor oferta compatível, cria checkout assinado e mandato draft, persiste a aprovação criptografada e pede confirmação explícita.</desc>
+            <defs>
+              <marker id="prepare-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="prepare-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+              <marker id="prepare-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="620" fill="#f5f5f5"/>
+            <text class="tag" x="40" y="44">FASE 1 · PREPARAR AUTORIDADE</text>
+            <line x1="140" y1="136" x2="140" y2="548" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="372" y1="136" x2="372" y2="548" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="604" y1="136" x2="604" y2="548" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="836" y1="136" x2="836" y2="548" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="1068" y1="136" x2="1068" y2="548" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+
+            <line x1="140" y1="176" x2="372" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#prepare-arrow)"/>
+            <rect x="196" y="152" width="120" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="256" y="160" text-anchor="middle">pedido completo</text>
+            <line x1="372" y1="224" x2="604" y2="224" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#prepare-link)"/>
+            <rect x="420" y="200" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="488" y="208" text-anchor="middle">find + choose + checkout</text>
+            <line x1="604" y1="264" x2="372" y2="264" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#prepare-arrow)"/>
+            <rect x="420" y="240" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="248" text-anchor="middle">hash + merchant sig</text>
+            <line x1="372" y1="312" x2="836" y2="312" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#prepare-arrow)"/>
+            <rect x="524" y="288" width="160" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="604" y="296" text-anchor="middle">create mandate DRAFT</text>
+            <line x1="836" y1="352" x2="1068" y2="352" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#prepare-arrow)"/>
+            <rect x="884" y="328" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="952" y="336" text-anchor="middle">persist draft + audit</text>
+            <line x1="836" y1="400" x2="372" y2="400" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#prepare-arrow)"/>
+            <rect x="528" y="376" width="152" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="604" y="384" text-anchor="middle">mandate_id + bindings</text>
+            <line x1="372" y1="448" x2="1068" y2="448" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#prepare-arrow)"/>
+            <rect x="644" y="424" width="152" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="720" y="432" text-anchor="middle">seal SDK run state</text>
+            <line x1="372" y1="496" x2="140" y2="496" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#prepare-accent)"/>
+            <rect x="184" y="472" width="144" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="256" y="480" text-anchor="middle">CONFIRME USD 137</text>
+
+            <rect class="box-input" x="60" y="80" width="160" height="56" rx="6"/><text class="label" x="140" y="108" text-anchor="middle">Marta / UI</text><text class="sub" x="140" y="124" text-anchor="middle">consent surface</text>
+            <rect class="box" x="292" y="80" width="160" height="56" rx="6"/><text class="label" x="372" y="108" text-anchor="middle">TravelBot</text><text class="sub" x="372" y="124" text-anchor="middle">application service</text>
+            <rect class="box-external" x="524" y="80" width="160" height="56" rx="6"/><text class="label" x="604" y="108" text-anchor="middle">VuelaYa</text><text class="sub" x="604" y="124" text-anchor="middle">UCP merchant</text>
+            <rect class="box" x="756" y="80" width="160" height="56" rx="6"/><text class="label" x="836" y="108" text-anchor="middle">Mandate Service</text><text class="sub" x="836" y="124" text-anchor="middle">scope + credential ref</text>
+            <rect class="box-store" x="988" y="80" width="160" height="56" rx="6"/><text class="label" x="1068" y="108" text-anchor="middle">PostgreSQL</text><text class="sub" x="1068" y="124" text-anchor="middle">draft + approval</text>
+            <line x1="40" y1="568" x2="1160" y2="568" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="sub" x="40" y="592">Nenhuma autorização reservada e nenhum pagamento executado nesta fase.</text>
+          </svg>
+        </div>
+      </figure>
+
+      <figure style="margin-top: 32px">
+        <div class="diagram">
+          <svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="execute-purchase-title execute-purchase-desc">
+            <title id="execute-purchase-title">Fase dois da compra: verificar e pagar</title>
+            <desc id="execute-purchase-desc">Sequência após confirmação explícita, ativando mandato, verificando prova assinada, reservando autorização, pagando fora da transação e persistindo ordem, receipt e ledger.</desc>
+            <defs>
+              <marker id="execute-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="execute-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+              <marker id="execute-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="700" fill="#f5f5f5"/>
+            <text class="tag" x="40" y="44">FASE 2 · EXECUTAR COMPRA</text>
+            <line x1="140" y1="136" x2="140" y2="624" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="372" y1="136" x2="372" y2="624" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="604" y1="136" x2="604" y2="624" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="836" y1="136" x2="836" y2="624" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+            <line x1="1068" y1="136" x2="1068" y2="624" stroke="rgba(45,49,66,.2)" stroke-dasharray="3 3"/>
+
+            <line x1="140" y1="176" x2="372" y2="176" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#execute-accent)"/>
+            <rect x="184" y="152" width="144" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="256" y="160" text-anchor="middle">CONFIRMA BINDINGS</text>
+            <line x1="372" y1="224" x2="604" y2="224" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#execute-arrow)"/>
+            <rect x="420" y="200" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="208" text-anchor="middle">activate + signed verify</text>
+            <line x1="604" y1="272" x2="1068" y2="272" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#execute-arrow)"/>
+            <rect x="756" y="248" width="160" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="836" y="256" text-anchor="middle">lock + nonce + RESERVED</text>
+            <line x1="1068" y1="320" x2="604" y2="320" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#execute-arrow)"/>
+            <rect x="768" y="296" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="836" y="304" text-anchor="middle">authorization_id</text>
+            <line x1="604" y1="368" x2="1068" y2="368" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#execute-arrow)"/>
+            <rect x="748" y="344" width="176" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="836" y="352" text-anchor="middle">claim PAYMENT_PENDING</text>
+            <line x1="604" y1="416" x2="836" y2="416" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#execute-link)"/>
+            <rect x="656" y="392" width="128" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-link" x="720" y="400" text-anchor="middle">pay outside DB tx</text>
+            <line x1="836" y1="456" x2="604" y2="456" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#execute-arrow)"/>
+            <rect x="676" y="432" width="88" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="720" y="440" text-anchor="middle">normalized result</text>
+            <line x1="604" y1="504" x2="1068" y2="504" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#execute-arrow)"/>
+            <rect x="744" y="480" width="184" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="836" y="488" text-anchor="middle">result + order + ledger</text>
+            <line x1="604" y1="552" x2="372" y2="552" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#execute-arrow)"/>
+            <rect x="440" y="528" width="96" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="488" y="536" text-anchor="middle">receipt_id</text>
+            <line x1="372" y1="600" x2="140" y2="600" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#execute-accent)"/>
+            <rect x="188" y="576" width="136" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="256" y="584" text-anchor="middle">COMPRA CONCLUÍDA</text>
+
+            <rect class="box-input" x="60" y="80" width="160" height="56" rx="6"/><text class="label" x="140" y="108" text-anchor="middle">Marta / UI</text><text class="sub" x="140" y="124" text-anchor="middle">explicit confirmation</text>
+            <rect class="box" x="292" y="80" width="160" height="56" rx="6"/><text class="label" x="372" y="108" text-anchor="middle">TravelBot</text><text class="sub" x="372" y="124" text-anchor="middle">proof factory</text>
+            <rect class="box-focal" x="524" y="80" width="160" height="56" rx="6"/><text class="label" x="604" y="108" text-anchor="middle">Bound Core</text><text class="sub" x="604" y="124" text-anchor="middle">mandate · verify · pay</text>
+            <rect class="box-external" x="756" y="80" width="160" height="56" rx="6"/><text class="label" x="836" y="108" text-anchor="middle">Executor</text><text class="sub" x="836" y="124" text-anchor="middle">fake / Yuno adapter</text>
+            <rect class="box-store" x="988" y="80" width="160" height="56" rx="6"/><text class="label" x="1068" y="108" text-anchor="middle">PostgreSQL</text><text class="sub" x="1068" y="124" text-anchor="middle">atomic state</text>
+            <line x1="40" y1="648" x2="1160" y2="648" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="sub" x="40" y="672">A chamada externa acontece depois do commit do claim; o resultado recebe uma nova transação curta.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Verify determinístico</strong><p>Valida identidade, assinatura, bindings, merchant, rota, cabine, valor, moeda, validade, limites agregados e replay do nonce.</p></div>
+          <div class="note"><strong>Dois commits curtos</strong><p>O primeiro reserva a autorização e cria a tentativa; a chamada externa ocorre sem lock aberto; o segundo normaliza e persiste o resultado.</p></div>
+          <div class="note"><strong>Replay seguro</strong><p>A autorização é a chave estável do provedor. Retry devolve resultado persistido ou informa que a tentativa continua pendente.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="lifecycles">
+      <p class="eyebrow">06 · State machines · Authority and payment</p>
+      <h2>Estados que impedem reutilização e dupla cobrança</h2>
+      <p class="section-copy">Mandato e autorização têm ciclos diferentes. O mandato expressa autoridade delegada; a autorização reserva uma ação econômica específica e é consumida pelo resultado do pagamento.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 704" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lifecycle-title lifecycle-desc">
+            <title id="lifecycle-title">Ciclos de mandato e autorização de pagamento</title>
+            <desc id="lifecycle-desc">Duas máquinas de estado: mandato de draft para active e estados terminais, e autorização de reserved para payment pending e resultado terminal ou pendente de reconciliação.</desc>
+            <defs>
+              <marker id="life-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="life-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="704" fill="#f5f5f5"/>
+            <text class="tag" x="40" y="48">MANDATE LIFECYCLE</text>
+
+            <!-- mandate transitions -->
+            <line x1="72" y1="152" x2="120" y2="152" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <line x1="280" y1="152" x2="352" y2="152" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#life-accent)"/>
+            <rect x="288" y="128" width="56" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="316" y="136" text-anchor="middle">activate</text>
+            <line x1="512" y1="128" x2="608" y2="128" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="520" y="104" width="80" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="560" y="112" text-anchor="middle">revoke</text>
+            <line x1="512" y1="152" x2="824" y2="152" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="632" y="128" width="72" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="668" y="136" text-anchor="middle">expires_at</text>
+            <line x1="512" y1="176" x2="1040" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="724" y="184" width="104" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="776" y="192" text-anchor="middle">max uses spent</text>
+
+            <circle cx="64" cy="152" r="6" fill="#2d3142"/>
+            <rect class="box" x="120" y="112" width="160" height="80" rx="8"/><text class="label" x="200" y="148" text-anchor="middle">DRAFT</text><text class="sub" x="200" y="168" text-anchor="middle">sem assinatura</text>
+            <rect class="box-focal" x="352" y="112" width="160" height="80" rx="8"/><text class="label" x="432" y="148" text-anchor="middle">ACTIVE</text><text class="sub" x="432" y="168" text-anchor="middle">authority_valid</text>
+            <rect class="box-optional" x="608" y="88" width="160" height="80" rx="8"/><text class="label" x="688" y="124" text-anchor="middle">REVOKED</text><text class="sub" x="688" y="144" text-anchor="middle">terminal</text>
+            <rect class="box-optional" x="824" y="112" width="160" height="80" rx="8"/><text class="label" x="904" y="148" text-anchor="middle">EXPIRED</text><text class="sub" x="904" y="168" text-anchor="middle">terminal</text>
+            <rect class="box-optional" x="1040" y="136" width="120" height="80" rx="8"/><text class="label" x="1100" y="172" text-anchor="middle">CONSUMED</text><text class="sub" x="1100" y="192" text-anchor="middle">terminal</text>
+
+            <line x1="40" y1="272" x2="1160" y2="272" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="tag" x="40" y="312">AUTHORIZATION + PAYMENT LIFECYCLE</text>
+
+            <!-- authorization transitions -->
+            <line x1="72" y1="416" x2="120" y2="416" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <line x1="296" y1="416" x2="376" y2="416" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#life-accent)"/>
+            <rect x="304" y="392" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="336" y="400" text-anchor="middle">claim pay</text>
+            <line x1="576" y1="392" x2="680" y2="392" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="584" y="368" width="88" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="628" y="376" text-anchor="middle">APPROVED</text>
+            <line x1="576" y1="440" x2="680" y2="440" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="584" y="448" width="88" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="628" y="456" text-anchor="middle">DECLINED</text>
+            <path d="M 476 456 V 512 Q 476 520 484 520 H 568 Q 576 520 576 456" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#life-arrow)"/>
+            <rect x="484" y="528" width="88" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="528" y="536" text-anchor="middle">TIMEOUT / UNKNOWN</text>
+            <path d="M 208 456 V 568 Q 208 576 216 576 H 912 Q 920 576 920 456" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#life-arrow)"/>
+            <rect x="488" y="584" width="152" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="564" y="592" text-anchor="middle">cancel before execution</text>
+
+            <circle cx="64" cy="416" r="6" fill="#2d3142"/>
+            <rect class="box" x="120" y="376" width="176" height="80" rx="8"/><text class="label" x="208" y="412" text-anchor="middle">RESERVED</text><text class="sub" x="208" y="432" text-anchor="middle">one checkout only</text>
+            <rect class="box-focal" x="376" y="376" width="200" height="80" rx="8"/><text class="label" x="476" y="412" text-anchor="middle">PAYMENT_PENDING</text><text class="sub" x="476" y="432" text-anchor="middle">one attempt + provider key</text>
+            <rect class="box-optional" x="680" y="352" width="160" height="80" rx="8"/><text class="label" x="760" y="388" text-anchor="middle">CONSUMED</text><text class="sub" x="760" y="408" text-anchor="middle">order confirmed</text>
+            <rect class="box-optional" x="680" y="424" width="160" height="80" rx="8"/><text class="label" x="760" y="460" text-anchor="middle">FAILED</text><text class="sub" x="760" y="480" text-anchor="middle">declined</text>
+            <rect class="box-optional" x="920" y="376" width="160" height="80" rx="8"/><text class="label" x="1000" y="412" text-anchor="middle">CANCELLED</text><text class="sub" x="1000" y="432" text-anchor="middle">never paid</text>
+
+            <line x1="40" y1="648" x2="1160" y2="648" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="sub" x="40" y="672">TIMEOUT e UNKNOWN não encerram a autorização: a reconciliação reutiliza a tentativa e a mesma chave.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Mandato imutável</strong><p>Na ativação, termos canônicos recebem SHA-256 e assinatura. Revogação e expiração não reescrevem a autoridade assinada.</p></div>
+          <div class="note"><strong>Autorização de uso único</strong><p>Checkout tem unicidade na autorização; nonce, request hash e idempotency key impedem replay concorrente.</p></div>
+          <div class="note"><strong>Ambiguidade não é falha</strong><p><code>TIMEOUT</code> e <code>UNKNOWN</code> preservam <code>PAYMENT_PENDING</code> até existir um resultado terminal reconciliado.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="ledger">
+      <p class="eyebrow">07 · Architecture · Tamper-evident evidence</p>
+      <h2>Como o ledger torna a trilha verificável</h2>
+      <p class="section-copy">Cada evento é sanitizado antes de ser persistido. O hash do payload e o hash do envelope canônico formam uma cadeia por subject; receipts só são lidos depois que sua cadeia é recalculada e validada.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 584" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ledger-flow-title ledger-flow-desc">
+            <title id="ledger-flow-title">Pipeline do ledger auditável</title>
+            <desc id="ledger-flow-desc">Fluxo de um evento de domínio passando por sanitização, hash do payload, encadeamento com o hash anterior, armazenamento PostgreSQL, validação e emissão de receipt com evidência.</desc>
+            <defs>
+              <marker id="ledger-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="ledger-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="584" fill="#f5f5f5"/>
+
+            <line x1="208" y1="240" x2="264" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#ledger-arrow)"/>
+            <line x1="424" y1="240" x2="480" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#ledger-arrow)"/>
+            <line x1="640" y1="240" x2="696" y2="240" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#ledger-accent)"/>
+            <line x1="856" y1="240" x2="912" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#ledger-arrow)"/>
+            <path d="M 1000 280 V 344 Q 1000 352 992 352 H 824 Q 816 352 816 392" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#ledger-arrow)"/>
+            <line x1="728" y1="432" x2="640" y2="432" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#ledger-accent)"/>
+
+            <rect x="72" y="200" width="136" height="80" rx="6" fill="#f5f5f5"/>
+            <rect class="box-input" x="72" y="200" width="136" height="80" rx="6"/>
+            <text class="tag" x="84" y="216">EVENT</text>
+            <text class="label" x="140" y="240" text-anchor="middle">Domain Event</text>
+            <text class="sub" x="140" y="260" text-anchor="middle">authorization / payment</text>
+
+            <rect class="box" x="264" y="200" width="160" height="80" rx="6"/>
+            <text class="tag" x="276" y="216">SAFE</text>
+            <text class="label" x="344" y="240" text-anchor="middle">Sanitize</text>
+            <text class="sub" x="344" y="260" text-anchor="middle">schema por event_type</text>
+
+            <rect class="box" x="480" y="200" width="160" height="80" rx="6"/>
+            <text class="tag" x="492" y="216">HASH</text>
+            <text class="label" x="560" y="240" text-anchor="middle">Payload Hash</text>
+            <text class="sub" x="560" y="260" text-anchor="middle">SHA-256 canonical JSON</text>
+
+            <rect class="box-focal" x="696" y="200" width="160" height="80" rx="6"/>
+            <text class="tag" x="708" y="216" fill="#eb6c36">CHAIN</text>
+            <text class="label" x="776" y="240" text-anchor="middle">Event Hash</text>
+            <text class="sub" x="776" y="260" text-anchor="middle">previous_hash + envelope</text>
+
+            <rect class="box-store" x="912" y="200" width="176" height="80" rx="6"/>
+            <text class="tag" x="924" y="216">DB</text>
+            <text class="label" x="1000" y="240" text-anchor="middle">audit_events</text>
+            <text class="sub" x="1000" y="260" text-anchor="middle">dedupe + subject chain</text>
+
+            <rect class="box" x="728" y="392" width="176" height="80" rx="6"/>
+            <text class="tag" x="740" y="408">READ</text>
+            <text class="label" x="816" y="432" text-anchor="middle">Validate Chain</text>
+            <text class="sub" x="816" y="452" text-anchor="middle">recompute every hash</text>
+
+            <rect class="box-focal" x="464" y="392" width="176" height="80" rx="6"/>
+            <text class="tag" x="476" y="408" fill="#eb6c36">PROOF</text>
+            <text class="label" x="552" y="432" text-anchor="middle">Receipt / Timeline</text>
+            <text class="sub" x="552" y="452" text-anchor="middle">evidence embedded</text>
+
+            <rect x="72" y="344" width="320" height="96" rx="6" fill="rgba(45,49,66,.03)" stroke="rgba(45,49,66,.2)"/>
+            <text class="tag" x="88" y="364">O QUE NÃO ENTRA</text>
+            <text class="sub" x="88" y="388">PAN · CVV · provider token · private key</text>
+            <text class="sub" x="88" y="412">payload bruto do provedor · prompt / chat raw</text>
+
+            <line x1="40" y1="528" x2="1160" y2="528" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="sub" x="40" y="552">A cadeia é por subject_id; a timeline por correlation_id pode combinar várias cadeias validadas.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Detecção de adulteração</strong><p>Alterar payload, elo anterior ou envelope quebra a recomputação e a leitura falha fechada.</p></div>
+          <div class="note"><strong>Mesmo commit</strong><p>Eventos relevantes são anexados na mesma transação da mudança de estado que documentam.</p></div>
+          <div class="note"><strong>Receipt verificável</strong><p>A ordem referencia um <code>audit_event_id</code>; o store encontra o evento dentro da cadeia validada antes de montar a resposta.</p></div>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="persistence">
+      <p class="eyebrow">08 · Architecture · PostgreSQL ownership map</p>
+      <h2>Quem persiste o quê</h2>
+      <p class="section-copy">O schema possui 16 tabelas. Para manter a leitura, elas aparecem agrupadas pela responsabilidade e pelas dependências principais, sem fingir que o banco é um único aggregate.</p>
+      <figure>
+        <div class="diagram">
+          <svg viewBox="0 0 1200 672" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="persistence-map-title persistence-map-desc">
+            <title id="persistence-map-title">Mapa de ownership das tabelas PostgreSQL</title>
+            <desc id="persistence-map-desc">Mapa agrupando as dezesseis tabelas em identidade e autoridade, commerce e replay, pagamento e evidência, núcleo do chat e execução do chat.</desc>
+            <defs>
+              <marker id="persist-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+              <marker id="persist-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+            </defs>
+            <rect width="1200" height="672" fill="#f5f5f5"/>
+
+            <!-- connectors -->
+            <line x1="296" y1="224" x2="376" y2="224" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#persist-arrow)"/>
+            <rect x="304" y="200" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="336" y="208" text-anchor="middle">BINDINGS</text>
+            <line x1="608" y1="224" x2="688" y2="224" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#persist-accent)"/>
+            <rect x="616" y="200" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label-accent" x="648" y="208" text-anchor="middle">ALLOW</text>
+            <line x1="920" y1="224" x2="1000" y2="224" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#persist-arrow)"/>
+            <rect x="928" y="200" width="64" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="960" y="208" text-anchor="middle">EVIDENCE</text>
+            <path d="M 360 480 H 496 Q 504 480 504 472 V 312 Q 504 304 512 304 H 544" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#persist-arrow)"/>
+            <rect x="424" y="456" width="72" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="460" y="464" text-anchor="middle">TOOLS</text>
+            <path d="M 672 480 H 824 Q 832 480 832 472 V 312 Q 832 304 840 304 H 856" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#persist-arrow)"/>
+            <rect x="736" y="456" width="72" height="12" rx="2" fill="#f5f5f5"/>
+            <text class="edge-label" x="772" y="464" text-anchor="middle">RESULTS</text>
+
+            <!-- groups -->
+            <rect class="box" x="64" y="128" width="232" height="192" rx="6"/>
+            <text class="tag" x="80" y="148">IDENTITY + AUTHORITY</text>
+            <text class="label" x="80" y="176">agents</text>
+            <text class="sub" x="80" y="196">public JWK · principal binding</text>
+            <text class="label" x="80" y="224">payment_credentials</text>
+            <text class="sub" x="80" y="244">logical ref · masked display</text>
+            <text class="label" x="80" y="272">mandates</text>
+            <text class="sub" x="80" y="292">scope · limits · signed terms</text>
+
+            <rect class="box" x="376" y="128" width="232" height="192" rx="6"/>
+            <text class="tag" x="392" y="148">COMMERCE + REPLAY</text>
+            <text class="label" x="392" y="176">checkouts</text>
+            <text class="sub" x="392" y="196">merchant hash + signature</text>
+            <text class="label" x="392" y="224">nonces</text>
+            <text class="sub" x="392" y="244">agent + nonce composite PK</text>
+            <text class="label" x="392" y="272">authorizations</text>
+            <text class="sub" x="392" y="292">reservation + policy evidence</text>
+
+            <rect class="box-focal" x="688" y="128" width="232" height="192" rx="6"/>
+            <text class="tag" x="704" y="148" fill="#eb6c36">PAYMENT + ORDER</text>
+            <text class="label" x="704" y="176">payments</text>
+            <text class="sub" x="704" y="196">attempt + provider idempotency</text>
+            <text class="label" x="704" y="224">orders</text>
+            <text class="sub" x="704" y="244">receipt + confirmed total</text>
+            <text class="label" x="704" y="272">audit_events</text>
+            <text class="sub" x="704" y="292">payload / previous / event hash</text>
+
+            <rect class="box-store" x="1000" y="128" width="160" height="192" rx="6"/>
+            <text class="tag" x="1016" y="148">READ MODELS</text>
+            <text class="label" x="1016" y="180">receipt</text>
+            <text class="sub" x="1016" y="200">order + validated event</text>
+            <text class="label" x="1016" y="236">timeline</text>
+            <text class="sub" x="1016" y="256">correlation_id ordered</text>
+            <text class="sub" x="1016" y="288">not a separate table</text>
+
+            <rect class="box-store" x="128" y="400" width="232" height="176" rx="6"/>
+            <text class="tag" x="144" y="420">CHAT CORE</text>
+            <text class="label" x="144" y="448">travel_conversations</text>
+            <text class="label" x="144" y="476">travel_messages</text>
+            <text class="label" x="144" y="504">travel_intent_snapshots</text>
+            <text class="label" x="144" y="532">travel_model_runs</text>
+            <text class="sub" x="144" y="556">durable state + model correlation</text>
+
+            <rect class="box-store" x="440" y="400" width="232" height="176" rx="6"/>
+            <text class="tag" x="456" y="420">CHAT ACTIONS</text>
+            <text class="label" x="456" y="448">travel_tool_executions</text>
+            <text class="label" x="456" y="476">travel_approvals</text>
+            <text class="label" x="456" y="504">travel_sse_events</text>
+            <text class="sub" x="456" y="532">tools · encrypted run state</text>
+            <text class="sub" x="456" y="556">replayable event sequence</text>
+
+            <rect x="856" y="392" width="304" height="184" rx="6" fill="rgba(45,49,66,.03)" stroke="rgba(45,49,66,.2)"/>
+            <text class="tag" x="872" y="416">DATABASE GUARANTEES</text>
+            <text class="sub" x="872" y="448">unique idempotency keys</text>
+            <text class="sub" x="872" y="476">foreign keys for identity + checkout bindings</text>
+            <text class="sub" x="872" y="504">CHECK constraints from v1 contract enums</text>
+            <text class="sub" x="872" y="532">SELECT ... FOR UPDATE on critical claims</text>
+            <text class="sub" x="872" y="560">real PostgreSQL in integration tests</text>
+
+            <line x1="40" y1="616" x2="1160" y2="616" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+            <text class="sub" x="40" y="640">Os nomes acima correspondem diretamente a backend/src/db/schema.ts.</text>
+          </svg>
+        </div>
+        <figcaption>
+          <div class="note"><strong>Contratos únicos</strong><p>Enums, schemas e transições vêm de <code>contracts/v1</code>; banco e módulos não mantêm versões privadas desses conceitos.</p></div>
+          <div class="note"><strong>Integridade composta</strong><p>FKs compostas amarram mandate a agent/principal, nonce a mandate/checkout e authorization aos mesmos bindings.</p></div>
+          <div class="note"><strong>Chat também é domínio</strong><p>Mensagens, runs, tools, approvals e SSE são duráveis. O session ID do provedor não substitui estado local.</p></div>
+        </figcaption>
+      </figure>
+      <p class="callout">O fio condutor é simples: linguagem natural pode ser probabilística; autoridade, consentimento, reserva, pagamento e evidência não podem ser.</p>
+    </section>
+
+    <footer>
+      <span>BOUND CURRENT SYSTEM · DOC-WIDE · BALANCED · AUDIÊNCIA MISTA/TÉCNICA</span>
+      <span>Fonte: implementação em frontend/src e backend/src</span>
+    </footer>
+  </main>
+</body>
+</html>

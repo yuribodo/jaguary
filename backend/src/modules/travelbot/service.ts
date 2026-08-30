@@ -75,6 +75,26 @@ function legalTools(state: TravelBotConversation["state"]): TravelBotToolName[] 
   }
 }
 
+function selectPreferredOffer(offers: readonly TravelBotConversation["offers"][number][]) {
+  return offers.toSorted((left, right) => (
+    left.total.amount - right.total.amount
+    || Date.parse(left.fulfillment.departure_at) - Date.parse(right.fulfillment.departure_at)
+    || left.offer_id.localeCompare(right.offer_id)
+  ))[0];
+}
+
+function approvalMessage(offer: TravelBotConversation["offers"][number]): string {
+  const departure = new Date(offer.fulfillment.departure_at).toISOString();
+  const arrival = new Date(offer.fulfillment.arrival_at).toISOString();
+  const total = `${offer.total.currency} ${(offer.total.amount / 100).toFixed(2)}`;
+  return [
+    `I chose the best matching flight: ${offer.fulfillment.origin} → ${offer.fulfillment.destination}.`,
+    `Departure ${departure}; arrival ${arrival}; ${offer.fulfillment.cabin.toLowerCase()} cabin; total ${total}.`,
+    `Official flight: ${offer.source_url}`,
+    `Explicitly confirm or deny this ${total} purchase from ${offer.merchant_id}.`,
+  ].join("\n");
+}
+
 export class TravelBotService {
   constructor(private readonly options: TravelBotServiceOptions) {}
 
@@ -196,6 +216,96 @@ export class TravelBotService {
       let offers = applied.invalidates_downstream ? [] : conversation.offers;
       let operation = applied.invalidates_downstream ? emptyOperation() : conversation.operation;
       let assistantMessage = runtimeResult.assistant_message;
+      const prepareOfferApproval = async (
+        selected: TravelBotConversation["offers"][number],
+      ): Promise<boolean> => {
+        if (
+          this.options.tools.createCheckout === undefined
+          || this.options.tools.prepareAuthority === undefined
+        ) return false;
+
+        applied.intent.selected_offer_id = selected.offer_id;
+        offers = [selected];
+        // The application tools still require their narrow checkout-preparation
+        // seam. This internal state is never persisted as a user-facing step.
+        const current = {
+          ...conversation,
+          state: "AWAITING_OFFER_SELECTION" as const,
+          intent: applied.intent,
+          offers,
+        };
+        const checkout = await executeTool("create_checkout", {
+          offer_id: selected.offer_id,
+        }, () => this.options.tools.createCheckout!({
+          conversation: current,
+          offer: selected,
+          idempotency_key: `checkout_${runId}`,
+          correlation_id: command.correlation_id,
+        }), (result) => ({
+          checkout_id: result.checkout_id,
+          checkout_hash: result.checkout_hash,
+          merchant_id: result.merchant_id,
+          amount: result.total.amount,
+          currency: result.total.currency,
+        }));
+        const authority = await executeTool("prepare_authority", {
+          checkout_hash: checkout.checkout_hash,
+        }, () => this.options.tools.prepareAuthority!({
+          conversation: current,
+          checkout,
+          idempotency_key: `authority_${runId}`,
+          correlation_id: command.correlation_id,
+        }), (result) => ({ mandate_id: result.mandate_id, status: result.status }));
+        const approvalId = randomUUID();
+        const approvalRuntimeResult = this.options.runtime.prepareApproval === undefined
+          ? undefined
+          : await this.options.runtime.prepareApproval({
+            conversation_id: conversation.conversation_id,
+            run_id: runId,
+            model: this.options.model ?? "fake-test-model",
+            state: "READY_TO_PURCHASE",
+            intent: applied.intent,
+            user_message: "Prepare the request_purchase interruption; the backend has not granted consent yet.",
+            available_tools: ["request_purchase"],
+          });
+        const sdkRunState = approvalRuntimeResult?.interruption?.tool_name === "request_purchase"
+          ? approvalRuntimeResult.interruption.sdk_run_state
+          : undefined;
+        if (
+          this.options.runtime.prepareApproval !== undefined
+          && (sdkRunState === undefined || this.options.approvalStateProtector === undefined)
+        ) {
+          applied.intent.selected_offer_id = null;
+          operation = emptyOperation();
+          offers = [];
+          state = "READY_TO_SEARCH";
+          assistantMessage = "I could not prepare a secure confirmation. I did not create an authorization or payment.";
+          return true;
+        }
+        const protectedRunState = sdkRunState === undefined
+          ? JSON.stringify({ version: 1, run_id: runId, action: "request_purchase" })
+          : await this.options.approvalStateProtector!.seal(sdkRunState);
+        operation = {
+          checkout_id: checkout.checkout_id,
+          checkout_hash: checkout.checkout_hash,
+          mandate_id: authority.mandate_id,
+          authorization_id: null,
+          receipt_id: null,
+          pending_approval: {
+            approval_id: approvalId,
+            merchant_id: checkout.merchant_id,
+            checkout_hash: checkout.checkout_hash,
+            amount: checkout.total.amount,
+            currency: checkout.total.currency,
+            mandate_id: authority.mandate_id,
+            status: "PENDING",
+            sdk_run_state: protectedRunState,
+          },
+        };
+        state = "AWAITING_AUTHORITY_CONFIRMATION";
+        assistantMessage = approvalMessage(selected);
+        return true;
+      };
 
       if (missing.length > 0 || applied.invalid_fields.length > 0) {
         assistantMessage = deterministicClarification(
@@ -261,9 +371,10 @@ export class TravelBotService {
             decided_at: this.options.clock.now().toISOString(),
           };
           applied.intent.selected_offer_id = null;
+          offers = [];
           operation = emptyOperation();
-          state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = "Operation safely denied. Select an offer again if you would like to continue.";
+          state = "COLLECTING";
+          assistantMessage = "Operation safely denied. Tell me what you would like to change before I choose another flight.";
         } else {
           if (this.options.tools.activateAuthority === undefined || this.options.tools.requestPurchase === undefined) {
             throw new Error("TravelBot purchase tools are not configured");
@@ -338,90 +449,21 @@ export class TravelBotService {
           applied.intent.selected_offer_id = null;
           state = "AWAITING_OFFER_SELECTION";
           assistantMessage = "The selected offer is unavailable. Choose one of the current offers.";
-        } else if (
-          this.options.tools.createCheckout === undefined
-          || this.options.tools.prepareAuthority === undefined
-        ) {
+        } else if (!(await prepareOfferApproval(selected))) {
           throw new Error("TravelBot checkout tools are not configured");
-        } else {
-          applied.intent.selected_offer_id = selected.offer_id;
-          const current = { ...conversation, intent: applied.intent, offers };
-          const checkout = await executeTool("create_checkout", {
-            offer_id: selected.offer_id,
-          }, () => this.options.tools.createCheckout!({
-            conversation: current,
-            offer: selected,
-            idempotency_key: `checkout_${runId}`,
-            correlation_id: command.correlation_id,
-          }), (result) => ({
-            checkout_id: result.checkout_id,
-            checkout_hash: result.checkout_hash,
-            merchant_id: result.merchant_id,
-            amount: result.total.amount,
-            currency: result.total.currency,
-          }));
-          const authority = await executeTool("prepare_authority", {
-            checkout_hash: checkout.checkout_hash,
-          }, () => this.options.tools.prepareAuthority!({
-            conversation: current,
-            checkout,
-            idempotency_key: `authority_${runId}`,
-            correlation_id: command.correlation_id,
-          }), (result) => ({ mandate_id: result.mandate_id, status: result.status }));
-          const approvalId = randomUUID();
-          const approvalRuntimeResult = this.options.runtime.prepareApproval === undefined
-            ? undefined
-            : await this.options.runtime.prepareApproval({
-              conversation_id: conversation.conversation_id,
-              run_id: runId,
-              model: this.options.model ?? "fake-test-model",
-              state: "READY_TO_PURCHASE",
-              intent: applied.intent,
-              user_message: "Prepare the request_purchase interruption; the backend has not granted consent yet.",
-              available_tools: ["request_purchase"],
-            });
-          const sdkRunState = approvalRuntimeResult?.interruption?.tool_name === "request_purchase"
-            ? approvalRuntimeResult.interruption.sdk_run_state
-            : undefined;
-          if (
-            this.options.runtime.prepareApproval !== undefined
-            && (sdkRunState === undefined || this.options.approvalStateProtector === undefined)
-          ) {
-            applied.intent.selected_offer_id = null;
-            operation = emptyOperation();
-            state = "AWAITING_OFFER_SELECTION";
-            assistantMessage = "I could not prepare a secure confirmation. Select the offer again.";
-          } else {
-            const protectedRunState = sdkRunState === undefined
-              ? JSON.stringify({ version: 1, run_id: runId, action: "request_purchase" })
-              : await this.options.approvalStateProtector!.seal(sdkRunState);
-            operation = {
-              checkout_id: checkout.checkout_id,
-              checkout_hash: checkout.checkout_hash,
-              mandate_id: authority.mandate_id,
-              authorization_id: null,
-              receipt_id: null,
-              pending_approval: {
-                approval_id: approvalId,
-                merchant_id: checkout.merchant_id,
-                checkout_hash: checkout.checkout_hash,
-                amount: checkout.total.amount,
-                currency: checkout.total.currency,
-                mandate_id: authority.mandate_id,
-                status: "PENDING",
-                sdk_run_state: protectedRunState,
-              },
-            };
-            state = "AWAITING_AUTHORITY_CONFIRMATION";
-            assistantMessage = `Explicitly confirm ${checkout.total.currency} ${(checkout.total.amount / 100).toFixed(2)} for ${checkout.merchant_id}.`;
-          }
         }
       } else if (conversation.state === "AWAITING_AUTHORITY_CONFIRMATION") {
-        state = "AWAITING_AUTHORITY_CONFIRMATION";
         const approval = operation.pending_approval;
-        assistantMessage = approval === null
-          ? "The previous confirmation is stale. Select the offer again."
-          : `Explicitly confirm or deny ${approval.currency} ${(approval.amount / 100).toFixed(2)} for ${approval.merchant_id}.`;
+        if (approval === null) {
+          applied.intent.selected_offer_id = null;
+          offers = [];
+          operation = emptyOperation();
+          state = "READY_TO_SEARCH";
+          assistantMessage = "The previous confirmation is stale. I cleared it without creating an authorization or payment.";
+        } else {
+          state = "AWAITING_AUTHORITY_CONFIRMATION";
+          assistantMessage = `Explicitly confirm or deny ${approval.currency} ${(approval.amount / 100).toFixed(2)} for ${approval.merchant_id}.`;
+        }
       } else if (conversation.state === "AWAITING_OFFER_SELECTION") {
         state = "AWAITING_OFFER_SELECTION";
         assistantMessage = offers.length === 0
@@ -447,8 +489,12 @@ export class TravelBotService {
           )
         ));
         if (offers.length > 0) {
-          state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = `I found ${offers.length} offer. Select ${offers[0]!.offer_id}.`;
+          const selected = selectPreferredOffer(offers)!;
+          if (!(await prepareOfferApproval(selected))) {
+            offers = [selected];
+            state = "AWAITING_OFFER_SELECTION";
+            assistantMessage = `I chose ${selected.offer_id}, but checkout tools are unavailable.`;
+          }
         } else {
           assistantMessage = "I found no flights matching this search. I can try another airport or date range.";
         }
@@ -465,8 +511,10 @@ export class TravelBotService {
         operation,
         invalidated_fields: applied.changed_fields,
         tool_executions: toolExecutions,
-        state_transitions: conversation.state === "COLLECTING" && state === "AWAITING_OFFER_SELECTION"
-          ? ["READY_TO_SEARCH", "AWAITING_OFFER_SELECTION"]
+        state_transitions: conversation.state === "COLLECTING" && state === "AWAITING_AUTHORITY_CONFIRMATION"
+          ? ["READY_TO_SEARCH", "AWAITING_AUTHORITY_CONFIRMATION"]
+          : conversation.state === "COLLECTING" && state === "AWAITING_OFFER_SELECTION"
+            ? ["READY_TO_SEARCH", "AWAITING_OFFER_SELECTION"]
           : conversation.state === "AWAITING_AUTHORITY_CONFIRMATION" && state === "COMPLETED"
             ? ["READY_TO_PURCHASE", "EXECUTING", "COMPLETED"]
             : conversation.state === state ? [] : [state],

@@ -13,13 +13,15 @@ Use one OpenAI Agents SDK for TypeScript `Agent` behind the application-owned `A
 
 PostgreSQL is the source of truth for conversations, ordered sanitized messages, intent snapshots, model runs, normalized tool executions, encrypted approval interruptions and replayable SSE events. Provider response/run identifiers are correlation metadata only.
 
-The application owns this state machine:
+The application owns this state machine. In the normal user journey it ranks compatible offers deterministically (lowest total, earliest departure, then stable offer ID), keeps one best match and proceeds directly to purchase approval:
 
 ```text
-COLLECTING → READY_TO_SEARCH → AWAITING_OFFER_SELECTION
-→ AWAITING_AUTHORITY_CONFIRMATION → READY_TO_PURCHASE
+COLLECTING → READY_TO_SEARCH → AWAITING_AUTHORITY_CONFIRMATION
+→ READY_TO_PURCHASE
 → EXECUTING → COMPLETED | FAILED
 ```
+
+`AWAITING_OFFER_SELECTION` remains an internal compatibility seam for checkout preparation and legacy persisted conversations; it is not a selection screen in the normal flow. The chosen offer, its complete trip details and its official source URL are returned with the approval request. The user only confirms or denies that bound purchase.
 
 It recomputes completeness and legal tools after every proposal. Tool handlers reload the persisted conversation and fail closed if a tool is stale or unavailable. Mutation tools are committed only by `TravelBotService`; the model cannot call `PaymentExecutor`, mint an authorization decision or choose an idempotency key. Purchase goes through the existing mandate, signed Verify/reservation, `PaymentService`, persisted order/receipt and audit services.
 
