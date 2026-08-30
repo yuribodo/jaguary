@@ -7,6 +7,7 @@ This directory separates current behavior, operating instructions, architecture 
 | If you want to… | Read |
 | --- | --- |
 | Understand the product and its boundaries | [Technical documentation](technical/README.md) |
+| Follow how the project evolved and what was learned | [Project decision log](decision-log.md) |
 | See how the complete system fits together | [System architecture](technical/architecture.md) |
 | Understand PostgreSQL tables and relationships | [Database model](technical/database-model.md) |
 | Understand OpenAI, Google Flights search, Didit, UCP, or AP2 | [Integration guides](technical/README.md#integration-guides) |
@@ -19,6 +20,7 @@ This directory separates current behavior, operating instructions, architecture 
 ## Documentation map
 
 - `technical/` — current, code-backed architecture and integration guides.
+- `decision-log.md` — chronological project decisions, discoveries, corrections, and improvements.
 - `adr/` — accepted architecture decisions and their consequences.
 - `diagrams/` — self-contained visual explanations. HTML is the editable source.
 - `design/` — product and visual design rationale.
