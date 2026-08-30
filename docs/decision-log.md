@@ -261,6 +261,19 @@ Customer request
 9. Authority belongs to an authenticated customer, even when the agent is public and platform-operated.
 10. Documentation distinguishes implementation, normalized subsets, sandboxes, spikes, and planned work.
 
+## Real trade-offs
+
+These are not free improvements: each choice deliberately accepts a concrete cost in exchange for a property the hackathon vertical needs more.
+
+| Decision | Benefit gained | Cost consciously accepted | Why the trade-off was right now | Revisit when |
+| --- | --- | --- | --- | --- |
+| Transactional modular monolith instead of independent services | One PostgreSQL boundary can atomically enforce revocation, nonces, limits, reservation, and audit | The API is a larger single deployment and failure domain, with less independent scaling | Correctness and explainability of financial concurrency matter more than premature service isolation | Reconciliation volume or module-specific scaling proves that an outbox-backed worker/service is operationally necessary |
+| Pure deterministic Verify instead of model-based authorization | Stable outcomes, reason codes, replayable tests, and fail-closed behavior | New policy capabilities require explicit schemas, normalized evidence, code, and tests rather than prompt changes | Money movement needs reproducibility more than conversational flexibility | Do not replace this boundary; use models only to propose inputs or explain deterministic results |
+| Payment-provider calls outside SQL transactions | Avoids holding locks during slow or unavailable external I/O and supports scalable provider interaction | A timeout creates an honest `PAYMENT_PENDING` state that requires reconciliation instead of immediate certainty | Long database locks and guessed payment outcomes are more dangerous than explicit ambiguity | Add durable webhook/polling reconciliation before enabling real payments; keep external calls outside SQL |
+| Pre-authorized conditional mandate for fare monitoring | A matching fare can be bought unattended while price and inventory are still available | The customer does not reconfirm at match time, so authority must be narrower, single-use, revocable, and liveness-bound | Fresh confirmation would defeat the stated autonomous-purchase use case | Require a new mandate whenever budget, route, date window, cabin, passengers, merchant, or execution mode changes |
+| Normalized provider adapters instead of adopting provider payloads as domain models | Providers can be replaced and none can smuggle missing evidence into `ALLOW` | Adapter code must track upstream changes, and the current UCP/AP2-shaped subset is not full standards interoperability | Stable trust semantics were achievable within hackathon scope without coupling policy to one vendor | Implement pinned conformance suites before claiming standard interoperability or accepting third-party clients |
+| Deterministic fake payment in the deployed demo while retaining a tested Yuno adapter | The end-to-end authorization, receipt, dispute, and audit demonstration is reliable without pretending sandbox access equals settlement readiness | The demo does not execute a real Yuno payment and must say so clearly | Demonstrating the authority boundary safely is more honest than presenting a partially wired provider as production payment | Replace the fake only after runtime composition, credential resolution, webhooks, reconciliation, and production safety tests are complete |
+
 ## Alternatives rejected
 
 | Alternative | Reason for rejection |
