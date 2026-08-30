@@ -48,8 +48,8 @@ const activePageByPathname: Record<string, AccountPage> = {
   "/connected-agents": "agents",
   "/dashboard": "dashboard",
   "/opportunities": "opportunities",
-  "/payment-methods": "payment-methods",
   "/purchases": "purchases",
+  "/payment-methods": "payment-methods",
   "/trilha-de-auditoria": "audit",
 };
 

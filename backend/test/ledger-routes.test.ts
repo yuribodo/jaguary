@@ -13,23 +13,24 @@ test("receipt listing requires a session and scopes the query to its principal",
   t.after(async () => app.close());
   configureHttpConventions(app);
 
-  let requestedPrincipalId: string | undefined;
   const auth = {
     async requireSession(token: string | undefined) {
       if (token !== "session-token") throw new PublicApiError(401, "invalid_request", "Authentication is required");
       return { principal: { principal_id: "principal_marta" } } as Awaited<ReturnType<PrincipalAuthService["requireSession"]>>;
     },
   };
+  const receiptReader = {
+    requestedPrincipalId: undefined as string | undefined,
+    async getReceipt() { return {}; },
+    async listReceipts(principalId: string) {
+      this.requestedPrincipalId = principalId;
+      return [{ receipt_id: "receipt_owner_001" }];
+    },
+  };
   await app.register(auditRoutes, {
     auth,
     ledger: { async getTimeline() { return { correlation_id: "corr_test", events: [] }; } },
-    receipts: {
-      async getReceipt() { return {}; },
-      async listReceipts(principalId: string) {
-        requestedPrincipalId = principalId;
-        return [{ receipt_id: "receipt_owner_001" }];
-      },
-    },
+    receipts: receiptReader,
   });
 
   const unauthenticated = await app.inject({ method: "GET", url: "/receipts" });
@@ -42,5 +43,5 @@ test("receipt listing requires a session and scopes the query to its principal",
   });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), [{ receipt_id: "receipt_owner_001" }]);
-  assert.equal(requestedPrincipalId, "principal_marta");
+  assert.equal(receiptReader.requestedPrincipalId, "principal_marta");
 });

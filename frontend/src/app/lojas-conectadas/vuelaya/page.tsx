@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function VuelaYaFlightPage() {
+export default function VuelaYaLegacyPage() {
   redirect("/connected-merchants/vuelaya");
 }

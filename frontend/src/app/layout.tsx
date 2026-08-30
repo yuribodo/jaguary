@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { EnglishUi } from "@/components/english-ui";
 import { cn } from "@/lib/utils";
 
-import "react-19-credit-card/dist/es/index.css";
 import "./globals.css";
 
 const geist = Geist({

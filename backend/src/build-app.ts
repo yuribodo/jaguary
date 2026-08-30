@@ -29,6 +29,8 @@ import {
 } from "./modules/mandates/index.js";
 import {
   FakePaymentExecutor,
+  paymentCredentialRoutes,
+  PostgresPaymentCredentialReader,
   PostgresPaymentClaimStore,
   PaymentService,
   paymentRoutes,
@@ -297,6 +299,12 @@ export async function buildApp(options: BuildAppOptions = {}) {
     };
   }
   if (configuredAuth !== undefined) await app.register(authRoutes, configuredAuth);
+  if (configuredAuth !== undefined && database !== undefined) {
+    await app.register(paymentCredentialRoutes, {
+      auth: configuredAuth.service,
+      credentials: new PostgresPaymentCredentialReader(database),
+    });
+  }
   let configuredTrust = options.trust;
   let configuredDiditProvider: DiditAgentAttestationProvider | undefined;
   let configuredTrustRepository: PostgresAgentTrustRepository | undefined;

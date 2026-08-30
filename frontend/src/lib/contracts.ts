@@ -3,6 +3,15 @@ export type Money = {
   currency: string;
 };
 
+export type PaymentMethodSummary = {
+  credential_id: string;
+  network: "VISA" | "MASTERCARD" | "OTHER";
+  last_four: string | null;
+  label: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AgentIdentity = {
   agent_id: string;
   principal_id: string;

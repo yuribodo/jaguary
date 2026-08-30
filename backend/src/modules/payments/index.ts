@@ -1,3 +1,5 @@
+export * from "./credential-routes.js";
+export * from "./credentials.js";
 export * from "./fake-executor.js";
 export * from "./routes.js";
 export * from "./service.js";

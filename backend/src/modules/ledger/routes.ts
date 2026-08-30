@@ -24,12 +24,11 @@ export const auditRoutes: FastifyPluginAsync<AuditRoutesOptions> = async (app, o
   });
   const receipts = options.receipts;
   if (receipts !== undefined) {
-    const listReceipts = receipts.listReceipts;
     const auth = options.auth;
-    if (listReceipts !== undefined && auth !== undefined) {
+    if (receipts.listReceipts !== undefined && auth !== undefined) {
       app.get("/receipts", async (request) => {
         const session = await auth.requireSession(readSessionCookie(request.headers.cookie));
-        return listReceipts(session.principal.principal_id);
+        return receipts.listReceipts!(session.principal.principal_id);
       });
     }
     app.get<{ Params: { id: string } }>("/receipts/:id", async (request) => {
