@@ -613,7 +613,7 @@ test("a Portuguese London request keeps tomorrow and resolves the primary airpor
 
   const first = await service.postMessage({
     conversation_id: conversation.conversation_id,
-    content: "quero ir para londres amanha",
+    content: "quero ir para londes amanha",
     idempotency_key: "idem_london_tomorrow_first_001",
     correlation_id: "corr_london_tomorrow_first_001",
   });

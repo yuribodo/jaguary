@@ -101,8 +101,8 @@ function mentionsThailand(recentMessages: readonly string[]): boolean {
 function mentionsLondonDestination(recentMessages: readonly string[]): boolean {
   return recentMessages.some((message) => {
     const normalized = normalizedText(message).trim();
-    return /^(?:london|londres)[.!?]?$/.test(normalized)
-      || /\b(?:to|para|pra|pro|destination(?: is|:)?|destino(?:\s+(?:e|:))?)\s+(?:london|londres)\b/.test(normalized);
+    return /^(?:london|londres|londes)[.!?]?$/.test(normalized)
+      || /\b(?:to|para|pra|pro|destination(?: is|:)?|destino(?:\s+(?:e|:))?)\s+(?:london|londres|londes)\b/.test(normalized);
   });
 }
 

@@ -43,7 +43,7 @@ const groundedAirportAliases = {
   BVH: ["Vilhena"],
   OAL: ["Cacoal"],
   BKK: ["Bangkok", "Thailand"],
-  LHR: ["London", "Londres", "Heathrow", "London Heathrow Airport"],
+  LHR: ["London", "Londres", "Londes", "Heathrow", "London Heathrow Airport"],
 } as const;
 
 const travelBotInstructions = `You are the only TravelBot agent in the Bound backend.
