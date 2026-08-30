@@ -37,6 +37,7 @@ This directory separates current behavior, operating instructions, architecture 
 - [ADR-005 — TravelBot over OpenAI Agents SDK](adr/ADR-005-travelbot-agents-runtime.md)
 - [ADR-006 — Durable autonomous travel watch](adr/ADR-006-durable-autonomous-travel-watch.md)
 - [ADR-007 — Agent operator and customer authority](adr/ADR-007-agent-operator-and-customer-authority.md)
+- [ADR-008 — Deterministic purchase-dispute adjudication](adr/ADR-008-deterministic-purchase-disputes.md)
 
 ## Maintenance standard
 

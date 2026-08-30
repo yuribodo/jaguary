@@ -8,6 +8,7 @@ import type {
   OfferCandidate,
   OrderReceipt,
   PaymentMethodSummary,
+  PurchaseDispute,
   PurchaseIntent,
   TravelBotConversation,
   TravelWatch,
@@ -326,6 +327,27 @@ export const boundApi = {
 
   listReceipts(signal?: AbortSignal) {
     return request<OrderReceipt[]>("/receipts", { signal });
+  },
+
+  getReceiptDispute(receiptId: string, signal?: AbortSignal) {
+    return request<PurchaseDispute | null>(`/v1/receipts/${encodeURIComponent(receiptId)}/dispute`, { signal });
+  },
+
+  openPurchaseDispute(
+    receiptId: string,
+    csrfToken: string,
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<PurchaseDispute>(`/v1/receipts/${encodeURIComponent(receiptId)}/disputes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+        "X-CSRF-Token": csrfToken,
+      },
+      body: JSON.stringify({ reason: "UNRECOGNIZED_PURCHASE" }),
+    });
   },
 
   listPaymentMethods(signal?: AbortSignal) {

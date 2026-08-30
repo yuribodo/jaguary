@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleAlertIcon, FileCheck2Icon, LinkIcon, SearchIcon, ShieldCheckIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AccountPageShell } from "@/components/account-page-shell";
 import { boundApi, BoundApiError } from "@/lib/bound-api";
@@ -11,11 +11,37 @@ function shortHash(value: string) {
   return `${value.slice(0, 12)}…${value.slice(-10)}`;
 }
 
-export function AuditTrailPage() {
-  const [query, setQuery] = useState("");
+async function resolveAuditTimeline(value: string): Promise<AuditTimeline> {
+  let correlationId = value;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    const conversation = (await boundApi.getConversation(value)).data;
+    if (conversation.operation.receipt_id) correlationId = (await boundApi.getReceipt(conversation.operation.receipt_id)).data.evidence.correlation_id;
+    else correlationId = conversation.messages.at(-1)?.correlation_id ?? "";
+    if (!correlationId) throw new Error("This conversation has no auditable evidence yet.");
+  } else if (value.startsWith("receipt_")) {
+    correlationId = (await boundApi.getReceipt(value)).data.evidence.correlation_id;
+  }
+  return (await boundApi.getAuditTimeline(correlationId)).data;
+}
+
+function auditErrorMessage(error_: unknown): string {
+  if (error_ instanceof BoundApiError || error_ instanceof Error) return error_.message;
+  return "The audit trail could not be loaded.";
+}
+
+export function AuditTrailPage({ initialQuery = "" }: Readonly<{ initialQuery?: string }>) {
+  const [query, setQuery] = useState(initialQuery);
   const [timeline, setTimeline] = useState<AuditTimeline>();
   const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(initialQuery));
+
+  useEffect(() => {
+    if (!initialQuery) return;
+    void resolveAuditTimeline(initialQuery)
+      .then(setTimeline)
+      .catch((error_: unknown) => setError(auditErrorMessage(error_)))
+      .finally(() => setLoading(false));
+  }, [initialQuery]);
 
   async function loadTimeline() {
     const value = query.trim();
@@ -24,18 +50,9 @@ export function AuditTrailPage() {
     setError(undefined);
     setTimeline(undefined);
     try {
-      let correlationId = value;
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
-        const conversation = (await boundApi.getConversation(value)).data;
-        if (conversation.operation.receipt_id) correlationId = (await boundApi.getReceipt(conversation.operation.receipt_id)).data.evidence.correlation_id;
-        else correlationId = conversation.messages.at(-1)?.correlation_id ?? "";
-        if (!correlationId) throw new Error("This conversation has no auditable evidence yet.");
-      } else if (value.startsWith("receipt_")) {
-        correlationId = (await boundApi.getReceipt(value)).data.evidence.correlation_id;
-      }
-      setTimeline((await boundApi.getAuditTimeline(correlationId)).data);
-    } catch (caught) {
-      setError(caught instanceof BoundApiError ? caught.message : caught instanceof Error ? caught.message : "The audit trail could not be loaded.");
+      setTimeline(await resolveAuditTimeline(value));
+    } catch (error_) {
+      setError(auditErrorMessage(error_));
     } finally {
       setLoading(false);
     }

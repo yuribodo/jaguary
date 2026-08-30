@@ -231,6 +231,65 @@ async function seedAuthorizationGraph(termsHash = mandateFixture.terms_hash): Pr
   });
 }
 
+async function seedReservedAuthorizationAuditEvent(evidenceHash = "e".repeat(64)): Promise<void> {
+  assert.ok(database);
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  await database.transaction((transaction) => ledger.append(transaction, {
+    correlationId: "corr_seed_authorization_001",
+    eventType: "authorization.reserved",
+    subjectId: reservedAuthorizationFixture.authorization_id,
+    payload: {
+      authorization_id: reservedAuthorizationFixture.authorization_id,
+      mandate_id: reservedAuthorizationFixture.mandate_id,
+      checkout_id: reservedAuthorizationFixture.checkout_id,
+      principal_id: reservedAuthorizationFixture.principal_id,
+      agent_id: reservedAuthorizationFixture.agent_id,
+      merchant_id: reservedAuthorizationFixture.merchant_id,
+      decision: "ALLOW",
+      policy_version: "bound.verify.v1",
+      evidence_hash: evidenceHash,
+      reserved_amount: reservedAuthorizationFixture.reserved_amount,
+      reserved_at: reservedAuthorizationFixture.reserved_at,
+      expires_at: reservedAuthorizationFixture.expires_at,
+      payment_executor_called: false,
+    },
+    recordedAt: new Date(reservedAuthorizationFixture.reserved_at),
+    deduplicationKey: "authorization:seed-dispute-test:reserved",
+  }));
+}
+
+async function createAuthenticatedDisputeApp(
+  t: { after(callback: () => Promise<void>): void },
+  now: string,
+  loginIdempotencyKey: string,
+) {
+  assert.ok(testDatabaseUrl);
+  const app = await buildApp({
+    databaseUrl: testDatabaseUrl,
+    logger: false,
+    clock: { now: () => new Date(now) },
+    principalAuth: {
+      mode: "demo",
+      nodeEnvironment: "development",
+      allowedOrigin: "http://localhost:3000",
+      secureCookies: false,
+      sessionTtlSeconds: 28_800,
+      loginTransactionTtlSeconds: 600,
+    },
+  });
+  t.after(async () => app.close());
+  const login = await app.inject({
+    method: "POST",
+    url: "/auth/v1/demo/session",
+    headers: { origin: "http://localhost:3000", "idempotency-key": loginIdempotencyKey },
+  });
+  assert.equal(login.statusCode, 201);
+  const cookie = login.headers["set-cookie"] as string;
+  const session = await app.inject({ method: "GET", url: "/auth/v1/session", headers: { cookie } });
+  assert.equal(session.statusCode, 200);
+  return { app, cookie, csrf: session.json().csrf_token as string };
+}
+
 async function seedMandateReferences(): Promise<void> {
   assert.ok(database);
   await database.transaction(insertMandateReferences);
@@ -537,6 +596,7 @@ beforeEach(async () => {
   if (administrationPool === undefined) return;
   await administrationPool.query(`
     TRUNCATE TABLE
+      purchase_disputes,
       agent_attestation_events,
       agent_attestations,
       principal_sessions,
@@ -595,6 +655,7 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
       "principal_login_transactions",
       "principal_sessions",
       "principals",
+      "purchase_disputes",
       "travel_approvals",
       "travel_conversations",
       "travel_intent_snapshots",
@@ -3413,4 +3474,160 @@ integrationTest("an approved payment permits exactly one idempotent merchant com
       assert.equal(timelineResponse.body.toLowerCase().includes(forbidden), false);
     }
   }
+});
+
+integrationTest("the authenticated principal disputes an agent purchase and receives an auditable verdict", async (t) => {
+  assert.ok(testDatabaseUrl);
+  assert.ok(database);
+  const payment = await createPaymentScenario(t, "APPROVED");
+  await seedReservedAuthorizationAuditEvent();
+  const paid = await payment.sendPay("idem_dispute_payment_001", undefined, "corr_dispute_payment_001");
+  assert.equal(paid.statusCode, 200);
+
+  const { app, cookie, csrf } = await createAuthenticatedDisputeApp(
+    t,
+    "2026-08-29T12:05:00.000Z",
+    "idem_dispute_login_001",
+  );
+  const receiptList = await app.inject({ method: "GET", url: "/receipts", headers: { cookie } });
+  const receiptId = receiptList.json<Array<{ receipt_id: string }>>()[0]?.receipt_id;
+  assert.ok(receiptId);
+
+  const forbidden = await app.inject({
+    method: "POST",
+    url: `/v1/receipts/${receiptId}/disputes`,
+    headers: {
+      cookie,
+      origin: "https://attacker.example",
+      "x-csrf-token": csrf,
+      "idempotency-key": "idem_dispute_forbidden_001",
+    },
+    payload: { reason: "UNRECOGNIZED_PURCHASE" },
+  });
+  assert.equal(forbidden.statusCode, 403);
+
+  const openRequest = {
+    method: "POST" as const,
+    url: `/v1/receipts/${receiptId}/disputes`,
+    headers: {
+      cookie,
+      origin: "http://localhost:3000",
+      "x-csrf-token": csrf,
+      "idempotency-key": "idem_dispute_open_001",
+      "x-correlation-id": "corr_dispute_open_001",
+    },
+    payload: { reason: "UNRECOGNIZED_PURCHASE" },
+  };
+  const [firstOpen, secondOpen] = await Promise.all([
+    app.inject(openRequest),
+    app.inject(openRequest),
+  ]);
+  assert.deepEqual([firstOpen.statusCode, secondOpen.statusCode].sort(), [200, 201]);
+  const opened = firstOpen.statusCode === 201 ? firstOpen : secondOpen;
+  const replay = firstOpen.statusCode === 200 ? firstOpen : secondOpen;
+
+  assert.equal(opened.statusCode, 201, opened.body);
+  assert.deepEqual(opened.json(), {
+    dispute_id: opened.json().dispute_id,
+    receipt_id: receiptId,
+    order_id: opened.json().order_id,
+    authorization_id: reservedAuthorizationFixture.authorization_id,
+    payment_id: paid.json().payment_id,
+    principal_id: mandateFixture.terms.principal_id,
+    merchant_id: checkoutTermsFixture.merchant_id,
+    reason: "UNRECOGNIZED_PURCHASE",
+    status: "RESOLVED",
+    verdict: "AUTHORIZED",
+    liable_party: "PRINCIPAL",
+    financial_outcome: "NO_CHARGEBACK",
+    resolution_code: "VALID_MANDATE_AGENT_AND_PAYMENT_EVIDENCE",
+    evidence: {
+      mandate_id: mandateFixture.terms.mandate_id,
+      agent_id: travelBotFixture.agent_id,
+      checkout_id: checkoutTermsFixture.checkout_id,
+      policy_version: "bound.verify.v1",
+      amount: checkoutTermsFixture.total,
+      original_purchase_correlation_id: "corr_seed_authorization_001",
+      checks: {
+        receipt_ownership_verified: true,
+        commercial_binding_verified: true,
+        mandate_authority_verified: true,
+        agent_identity_verified: true,
+        payment_approved_verified: true,
+        audit_chain_verified: true,
+      },
+      evidence_hash: opened.json().evidence.evidence_hash,
+    },
+    opened_at: "2026-08-29T12:05:00.000Z",
+    resolved_at: "2026-08-29T12:05:00.000Z",
+    audit_correlation_id: "corr_dispute_open_001",
+  });
+
+  assert.equal(replay.statusCode, 200);
+  assert.equal(replay.json().dispute_id, opened.json().dispute_id);
+
+  const read = await app.inject({
+    method: "GET",
+    url: `/v1/disputes/${opened.json().dispute_id}`,
+    headers: { cookie },
+  });
+  assert.equal(read.statusCode, 200);
+  assert.deepEqual(read.json(), opened.json());
+  const receiptDispute = await app.inject({
+    method: "GET",
+    url: `/v1/receipts/${receiptId}/dispute`,
+    headers: { cookie },
+  });
+  assert.equal(receiptDispute.statusCode, 200);
+  assert.deepEqual(receiptDispute.json(), opened.json());
+
+  const unauthenticated = await app.inject({ method: "GET", url: `/v1/disputes/${opened.json().dispute_id}` });
+  assert.equal(unauthenticated.statusCode, 401);
+
+  const timeline = await app.inject({ method: "GET", url: "/audit/corr_dispute_open_001" });
+  assert.deepEqual(timeline.json().events.map((event: { event_type: string }) => event.event_type), [
+    "dispute.opened",
+    "dispute.evidence_evaluated",
+    "dispute.resolved",
+  ]);
+});
+
+integrationTest("incomplete authority evidence resolves an unrecognized purchase as a mock chargeback", async (t) => {
+  assert.ok(testDatabaseUrl);
+  assert.ok(database);
+  const payment = await createPaymentScenario(t, "APPROVED");
+  await seedReservedAuthorizationAuditEvent();
+  const paid = await payment.sendPay("idem_dispute_invalid_payment_001", undefined, "corr_dispute_invalid_payment_001");
+  assert.equal(paid.statusCode, 200);
+  const receiptId = (await database.db.select({ receiptId: orders.receiptId }).from(orders).limit(1))[0]?.receiptId;
+  assert.ok(receiptId);
+  await database.db.update(authorizations)
+    .set({ evidenceHash: "f".repeat(64) })
+    .where(eq(authorizations.authorizationId, reservedAuthorizationFixture.authorization_id));
+
+  const { app, cookie, csrf } = await createAuthenticatedDisputeApp(
+    t,
+    "2026-08-29T12:06:00.000Z",
+    "idem_dispute_invalid_login_001",
+  );
+  const opened = await app.inject({
+    method: "POST",
+    url: `/v1/receipts/${receiptId}/disputes`,
+    headers: {
+      cookie,
+      origin: "http://localhost:3000",
+      "x-csrf-token": csrf,
+      "idempotency-key": "idem_dispute_invalid_open_001",
+      "x-correlation-id": "corr_dispute_invalid_open_001",
+    },
+    payload: { reason: "UNRECOGNIZED_PURCHASE" },
+  });
+
+  assert.equal(opened.statusCode, 201, opened.body);
+  assert.equal(opened.json().verdict, "UNAUTHORIZED");
+  assert.equal(opened.json().liable_party, "MERCHANT");
+  assert.equal(opened.json().financial_outcome, "CHARGEBACK_RECORDED");
+  assert.equal(opened.json().resolution_code, "AUTHORITY_EVIDENCE_INCOMPLETE");
+  assert.equal(opened.json().evidence.checks.agent_identity_verified, false);
+  assert.equal(opened.json().evidence.checks.audit_chain_verified, true);
 });

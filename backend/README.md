@@ -262,8 +262,18 @@ These are transport boundaries for the follow-up workstreams, not endpoints impl
 | `POST /verify` | `AgentRequestProof` + `NormalizedCheckout` → `AuthorizationDecision` / `ReservedAuthorization` |
 | `POST /authorizations/:id/pay` | `AuthorizedPayment` → `PaymentResult` |
 | receipt and audit reads | `OrderReceipt` / `AuditEvidence` |
+| `POST /v1/receipts/:receiptId/disputes` | authenticated `UNRECOGNIZED_PURCHASE` → deterministic `PurchaseDispute` |
+| dispute reads | owner-scoped `PurchaseDispute` and its correlated audit timeline |
 
 For example, a payment module receives the approved reference `{ "credential_id": "cred_demo_marta_visa", "display": "Visa •••• 4242" }` inside `AuthorizedPayment`; it never accepts a card number or provider-vault token through this contract.
+
+## Purchase disputes
+
+An authenticated principal can open one idempotent `UNRECOGNIZED_PURCHASE` dispute for a receipt. The mutation requires the principal session, matching Origin, CSRF token and `Idempotency-Key`. Reads are scoped to the receipt owner and do not expose another principal's dispute.
+
+Resolution is immediate and deterministic. The service validates six persisted evidence groups: receipt ownership, commercial bindings, mandate authority at the original reservation time, agent identity, approved payment, and the tamper-evident audit chain. Complete evidence resolves `AUTHORIZED` with liability assigned to `PRINCIPAL` and no chargeback. Any incomplete authority evidence resolves `UNAUTHORIZED`, assigns liability to `MERCHANT`, and records `CHARGEBACK_RECORDED` as a mock financial outcome.
+
+The decision, evidence hash and outcome are committed with `dispute.opened`, `dispute.evidence_evaluated`, and `dispute.resolved` ledger events. This implementation never contacts a bank, card network, issuer, acquirer, or Yuno dispute endpoint; external chargeback execution remains explicitly outside the demo boundary.
 
 ## Mandate lifecycle (BE-04)
 

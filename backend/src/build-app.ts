@@ -89,6 +89,7 @@ import {
   PostgresAgentTrustRepository,
   trustRoutes,
 } from "./modules/trust/index.js";
+import { PurchaseDisputeService, purchaseDisputeRoutes } from "./modules/disputes/index.js";
 
 export interface BuildAppOptions {
   corsOrigin?: string;
@@ -444,6 +445,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
       ledger,
       receipts: receiptStore,
       ...(configuredAuth === undefined ? {} : { auth: configuredAuth.service }),
+    });
+  }
+  if (database !== undefined && ledger !== undefined && configuredAuth !== undefined) {
+    await app.register(purchaseDisputeRoutes, {
+      service: new PurchaseDisputeService(database, ledger, clock),
+      auth: configuredAuth.service,
+      allowedOrigin: configuredAuth.allowedOrigin,
     });
   }
   const paymentExecutor = options.paymentExecutor ?? new FakePaymentExecutor({

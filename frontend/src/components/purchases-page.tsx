@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -10,14 +10,18 @@ import {
   ReceiptTextIcon,
   RefreshCwIcon,
   SearchIcon,
+  ScaleIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
   ShoppingBagIcon,
 } from "lucide-react";
 
 import { AccountPageShell } from "@/components/account-page-shell";
+import { useAuthenticatedPrincipalSession } from "@/components/authenticated-page";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { boundApi, BoundApiError } from "@/lib/bound-api";
-import type { OrderReceipt } from "@/lib/contracts";
+import { boundApi, BoundApiError, createRequestIdentity } from "@/lib/bound-api";
+import type { OrderReceipt, PurchaseDispute, PurchaseDisputeEvidenceChecks } from "@/lib/contracts";
 import { cn } from "@/lib/utils";
 
 type PurchaseFilter = "ALL" | OrderReceipt["status"];
@@ -115,10 +119,106 @@ function StatusBadge({ status }: { status: OrderReceipt["status"] }) {
   );
 }
 
-function ReceiptDetails({ receipt, onOpenChange }: {
+const evidenceCheckLabels: Record<keyof PurchaseDisputeEvidenceChecks, string> = {
+  receipt_ownership_verified: "Receipt owner",
+  commercial_binding_verified: "Merchant, amount and order",
+  mandate_authority_verified: "Mandate authority at purchase time",
+  agent_identity_verified: "Purchasing agent identity",
+  payment_approved_verified: "Approved payment",
+  audit_chain_verified: "Tamper-evident audit chain",
+};
+
+function DisputeResolution({ dispute }: Readonly<{ dispute: PurchaseDispute }>) {
+  const authorized = dispute.verdict === "AUTHORIZED";
+  return (
+    <section className={cn("rounded-xl border p-5", authorized ? "border-amber-200 bg-amber-50/60" : "border-emerald-200 bg-emerald-50/60")}>
+      <div className="flex items-start gap-3">
+        <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", authorized ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")}>
+          {authorized ? <ScaleIcon className="size-4" /> : <ShieldCheckIcon className="size-4" />}
+        </span>
+        <div>
+          <p className="text-[10px] font-semibold tracking-[.12em] uppercase">Dispute resolved</p>
+          <h3 className="mt-1 font-semibold">{authorized ? "Purchase was authorized" : "Purchase was not authorized"}</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {authorized
+              ? "The evidence binds this purchase to your mandate and agent. No chargeback was recorded."
+              : "The authority evidence was incomplete. A mock chargeback was recorded against the merchant."}
+          </p>
+        </div>
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 text-xs">
+        <div><dt className="text-muted-foreground">Liable party</dt><dd className="mt-1 font-semibold">{dispute.liable_party}</dd></div>
+        <div><dt className="text-muted-foreground">Financial outcome</dt><dd className="mt-1 font-semibold">{dispute.financial_outcome.replaceAll("_", " ")}</dd></div>
+      </dl>
+      <ul className="mt-4 grid gap-2 border-t pt-4 text-xs">
+        {Object.entries(dispute.evidence.checks).map(([key, verified]) => (
+          <li className="flex items-center justify-between gap-3" key={key}>
+            <span>{evidenceCheckLabels[key as keyof PurchaseDisputeEvidenceChecks]}</span>
+            <span className={cn("font-semibold", verified ? "text-emerald-700" : "text-red-700")}>{verified ? "VERIFIED" : "FAILED"}</span>
+          </li>
+        ))}
+      </ul>
+      <dl className="mt-4 border-t pt-4 text-[11px]">
+        <Detail label="Dispute" value={dispute.dispute_id} mono />
+        <Detail label="Mandate" value={dispute.evidence.mandate_id} mono />
+        <Detail label="Evidence" value={dispute.evidence.evidence_hash} mono />
+        <Detail label="Audit" value={dispute.audit_correlation_id} mono />
+      </dl>
+      <Button className="mt-3 w-full" render={<Link href={`/trilha-de-auditoria?query=${encodeURIComponent(dispute.audit_correlation_id)}`} />} variant="outline">
+        <ShieldCheckIcon />Open full audit trail
+      </Button>
+    </section>
+  );
+}
+
+function useReceiptDispute(receipt: OrderReceipt | null) {
+  const principalSession = useAuthenticatedPrincipalSession();
+  const [dispute, setDispute] = useState<PurchaseDispute | null>();
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [disputeError, setDisputeError] = useState<string>();
+  const identityRef = useRef<ReturnType<typeof createRequestIdentity> | undefined>(undefined);
+
+  useEffect(() => {
+    if (receipt === null) return;
+    const controller = new AbortController();
+    void boundApi.getReceiptDispute(receipt.receipt_id, controller.signal)
+      .then((result) => setDispute(result.data))
+      .catch((error_: unknown) => {
+        if (!controller.signal.aborted) setDisputeError(error_ instanceof BoundApiError ? error_.message : "The dispute status could not be loaded.");
+      });
+    return () => controller.abort();
+  }, [receipt]);
+
+  const openDispute = useCallback(async () => {
+    if (receipt === null || submitting) return;
+    setSubmitting(true);
+    setDisputeError(undefined);
+    identityRef.current ??= createRequestIdentity("purchase_dispute");
+    try {
+      const result = await boundApi.openPurchaseDispute(
+        receipt.receipt_id,
+        principalSession.csrf_token,
+        identityRef.current,
+      );
+      setDispute(result.data);
+      setConfirming(false);
+    } catch (error_) {
+      setDisputeError(error_ instanceof BoundApiError ? error_.message : "The dispute could not be opened.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [principalSession.csrf_token, receipt, submitting]);
+
+  return { confirming, dispute, disputeError, openDispute, setConfirming, submitting };
+}
+
+function ReceiptDetails({ receipt, onOpenChange }: Readonly<{
   receipt: OrderReceipt | null;
   onOpenChange: (open: boolean) => void;
-}) {
+}>) {
+  const { confirming, dispute, disputeError, openDispute, setConfirming, submitting } = useReceiptDispute(receipt);
+
   return (
     <Sheet onOpenChange={onOpenChange} open={receipt !== null}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
@@ -168,6 +268,27 @@ function ReceiptDetails({ receipt, onOpenChange }: {
                 <CircleCheckIcon className="mt-0.5 size-4 shrink-0" />
                 This receipt comes directly from Jaguary&apos;s validated purchase ledger.
               </p>
+
+              {dispute === undefined && !disputeError ? <p className="text-center text-xs text-muted-foreground">Checking dispute status…</p> : null}
+              {dispute ? <DisputeResolution dispute={dispute} /> : null}
+              {dispute === null && !confirming ? (
+                <Button className="w-full" onClick={() => setConfirming(true)} variant="outline">
+                  <ShieldAlertIcon />I don&apos;t recognize this purchase
+                </Button>
+              ) : null}
+              {dispute === null && confirming ? (
+                <section className="rounded-xl border border-red-200 bg-red-50/60 p-5">
+                  <h3 className="font-semibold text-red-950">Open an unrecognized purchase dispute?</h3>
+                  <p className="mt-2 text-xs leading-5 text-red-900/75">Jaguary will immediately compare the receipt, mandate, agent identity, approved payment and audit chain. The decision and mock chargeback outcome are permanent audit events.</p>
+                  <div className="mt-4 flex gap-2">
+                    <Button disabled={submitting} onClick={() => void openDispute()} variant="destructive">{submitting ? "Evaluating…" : "Open and evaluate"}</Button>
+                    <Button disabled={submitting} onClick={() => setConfirming(false)} variant="outline">Cancel</Button>
+                  </div>
+                </section>
+              ) : null}
+              {disputeError ? (
+                <p className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-800"><CircleAlertIcon className="mt-0.5 size-4 shrink-0" />{disputeError}</p>
+              ) : null}
             </div>
           </>
         ) : null}
@@ -333,7 +454,7 @@ function PurchasesContent() {
         </div>
       </section>
 
-      <ReceiptDetails onOpenChange={(open) => { if (!open) setSelectedReceipt(null); }} receipt={selectedReceipt} />
+      <ReceiptDetails key={selectedReceipt?.receipt_id ?? "closed"} onOpenChange={(open) => { if (!open) setSelectedReceipt(null); }} receipt={selectedReceipt} />
     </>
   );
 }

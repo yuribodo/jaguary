@@ -320,6 +320,24 @@
           ] } }]
         },
         {
+          "name": "Refresh rotated principal session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/v1/session", "host": ["{{baseUrl}}"], "path": ["auth", "v1", "session"] },
+            "description": "Reads the session rotated after KYA and refreshes the CSRF token for later authenticated mutations."
+          },
+          "response": [],
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test(\"Rotated session is authenticated\", function () {",
+            "  pm.response.to.have.status(200);",
+            "  const body = pm.response.json();",
+            "  pm.expect(body.authenticated).to.equal(true);",
+            "  pm.collectionVariables.set(\"csrfToken\", body.csrf_token);",
+            "});"
+          ] } }]
+        },
+        {
           "name": "Read TravelBot assurance",
           "request": {
             "method": "GET",
@@ -949,6 +967,95 @@
               }
             }
           ]
+        },
+        {
+          "name": "Read missing receipt dispute",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/receipts/{{receiptId}}/dispute",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "receipts", "{{receiptId}}", "dispute"]
+            },
+            "description": "Returns null when the authenticated principal has not disputed this receipt."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"A receipt without a dispute returns null\", function () {",
+                "  pm.response.to.have.status(200);",
+                "  pm.expect(pm.response.json()).to.equal(null);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Open dispute for missing receipt",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:3000", "type": "text" },
+              { "key": "X-CSRF-Token", "value": "{{csrfToken}}", "type": "text" },
+              { "key": "Idempotency-Key", "value": "idem_postman_dispute_open_001", "type": "text" },
+              { "key": "X-Correlation-Id", "value": "corr_postman_dispute_open_001", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"UNRECOGNIZED_PURCHASE\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/receipts/{{receiptId}}/disputes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "receipts", "{{receiptId}}", "disputes"]
+            },
+            "description": "Documents the owner-bound, CSRF-protected dispute mutation; the clean-DB example fails safely."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"A missing receipt cannot be disputed\", function () {",
+                "  pm.response.to.have.status(404);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "Read missing dispute",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/disputes/dispute_postman_missing",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "disputes", "dispute_postman_missing"]
+            },
+            "description": "Reads a dispute only for its authenticated principal."
+          },
+          "response": [],
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test(\"A missing dispute fails safely\", function () {",
+                "  pm.response.to.have.status(404);",
+                "  pm.expect(pm.response.json().error.code).to.equal(\"not_found\");",
+                "});"
+              ]
+            }
+          }]
         }
       ]
     },
