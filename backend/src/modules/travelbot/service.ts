@@ -210,7 +210,7 @@ export class TravelBotService {
           && this.options.tools.getReceipt !== undefined
         ) {
           const receipt = await executeTool("get_receipt", {}, () => this.options.tools.getReceipt!(conversation), (result) => result);
-          assistantMessage = `Recibo ${receipt.receipt_id}: ${receipt.status}, ${receipt.total.currency} ${(receipt.total.amount / 100).toFixed(2)}.`;
+          assistantMessage = `Receipt ${receipt.receipt_id}: ${receipt.status}, ${receipt.total.currency} ${(receipt.total.amount / 100).toFixed(2)}.`;
         } else if (
           runtimeResult.proposal.requested_action === "GET_AUDIT_TIMELINE"
           && this.options.tools.getAuditTimeline !== undefined
@@ -220,9 +220,9 @@ export class TravelBotService {
             event_count: result.event_count,
             event_types: result.event_types,
           }));
-          assistantMessage = `Auditoria ${audit.correlation_id}: ${audit.event_count} eventos validados.`;
+          assistantMessage = `Audit ${audit.correlation_id}: ${audit.event_count} validated events.`;
         } else {
-          assistantMessage = `Esta compra já foi concluída${operation.receipt_id === null ? "." : ` no recibo ${operation.receipt_id}.`}`;
+          assistantMessage = `This purchase has already been completed${operation.receipt_id === null ? "." : ` under receipt ${operation.receipt_id}.`}`;
         }
       } else if (
         conversation.state === "AWAITING_AUTHORITY_CONFIRMATION"
@@ -243,7 +243,7 @@ export class TravelBotService {
                 model: this.options.model ?? "fake-test-model",
                 state: "READY_TO_PURCHASE",
                 intent: applied.intent,
-                user_message: "Operação negada pelo usuário.",
+                user_message: "Operation denied by the user.",
                 available_tools: ["request_purchase"],
               },
               sdk_run_state: await this.options.approvalStateProtector.open(approval.sdk_run_state),
@@ -263,7 +263,7 @@ export class TravelBotService {
           applied.intent.selected_offer_id = null;
           operation = emptyOperation();
           state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = "Operação negada com segurança. Se quiser, selecione uma oferta novamente.";
+          assistantMessage = "Operation safely denied. Select an offer again if you would like to continue.";
         } else {
           if (this.options.tools.activateAuthority === undefined || this.options.tools.requestPurchase === undefined) {
             throw new Error("TravelBot purchase tools are not configured");
@@ -290,7 +290,7 @@ export class TravelBotService {
                 model: this.options.model ?? "fake-test-model",
                 state: "READY_TO_PURCHASE",
                 intent: applied.intent,
-                user_message: "Confirmação vinculada validada pelo backend.",
+                user_message: "Bound confirmation validated by the backend.",
                 available_tools: ["request_purchase"],
               },
               sdk_run_state: await this.options.approvalStateProtector.open(approval.sdk_run_state),
@@ -326,8 +326,8 @@ export class TravelBotService {
             pending_approval: null,
           };
           assistantMessage = purchase.status === "COMPLETED"
-            ? `Compra concluída. Recibo ${purchase.receipt_id}.`
-            : `Compra não realizada (${purchase.reason_code ?? "rejected"}).`;
+            ? `Purchase completed. Receipt ${purchase.receipt_id}.`
+            : `Purchase not completed (${purchase.reason_code ?? "rejected"}).`;
         }
       } else if (
         conversation.state === "AWAITING_OFFER_SELECTION"
@@ -337,7 +337,7 @@ export class TravelBotService {
         if (selected === undefined) {
           applied.intent.selected_offer_id = null;
           state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = "A oferta selecionada não está disponível. Escolha uma das ofertas atuais.";
+          assistantMessage = "The selected offer is unavailable. Choose one of the current offers.";
         } else if (
           this.options.tools.createCheckout === undefined
           || this.options.tools.prepareAuthority === undefined
@@ -377,7 +377,7 @@ export class TravelBotService {
               model: this.options.model ?? "fake-test-model",
               state: "READY_TO_PURCHASE",
               intent: applied.intent,
-              user_message: "Prepare a interrupção para request_purchase; o backend ainda não concedeu consentimento.",
+              user_message: "Prepare the request_purchase interruption; the backend has not granted consent yet.",
               available_tools: ["request_purchase"],
             });
           const sdkRunState = approvalRuntimeResult?.interruption?.tool_name === "request_purchase"
@@ -390,7 +390,7 @@ export class TravelBotService {
             applied.intent.selected_offer_id = null;
             operation = emptyOperation();
             state = "AWAITING_OFFER_SELECTION";
-            assistantMessage = "Não consegui preparar a confirmação segura. Selecione a oferta novamente.";
+            assistantMessage = "I could not prepare a secure confirmation. Select the offer again.";
           } else {
             const protectedRunState = sdkRunState === undefined
               ? JSON.stringify({ version: 1, run_id: runId, action: "request_purchase" })
@@ -413,20 +413,20 @@ export class TravelBotService {
               },
             };
             state = "AWAITING_AUTHORITY_CONFIRMATION";
-            assistantMessage = `Confirme explicitamente ${checkout.total.currency} ${(checkout.total.amount / 100).toFixed(2)} para ${checkout.merchant_id}.`;
+            assistantMessage = `Explicitly confirm ${checkout.total.currency} ${(checkout.total.amount / 100).toFixed(2)} for ${checkout.merchant_id}.`;
           }
         }
       } else if (conversation.state === "AWAITING_AUTHORITY_CONFIRMATION") {
         state = "AWAITING_AUTHORITY_CONFIRMATION";
         const approval = operation.pending_approval;
         assistantMessage = approval === null
-          ? "A confirmação anterior ficou obsoleta. Selecione a oferta novamente."
-          : `Confirme ou negue explicitamente ${approval.currency} ${(approval.amount / 100).toFixed(2)} para ${approval.merchant_id}.`;
+          ? "The previous confirmation is stale. Select the offer again."
+          : `Explicitly confirm or deny ${approval.currency} ${(approval.amount / 100).toFixed(2)} for ${approval.merchant_id}.`;
       } else if (conversation.state === "AWAITING_OFFER_SELECTION") {
         state = "AWAITING_OFFER_SELECTION";
         assistantMessage = offers.length === 0
-          ? "As ofertas ficaram obsoletas. Corrija os dados para buscar novamente."
-          : `Selecione explicitamente ${offers[0]!.offer_id}.`;
+          ? "The offers are stale. Correct the details to search again."
+          : `Explicitly select ${offers[0]!.offer_id}.`;
       } else {
         state = "READY_TO_SEARCH";
         offers = (await executeTool("find_offers", {
@@ -448,9 +448,9 @@ export class TravelBotService {
         ));
         if (offers.length > 0) {
           state = "AWAITING_OFFER_SELECTION";
-          assistantMessage = `Encontrei ${offers.length} oferta. Selecione ${offers[0]!.offer_id}.`;
+          assistantMessage = `I found ${offers.length} offer. Select ${offers[0]!.offer_id}.`;
         } else {
-          assistantMessage = "Não encontrei voos compatíveis com essa busca. Posso tentar outro aeroporto ou período.";
+          assistantMessage = "I found no flights matching this search. I can try another airport or date range.";
         }
       }
 

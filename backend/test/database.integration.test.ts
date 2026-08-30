@@ -587,7 +587,7 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
           ambiguities: [],
           requested_action: "FIND_OFFERS",
         },
-        assistant_message: "Oferta local encontrada.",
+        assistant_message: "Local offer found.",
       };
     },
   };
@@ -606,7 +606,7 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   });
   const command = {
     conversation_id: conversation.conversation_id,
-    content: "GRU para COR; api_key=sk-supersecret123456",
+    content: "GRU to COR; api_key=sk-supersecret123456",
     idempotency_key: "idem_travelbot_integration_message_001",
     correlation_id: "corr_travelbot_integration_message_001",
   };
@@ -636,7 +636,7 @@ integrationTest("TravelBot persists distinct calls to the same tool within one m
   }, new Date("2026-08-29T12:04:01.000Z"));
   const claimed = await repository.claimTurn({
     conversation_id: conversation.conversation_id,
-    content: "Seleciono a oferta disponível.",
+    content: "I select the available offer.",
     idempotency_key: "idem_repeated_tool_message_001",
     correlation_id: "corr_repeated_tool_message_001",
   }, new Date("2026-08-29T12:04:01.000Z"));
@@ -685,7 +685,7 @@ integrationTest("TravelBot serializes concurrent messages on one conversation", 
           ambiguities: [],
           requested_action: "NONE",
         },
-        assistant_message: "Informe os dados.",
+        assistant_message: "Provide the details.",
       };
     },
   };
@@ -703,7 +703,7 @@ integrationTest("TravelBot serializes concurrent messages on one conversation", 
   });
   const results = await Promise.allSettled([1, 2].map((suffix) => service.postMessage({
     conversation_id: conversation.conversation_id,
-    content: `mensagem ${suffix}`,
+    content: `message ${suffix}`,
     idempotency_key: `idem_travelbot_concurrent_message_00${suffix}`,
     correlation_id: `corr_travelbot_concurrent_message_00${suffix}`,
   })));
@@ -724,7 +724,7 @@ integrationTest("a crashed TravelBot run lease is reclaimed with the same run an
   }, startedAt);
   const command = {
     conversation_id: conversation.conversation_id,
-    content: "mensagem antes do restart",
+    content: "message before restart",
     idempotency_key: "idem_travelbot_restart_message_001",
     correlation_id: "corr_travelbot_restart_message_001",
   };
@@ -825,7 +825,7 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
         ambiguities: [],
         requested_action: "NONE" as const,
       };
-      if (request.user_message === "pedido completo") {
+      if (request.user_message === "complete request") {
         return {
           proposal: {
             ...base,
@@ -837,7 +837,7 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
             max_total_budget: { amount: 15000, currency: "USD" },
             requested_action: "FIND_OFFERS",
           },
-          assistant_message: "Buscando oferta.",
+          assistant_message: "Searching for an offer.",
         };
       }
       if (request.user_message === "seleciono") {
@@ -866,7 +866,7 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
   });
   await chat.postMessage({
     conversation_id: conversation.conversation_id,
-    content: "pedido completo",
+    content: "complete request",
     idempotency_key: "idem_chat_happy_request_001",
     correlation_id: "corr_chat_happy_request_001",
   });

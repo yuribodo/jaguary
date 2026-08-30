@@ -37,7 +37,7 @@ test("all missing fields are grouped into one concise deterministic question", (
 
   assert.equal(
     question,
-    "Para continuar, me diga de onde você quer sair, qual cidade ou aeroporto você prefere no destino, em que data quer viajar e quanto pretende gastar e em qual moeda.",
+    "To continue, tell me where you want to depart from, which city or airport you prefer at the destination, when you want to travel and how much you plan to spend and in which currency.",
   );
   assert.equal((question.match(/\?/g) ?? []).length, 0);
 });
@@ -46,24 +46,24 @@ test("a regional destination is named in the clarification without asking inferr
   const question = deterministicClarification(
     ["origin_iata", "destination_iata", "departure_date"],
     [],
-    ["Quero comprar uma passagem para Rondônia de no máximo 3 mil reais."],
+    ["I want to buy a ticket to Rondônia for no more than 3,000 reais."],
   );
 
   assert.equal(
     question,
-    "Para continuar, me diga de onde você quer sair, qual cidade ou aeroporto em Rondônia você prefere e em que data quer viajar.",
+    "To continue, tell me where you want to depart from, which city or airport in Rondônia you prefer and when you want to travel.",
   );
-  assert.doesNotMatch(question, /passageir|cabine/i);
+  assert.doesNotMatch(question, /passenger|cabin/i);
 });
 
-test("the Rio de Janeiro clarification uses natural Brazilian Portuguese", () => {
+test("the Rio de Janeiro clarification uses natural English", () => {
   assert.equal(
     deterministicClarification(
       ["destination_iata"],
       [],
-      ["Quero um voo para o Rio de Janeiro."],
+      ["I want a flight to Rio de Janeiro."],
     ),
-    "Para continuar, me diga qual cidade ou aeroporto no Rio de Janeiro você prefere.",
+    "To continue, tell me which city or airport in Rio de Janeiro you prefer.",
   );
 });
 
@@ -138,6 +138,6 @@ test("every individual missing field is named by the deterministic clarification
     const intent = { ...complete, [field]: null };
     const missing = missingTravelIntentFields(intent);
     assert.deepEqual(missing, [field]);
-    assert.match(deterministicClarification(missing, []), /^Para continuar, me diga /);
+    assert.match(deterministicClarification(missing, []), /^To continue, tell me /);
   }
 });

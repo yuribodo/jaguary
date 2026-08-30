@@ -86,8 +86,8 @@ const PRINCIPAL_ID = "principal_marta";
 const TRAVELBOT_ID = "agent_travelbot";
 const RECENT_CONVERSATIONS_KEY = "bound.recent-conversations.v1";
 const STARTER_PROMPTS = [
-  "Quero ir de GRU para COR em 15 de setembro de 2026, uma pessoa, econômica, até US$ 150.",
-  "Encontre um voo de São Paulo para Córdoba em 15 de setembro, por até US$ 150.",
+  "I want to travel from GRU to COR on September 15, 2026, one passenger, economy, up to US$150.",
+  "Find a flight from São Paulo to Córdoba on September 15 for up to US$150.",
 ];
 
 type LoadState = "loading" | "ready" | "error";
@@ -116,7 +116,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 function asApiError(error: unknown) {
   if (error instanceof BoundApiError) return error;
   return new BoundApiError({
-    message: "Ocorreu um erro inesperado nesta conversa.",
+    message: "An unexpected error occurred in this conversation.",
     code: "unexpected_error",
   });
 }
@@ -133,14 +133,14 @@ function readRecentIds(): string[] {
 }
 
 function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
   }).format(amount / 100);
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -149,7 +149,7 @@ function formatDate(value: string) {
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "America/Sao_Paulo",
@@ -162,30 +162,30 @@ function shortId(value: string, start = 10, end = 6) {
 }
 
 const stateLabels: Record<TravelBotState, string> = {
-  COLLECTING: "Coletando detalhes",
-  READY_TO_SEARCH: "Pronto para buscar",
-  AWAITING_OFFER_SELECTION: "Aguardando sua escolha",
-  AWAITING_AUTHORITY_CONFIRMATION: "Confirmação necessária",
-  READY_TO_PURCHASE: "Compra autorizada",
-  EXECUTING: "Executando compra",
-  COMPLETED: "Operação concluída",
-  FAILED: "Operação interrompida",
+  COLLECTING: "Collecting details",
+  READY_TO_SEARCH: "Ready to search",
+  AWAITING_OFFER_SELECTION: "Awaiting your choice",
+  AWAITING_AUTHORITY_CONFIRMATION: "Confirmation required",
+  READY_TO_PURCHASE: "Purchase authorized",
+  EXECUTING: "Executing purchase",
+  COMPLETED: "Operation completed",
+  FAILED: "Operation interrupted",
 };
 
 const missingFieldLabels: Record<RequiredTravelIntentField, string> = {
-  origin_iata: "origem",
-  destination_iata: "destino",
-  departure_date: "data",
-  passenger_count: "passageiros",
-  cabin: "cabine",
-  max_total_budget: "orçamento",
+  origin_iata: "origin",
+  destination_iata: "destination",
+  departure_date: "date",
+  passenger_count: "passengers",
+  cabin: "cabin",
+  max_total_budget: "budget",
 };
 
 function conversationTitle(conversation: TravelBotConversation) {
   const { origin_iata: origin, destination_iata: destination } = conversation.intent;
   if (origin && destination) return `${origin} → ${destination}`;
   const firstMessage = conversation.messages.find(({ role }) => role === "USER");
-  if (!firstMessage) return "Nova conversa";
+  if (!firstMessage) return "New conversation";
   return firstMessage.content.length > 34
     ? `${firstMessage.content.slice(0, 34)}…`
     : firstMessage.content;
@@ -236,7 +236,7 @@ function useSpeechInput(
     setError(undefined);
     baseValueRef.current = value.trim();
     const recognition = new Recognition();
-    recognition.lang = "pt-BR";
+    recognition.lang = "en-US";
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event) => {
@@ -249,10 +249,10 @@ function useSpeechInput(
     };
     recognition.onerror = (event) => {
       const label = event.error === "not-allowed"
-        ? "Permita o acesso ao microfone para ditar uma mensagem."
+        ? "Allow microphone access to dictate a message."
         : event.error === "no-speech"
-          ? "Não ouvi nenhuma fala. Tente novamente."
-          : "Não foi possível reconhecer sua fala agora.";
+          ? "I did not hear any speech. Try again."
+          : "Your speech could not be recognized right now.";
       setError(label);
       setListening(false);
     };
@@ -262,7 +262,7 @@ function useSpeechInput(
       recognition.start();
       setListening(true);
     } catch {
-      setError("Não foi possível iniciar o microfone.");
+      setError("The microphone could not be started.");
     }
   }, [disabled, listening, onChange, value]);
 
@@ -288,7 +288,7 @@ function AssistantMessage({ message }: { message: TravelBotMessage }) {
               <strong className="text-xs">TravelBot</strong>
               <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-700">
                 <i className="size-1.5 rounded-full bg-current" aria-hidden="true" />
-                identificado
+                identified
               </span>
               <time className="text-[10px] text-muted-foreground" dateTime={message.created_at}>
                 {formatTime(message.created_at)}
@@ -324,10 +324,10 @@ function Welcome({ disabled, onSuggestion }: { disabled: boolean; onSuggestion: 
         <SparklesIcon className="size-5" />
       </span>
       <h1 className="max-w-xl font-serif text-4xl leading-[1.05] tracking-tight md:text-5xl">
-        Para onde vamos, Marta?
+        Where are we going, Marta?
       </h1>
       <p className="mt-4 max-w-lg text-sm leading-6 text-muted-foreground">
-        Conte os detalhes da viagem. O TravelBot pode buscar, comparar e preparar a compra — sempre pedindo sua confirmação antes de movimentar dinheiro.
+        Share your trip details. TravelBot can search, compare, and prepare the purchase — always asking for your confirmation before moving any money.
       </p>
       <div className="mt-7 grid max-w-2xl gap-2">
         {STARTER_PROMPTS.map((suggestion) => (
@@ -362,7 +362,7 @@ function OfferCard({
           <PlaneIcon className="size-3.5 text-blue-700" />
           VuelaYa
         </span>
-        <span className="panel-label">Oferta do merchant</span>
+        <span className="panel-label">Merchant offer</span>
       </header>
       <div className="grid gap-5 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
         <div>
@@ -376,16 +376,16 @@ function OfferCard({
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><CalendarDaysIcon className="size-3" />{formatDate(offer.fulfillment.departure_at)}</span>
             <span className="inline-flex items-center gap-1.5"><Clock3Icon className="size-3" />{formatTime(offer.fulfillment.departure_at)}–{formatTime(offer.fulfillment.arrival_at)}</span>
-            <span>{offer.fulfillment.cabin === "ECONOMY" ? "Econômica" : offer.fulfillment.cabin}</span>
+            <span>{offer.fulfillment.cabin === "ECONOMY" ? "Economy" : offer.fulfillment.cabin}</span>
           </div>
         </div>
         <div className="flex items-center justify-between gap-5 border-t pt-4 sm:block sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5 sm:text-right">
           <div>
-            <span className="block text-[10px] text-muted-foreground">Total por pessoa</span>
+            <span className="block text-[10px] text-muted-foreground">Total per person</span>
             <strong className="mt-0.5 block text-lg tabular-nums">{formatMoney(offer.total.amount, offer.total.currency)}</strong>
           </div>
           <Button className="mt-0 sm:mt-3" disabled={disabled} onClick={onSelect} size="sm">
-            Selecionar <ChevronRightIcon />
+            Select <ChevronRightIcon />
           </Button>
         </div>
       </div>
@@ -413,21 +413,21 @@ function ApprovalCard({
             <ShieldCheckIcon className="size-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="panel-label">Sua decisão</p>
-            <h2 className="mt-1 font-serif text-2xl">Autorizar esta compra?</h2>
+            <p className="panel-label">Your decision</p>
+            <h2 className="mt-1 font-serif text-2xl">Authorize this purchase?</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              O TravelBot pede permissão para pagar <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> à VuelaYa. Nada será movimentado sem sua confirmação.
+              TravelBot is asking for permission to pay <strong className="text-foreground">{formatMoney(approval.amount, approval.currency)}</strong> to VuelaYa. Nothing will move without your confirmation.
             </p>
           </div>
         </div>
         <dl className="mt-5 grid gap-2 border-y py-3 text-xs sm:grid-cols-2">
           <div><dt className="text-muted-foreground">Merchant</dt><dd className="mt-0.5 font-mono">{approval.merchant_id}</dd></div>
-          <div><dt className="text-muted-foreground">Mandato</dt><dd className="mt-0.5 font-mono">{shortId(approval.mandate_id)}</dd></div>
+          <div><dt className="text-muted-foreground">Mandate</dt><dd className="mt-0.5 font-mono">{shortId(approval.mandate_id)}</dd></div>
         </dl>
         <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button disabled={disabled} onClick={() => onDecision(false)} variant="outline">Não autorizar</Button>
+          <Button disabled={disabled} onClick={() => onDecision(false)} variant="outline">Do not authorize</Button>
           <Button disabled={disabled} onClick={() => onDecision(true)}>
-            <CheckIcon /> Autorizar {formatMoney(approval.amount, approval.currency)}
+            <CheckIcon /> Authorize {formatMoney(approval.amount, approval.currency)}
           </Button>
         </div>
       </div>
@@ -440,11 +440,11 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
       <div className="min-w-0 flex-1">
-        <strong className="block text-xs">Não consegui concluir</strong>
+        <strong className="block text-xs">Could not complete</strong>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
-      {onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCwIcon />Tentar de novo</Button> : null}
+      {onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCwIcon />Try again</Button> : null}
     </div>
   );
 }
@@ -453,25 +453,25 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
   const state = conversation?.state ?? "COLLECTING";
   const operation = conversation?.operation;
   const steps = [
-    { label: "Entender pedido", done: Boolean(conversation && conversation.missing_fields.length === 0) },
-    { label: "Encontrar opções", done: Boolean(conversation?.offers.length) },
-    { label: "Fixar checkout", done: Boolean(operation?.checkout_id) },
-    { label: "Obter autoridade", done: Boolean(operation?.mandate_id) },
-    { label: "Comprar e emitir", done: Boolean(operation?.receipt_id) },
+    { label: "Understand request", done: Boolean(conversation && conversation.missing_fields.length === 0) },
+    { label: "Find options", done: Boolean(conversation?.offers.length) },
+    { label: "Lock checkout", done: Boolean(operation?.checkout_id) },
+    { label: "Obtain authority", done: Boolean(operation?.mandate_id) },
+    { label: "Purchase and issue", done: Boolean(operation?.receipt_id) },
   ];
   const firstIncomplete = steps.findIndex(({ done }) => !done);
   const activeIndex = firstIncomplete === -1 ? steps.length - 1 : firstIncomplete;
   const intent = conversation?.intent;
 
   return (
-    <aside className="hidden w-[19rem] shrink-0 flex-col border-l bg-panel xl:flex" aria-label="Detalhes da operação">
+    <aside className="hidden w-[19rem] shrink-0 flex-col border-l bg-panel xl:flex" aria-label="Operation details">
       <div className="flex h-12 items-center justify-between border-b px-4">
-        <strong className="text-xs font-medium">Detalhes</strong>
-        {busy ? <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-700"><i className="size-1.5 animate-pulse rounded-full bg-current" />trabalhando</span> : null}
+        <strong className="text-xs font-medium">Details</strong>
+        {busy ? <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-700"><i className="size-1.5 animate-pulse rounded-full bg-current" />working</span> : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b p-4">
-          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progresso</h2><span className="text-[10px] text-muted-foreground">{stateLabels[state]}</span></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="panel-label">Progress</h2><span className="text-[10px] text-muted-foreground">{stateLabels[state]}</span></div>
           <ol>
             {steps.map((step, index) => (
               <li className="relative grid grid-cols-[18px_1fr] gap-2.5 pb-4 last:pb-0" key={step.label}>
@@ -490,39 +490,39 @@ function OperationInspector({ conversation, busy }: { conversation?: TravelBotCo
         </section>
 
         <section className="border-b p-4">
-          <h2 className="panel-label">Pedido compreendido</h2>
+          <h2 className="panel-label">Understood request</h2>
           {intent && conversation?.missing_fields.length !== 6 ? (
             <dl className="mt-3 grid gap-2.5 text-xs">
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Rota</dt><dd className="font-medium">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Data</dt><dd className="font-medium">{intent.departure_date ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Passageiros</dt><dd className="font-medium">{intent.passenger_count ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Cabine</dt><dd className="font-medium">{intent.cabin ?? "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Limite</dt><dd className="font-medium tabular-nums">{intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Route</dt><dd className="font-medium">{intent.origin_iata ?? "—"} → {intent.destination_iata ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Date</dt><dd className="font-medium">{intent.departure_date ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Passengers</dt><dd className="font-medium">{intent.passenger_count ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Cabin</dt><dd className="font-medium">{intent.cabin ?? "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Limit</dt><dd className="font-medium tabular-nums">{intent.max_total_budget ? formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency) : "—"}</dd></div>
             </dl>
-          ) : <p className="mt-3 text-xs leading-5 text-muted-foreground">Os detalhes aparecem aqui conforme você conversa.</p>}
+          ) : <p className="mt-3 text-xs leading-5 text-muted-foreground">Details appear here as you chat.</p>}
           {conversation?.missing_fields.length ? (
             <p className="mt-3 border-t pt-3 text-[10px] leading-4 text-muted-foreground">
-              Falta: {conversation.missing_fields.map((field) => missingFieldLabels[field]).join(", ")}.
+              Missing: {conversation.missing_fields.map((field) => missingFieldLabels[field]).join(", ")}.
             </p>
           ) : null}
         </section>
 
         {intent?.max_total_budget ? (
           <section className="border-b p-4">
-            <div className="mb-3 flex items-center gap-2"><WalletCardsIcon className="size-3.5 text-blue-700" /><h2 className="panel-label">Limite desta compra</h2></div>
+            <div className="mb-3 flex items-center gap-2"><WalletCardsIcon className="size-3.5 text-blue-700" /><h2 className="panel-label">Purchase limit</h2></div>
             <strong className="block text-xl tabular-nums">{formatMoney(intent.max_total_budget.amount, intent.max_total_budget.currency)}</strong>
-            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">É um teto proposto. Não representa dinheiro gasto ou reservado.</p>
+            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">This is a proposed ceiling. It does not represent spent or reserved funds.</p>
           </section>
         ) : null}
 
         {operation && Object.values(operation).some(Boolean) ? (
           <section className="p-4">
-            <h2 className="panel-label">Evidência</h2>
+            <h2 className="panel-label">Evidence</h2>
             <dl className="mt-3 grid gap-3 text-[10px]">
               {operation.checkout_id ? <div><dt className="text-muted-foreground">Checkout</dt><dd className="mt-0.5 break-all font-mono">{operation.checkout_id}</dd></div> : null}
-              {operation.mandate_id ? <div><dt className="text-muted-foreground">Mandato</dt><dd className="mt-0.5 break-all font-mono">{operation.mandate_id}</dd></div> : null}
-              {operation.authorization_id ? <div><dt className="text-muted-foreground">Autorização</dt><dd className="mt-0.5 break-all font-mono">{operation.authorization_id}</dd></div> : null}
-              {operation.receipt_id ? <div><dt className="text-muted-foreground">Recibo</dt><dd className="mt-0.5 break-all font-mono">{operation.receipt_id}</dd></div> : null}
+              {operation.mandate_id ? <div><dt className="text-muted-foreground">Mandate</dt><dd className="mt-0.5 break-all font-mono">{operation.mandate_id}</dd></div> : null}
+              {operation.authorization_id ? <div><dt className="text-muted-foreground">Authorization</dt><dd className="mt-0.5 break-all font-mono">{operation.authorization_id}</dd></div> : null}
+              {operation.receipt_id ? <div><dt className="text-muted-foreground">Receipt</dt><dd className="mt-0.5 break-all font-mono">{operation.receipt_id}</dd></div> : null}
             </dl>
           </section>
         ) : null}
@@ -683,37 +683,37 @@ export function TrustedSurface() {
             <div className="flex items-center gap-2"><span className="grid size-7 place-items-center rounded-md bg-foreground text-background"><ShieldCheckIcon className="size-3.5" /></span><strong className="text-sm">Bound</strong></div>
           </div>
           <Button className="mt-2 justify-start" disabled={isBusy || loadState === "loading"} onClick={() => void createConversation()} variant="outline">
-            <PlusIcon /> Nova conversa
+            <PlusIcon /> New conversation
           </Button>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Sua conta</SidebarGroupLabel>
+            <SidebarGroupLabel>Your account</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/metodos-de-pagamento" />} tooltip="Métodos de pagamento">
+                  <SidebarMenuButton render={<Link href="/payment-methods" />} tooltip="Payment methods">
                     <CreditCardIcon />
-                    <span>Métodos de pagamento</span>
+                    <span>Payment methods</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/compras" />} tooltip="Compras">
+                  <SidebarMenuButton render={<Link href="/purchases" />} tooltip="Purchases">
                     <HistoryIcon />
-                    <span>Compras</span>
+                    <span>Purchases</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link href="/lojas-conectadas" />} tooltip="Lojas conectadas">
+                  <SidebarMenuButton render={<Link href="/connected-merchants" />} tooltip="Connected merchants">
                     <HandshakeIcon />
-                    <span>Lojas conectadas</span>
+                    <span>Connected merchants</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
           <SidebarGroup>
-            <SidebarGroupLabel>Recentes</SidebarGroupLabel>
+            <SidebarGroupLabel>Recent</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {recents.length ? recents.map((recent) => (
@@ -730,7 +730,7 @@ export function TrustedSurface() {
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                )) : <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">Sua conversa atual aparecerá aqui.</p>}
+                )) : <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">Your current conversation will appear here.</p>}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -738,7 +738,7 @@ export function TrustedSurface() {
         <SidebarFooter className="border-t p-3">
           <div className="flex items-center gap-2.5 rounded-md p-1">
             <span className="grid size-8 place-items-center rounded-full border bg-background text-xs font-semibold">M</span>
-            <div className="min-w-0"><strong className="block truncate text-xs">Marta</strong><span className="block truncate text-[10px] text-muted-foreground">Principal do mandato</span></div>
+            <div className="min-w-0"><strong className="block truncate text-xs">Marta</strong><span className="block truncate text-[10px] text-muted-foreground">Mandate principal</span></div>
           </div>
         </SidebarFooter>
         <SidebarRail />
@@ -754,14 +754,14 @@ export function TrustedSurface() {
                 <strong className="block truncate text-xs">{conversation ? conversationTitle(conversation) : "TravelBot"}</strong>
                 <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                   <i className={cn("size-1.5 rounded-full", loadState === "ready" ? "bg-emerald-600" : loadState === "error" ? "bg-destructive" : "animate-pulse bg-amber-500")} />
-                  {loadState === "ready" ? stateLabels[conversation?.state ?? "COLLECTING"] : loadState === "error" ? "API indisponível" : "Conectando"}
+                  {loadState === "ready" ? stateLabels[conversation?.state ?? "COLLECTING"] : loadState === "error" ? "API unavailable" : "Connecting"}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {agent ? <span className="hidden items-center gap-1.5 text-[10px] text-emerald-700 sm:flex"><ShieldCheckIcon className="size-3" />{agent.display_name} identificado</span> : null}
+              {agent ? <span className="hidden items-center gap-1.5 text-[10px] text-emerald-700 sm:flex"><ShieldCheckIcon className="size-3" />{agent.display_name} identified</span> : null}
               {lastCorrelationId ? (
-                <Button aria-label="Copiar correlation ID" onClick={() => void navigator.clipboard.writeText(lastCorrelationId)} size="icon-sm" title={`Correlation ID: ${lastCorrelationId}`} variant="ghost"><CopyIcon /></Button>
+                <Button aria-label="Copy correlation ID" onClick={() => void navigator.clipboard.writeText(lastCorrelationId)} size="icon-sm" title={`Correlation ID: ${lastCorrelationId}`} variant="ghost"><CopyIcon /></Button>
               ) : null}
             </div>
           </header>
@@ -769,10 +769,10 @@ export function TrustedSurface() {
           <Conversation className="min-h-0 bg-workspace">
             <ConversationContent className={cn("mx-auto min-h-full w-full max-w-3xl gap-7 px-4 py-7 md:px-8 md:py-10", !conversation?.messages.length && "justify-center")}>
               {loadState === "loading" ? (
-                <div className="my-auto flex items-center justify-center"><Shimmer className="text-sm text-muted-foreground">Abrindo sua conversa segura…</Shimmer></div>
+                <div className="my-auto flex items-center justify-center"><Shimmer className="text-sm text-muted-foreground">Opening your secure conversation…</Shimmer></div>
               ) : null}
 
-              {loadState === "error" && !conversation ? <ErrorNotice error={error ?? new BoundApiError({ message: "A API do Bound não respondeu.", offline: true })} onRetry={() => void createConversation()} /> : null}
+              {loadState === "error" && !conversation ? <ErrorNotice error={error ?? new BoundApiError({ message: "The Bound API did not respond.", offline: true })} onRetry={() => void createConversation()} /> : null}
 
               {loadState === "ready" && conversation && !conversation.messages.length ? <Welcome disabled={isBusy} onSuggestion={(value) => void submitTurn(value)} /> : null}
 
@@ -785,21 +785,21 @@ export function TrustedSurface() {
               {busy === "sending" ? (
                 <div className="flex items-center gap-3 pl-1" aria-live="polite">
                   <span className="grid size-7 place-items-center text-blue-700"><BotIcon className="size-4" /></span>
-                  <Shimmer className="text-xs text-muted-foreground">TravelBot está trabalhando…</Shimmer>
+                  <Shimmer className="text-xs text-muted-foreground">TravelBot is working…</Shimmer>
                 </div>
               ) : null}
 
               {showOffers ? (
                 <div className="grid gap-3">
-                  {conversation.offers.map((offer) => <OfferCard disabled={isBusy} key={offer.offer_id} offer={offer} onSelect={() => void submitTurn(`Seleciono a oferta ${offer.offer_id}.`)} />)}
+                  {conversation.offers.map((offer) => <OfferCard disabled={isBusy} key={offer.offer_id} offer={offer} onSelect={() => void submitTurn(`I select offer ${offer.offer_id}.`)} />)}
                 </div>
               ) : null}
 
-              {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "Confirmo e autorizo esta compra." : "Não autorizo esta compra.")} /> : null}
+              {showApproval ? <ApprovalCard conversation={conversation} disabled={isBusy} onDecision={(approved) => void submitTurn(approved ? "I confirm and authorize this purchase." : "I do not authorize this purchase.")} /> : null}
 
               {error && conversation ? <ErrorNotice error={error} onRetry={failedTurn ? () => void submitTurn(failedTurn.text, failedTurn.identity) : undefined} /> : null}
             </ConversationContent>
-            <ConversationScrollButton aria-label="Ir para o fim da conversa" />
+            <ConversationScrollButton aria-label="Go to the end of the conversation" />
           </Conversation>
 
           <footer className="shrink-0 border-t bg-panel px-3 py-2.5 md:px-6">
@@ -810,33 +810,33 @@ export function TrustedSurface() {
                     className="min-h-12"
                     disabled={!conversation || isBusy || loadState !== "ready"}
                     onChange={(event) => setComposerValue(event.currentTarget.value)}
-                    placeholder={speech.listening ? "Estou ouvindo…" : "Converse com o TravelBot…"}
+                    placeholder={speech.listening ? "Listening…" : "Talk to TravelBot…"}
                     value={composerValue}
                   />
                 </PromptInputBody>
                 <PromptInputFooter>
                   <PromptInputTools>
                     <Button
-                      aria-label={speech.listening ? "Parar ditado" : speech.supported ? "Ditar mensagem" : "Ditado não suportado neste navegador"}
+                      aria-label={speech.listening ? "Stop dictation" : speech.supported ? "Dictate message" : "Dictation is not supported in this browser"}
                       aria-pressed={speech.listening}
                       className={cn("rounded-md", speech.listening && "bg-red-50 text-destructive hover:bg-red-100")}
                       disabled={!speech.supported || !conversation || (isBusy && !speech.listening)}
                       onClick={speech.toggle}
                       size="icon-sm"
-                      title={speech.supported ? "Ditar mensagem" : "Seu navegador não oferece reconhecimento de voz"}
+                      title={speech.supported ? "Dictate message" : "Your browser does not support speech recognition"}
                       type="button"
                       variant="ghost"
                     >
                       {speech.listening ? <SquareIcon className="size-3.5 fill-current" /> : speech.supported ? <MicIcon /> : <MicOffIcon />}
                     </Button>
-                    {speech.listening ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />ouvindo</span> : null}
+                    {speech.listening ? <span className="hidden items-center gap-1.5 text-[10px] text-destructive sm:inline-flex"><i className="size-1.5 animate-pulse rounded-full bg-current" />listening</span> : null}
                   </PromptInputTools>
                   <PromptInputSubmit disabled={!composerValue.trim() || !conversation || isBusy || loadState !== "ready"} status={busy === "sending" ? "submitted" : "ready"} />
                 </PromptInputFooter>
               </PromptInput>
               <div className="mt-1.5 flex min-h-4 items-center justify-between gap-3 px-1">
                 <p className={cn("text-[10px]", speech.error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
-                  {speech.error ?? (speech.supported ? "Clique no microfone para ditar. Revise antes de enviar." : "Enter envia · Shift+Enter quebra a linha")}
+                  {speech.error ?? (speech.supported ? "Click the microphone to dictate. Review before sending." : "Enter sends · Shift+Enter adds a new line")}
                 </p>
                 <span className="hidden truncate font-mono text-[9px] text-muted-foreground sm:block">{shortId(apiUrl, 28, 0)}</span>
               </div>

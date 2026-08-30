@@ -22,7 +22,7 @@ const output = {
     ambiguities: [],
     requested_action: "FIND_OFFERS",
   },
-  assistant_message: "Vou buscar ofertas.",
+  assistant_message: "I will search for offers.",
 };
 
 function responseBody() {
@@ -86,7 +86,7 @@ test("the Agents SDK request disables provider storage and parallel tool calls",
     model: "gpt-test-contract",
     state: "READY_TO_SEARCH",
     intent: emptyTravelIntent(),
-    user_message: "GRU para COR",
+    user_message: "GRU to COR",
     available_tools: ["find_offers"],
   };
 
@@ -95,11 +95,11 @@ test("the Agents SDK request disables provider storage and parallel tool calls",
     conversation_history: [
       {
         role: "USER" as const,
-        content: "Quero comprar uma passagem para Rondônia por no máximo três mil reais.",
+        content: "I want to buy a ticket to Rondônia for no more than three thousand reais.",
       },
       {
         role: "ASSISTANT" as const,
-        content: "Qual cidade ou aeroporto você prefere no destino?",
+        content: "Which city or airport do you prefer at the destination?",
       },
     ],
   };

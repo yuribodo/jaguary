@@ -45,7 +45,7 @@ test("a persisted offer selection is accepted as a proposal for application comm
   }, now);
   const claimed = await repository.claimTurn({
     conversation_id: conversation.conversation_id,
-    content: "Quero a oferta disponível.",
+    content: "I want the available offer.",
     idempotency_key: "idem_tool_proposal_message_001",
     correlation_id: "corr_tool_proposal_message_001",
   }, now);
@@ -64,7 +64,7 @@ test("a persisted offer selection is accepted as a proposal for application comm
       confirmation: null,
     },
     offers: [offerCandidateFixture],
-    assistant_message: "Selecione a oferta.",
+    assistant_message: "Select the offer.",
   }, now);
   const executor = new StateGuardedAgentToolExecutor(
     repository,

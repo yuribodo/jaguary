@@ -5,7 +5,7 @@ import { Aes256GcmApprovalStateProtector } from "../src/modules/travelbot/index.
 
 test("resumable SDK approval state is authenticated and encrypted at rest", async () => {
   const protector = new Aes256GcmApprovalStateProtector(Buffer.alloc(32, 7).toString("base64"));
-  const raw = JSON.stringify({ user_message: "texto privado", internal_prompt: "não persistir aberto" });
+  const raw = JSON.stringify({ user_message: "private text", internal_prompt: "do not persist in plaintext" });
   const sealed = await protector.seal(raw);
 
   assert.match(sealed, /^v1\./);
