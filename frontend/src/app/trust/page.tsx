@@ -20,9 +20,9 @@ const AGENT_ID = "agent_travelbot";
 
 const statusContent: Record<string, { badge: string; title: string; description: string }> = {
   PENDING: { badge: "PENDING", title: "Identity verification not complete", description: "Finish the open Didit check. If the verification page did not open or was closed, restart it here." },
-  VERIFIED: { badge: "VERIFIED", title: "Operator identity verified", description: "The principal can operate TravelBot with verified identity." },
+  VERIFIED: { badge: "VERIFIED", title: "Your identity is verified", description: "Your TravelBot profile can authorize purchases with verified identity." },
   REJECTED: { badge: "REJECTED", title: "Identity could not be verified", description: "The provider could not approve the submitted evidence. Start a new verification to try again." },
-  EXPIRED: { badge: "EXPIRED", title: "Identity verification expired", description: "A new identity check is required before TravelBot can operate with verified authority." },
+  EXPIRED: { badge: "EXPIRED", title: "Identity verification expired", description: "A new identity check is required before you can authorize purchases with TravelBot." },
   REVOKED: { badge: "REVOKED", title: "Identity verification revoked", description: "This assurance is no longer valid. Start a new verification to restore access." },
   ERROR: { badge: "UNAVAILABLE", title: "Verification status unavailable", description: "The identity provider could not be reached. Refresh the status or try again shortly." },
 };
@@ -32,12 +32,17 @@ function formatEvidenceDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(value));
 }
 
+function formatAssuranceClaim(value: AgentAssurance["assurance_claims"][number]) {
+  if (value === "PRINCIPAL_IDENTITY" || value === "OPERATOR_IDENTITY") return "customer identity";
+  return value.replaceAll("_", " ").toLowerCase();
+}
+
 function PageIntro() {
   return (
     <div className="max-w-2xl border-b pb-8">
       <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Account / trust</p>
       <h1 className="mt-3 text-4xl leading-none [font-family:var(--font-display)] md:text-5xl">Identity &amp; trust</h1>
-      <p className="mt-5 text-base leading-7 text-muted-foreground">Manage the identity linked to TravelBot and review the assurance used to enforce its authority.</p>
+      <p className="mt-5 text-base leading-7 text-muted-foreground">Manage your identity verification for TravelBot purchases. This verification belongs to your account, not to the shared agent.</p>
     </div>
   );
 }
@@ -176,7 +181,7 @@ export default function TrustPage() {
         <PageIntro />
         <section className="mt-8 rounded-xl border bg-card p-6 shadow-xs">
           <h2 className="text-2xl [font-family:var(--font-display)]">Sign in to view identity assurance</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Jaguary must identify the principal before showing or changing the operator verification.</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Jaguary must identify you before showing or changing your verification.</p>
           <Button className="mt-5 min-h-11" nativeButton={false} render={<Link href="/login" />}>Sign in <ArrowRightIcon /></Button>
         </section>
       </AccountPageShell>
@@ -201,11 +206,11 @@ export default function TrustPage() {
   const pending = assurance?.attestation_status === "PENDING";
   const status = assurance?.attestation_status ? statusContent[assurance.attestation_status] : {
     badge: "ACTION REQUIRED",
-    title: "Verify the operator identity",
-    description: "Complete a provider-hosted identity check before TravelBot operates with verified authority.",
+    title: "Verify your identity",
+    description: "Complete a provider-hosted identity check before authorizing purchases with TravelBot.",
   };
   const content = verified
-    ? { ...status, description: `${session.principal.display_name} can operate TravelBot with verified identity.` }
+    ? { ...status, description: `${session.principal.display_name} can authorize TravelBot purchases with verified identity.` }
     : status;
 
   return (
@@ -301,7 +306,7 @@ export default function TrustPage() {
         </div>
         <dl className="rounded-xl border bg-card px-5 shadow-xs md:px-6">
           <DetailRow label="Provider" value={assurance?.provider ?? "Not connected"} />
-          <DetailRow label="Assurance" value={assurance?.assurance_claims.length ? assurance.assurance_claims.map((claim) => claim.replaceAll("_", " ").toLowerCase()).join(", ") : "No external claim recorded"} />
+          <DetailRow label="Assurance" value={assurance?.assurance_claims.length ? assurance.assurance_claims.map(formatAssuranceClaim).join(", ") : "No external claim recorded"} />
           <DetailRow label="Agent" value="TravelBot" />
           <DetailRow label="Attestation" value={assurance?.attestation_id ?? "Not issued"} mono />
           <DetailRow label="Issued" value={formatEvidenceDate(assurance?.issued_at)} />

@@ -705,6 +705,73 @@ integrationTest("a platform-owned TravelBot creates a conversation for another c
   assert.equal(conversation.agent_id, travelBotFixture.agent_id);
 });
 
+integrationTest("public TravelBot stores a separate onboarding reference for each customer", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-30T07:00:00.000Z");
+  await database.transaction(async (transaction) => {
+    await transaction.insert(principals).values([
+      { principalId: "principal_jaguary_platform", displayName: "Jaguary Platform", createdAt: now, updatedAt: now },
+      { principalId: "principal_alice", displayName: "Alice", createdAt: now, updatedAt: now },
+      { principalId: "principal_bob", displayName: "Bob", createdAt: now, updatedAt: now },
+    ]);
+    await transaction.insert(agents).values({
+      agentId: travelBotFixture.agent_id,
+      principalId: "principal_jaguary_platform",
+      accessScope: "PUBLIC",
+      displayName: travelBotFixture.display_name,
+      status: "ACTIVE",
+      buildFingerprint: travelBotFixture.build_fingerprint,
+      verificationKeyId: travelBotFixture.verification_key.key_id,
+      verificationAlgorithm: "ES256",
+      verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
+      correlationId: "corr_public_agent_seed",
+      idempotencyKey: "idem_public_agent_seed",
+      createdAt: now,
+    });
+  });
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const repository = new PostgresAgentTrustRepository(database, ledger, {
+    mode: "EXTERNAL_REQUIRED",
+    provider: "fake",
+    attestationTtlSeconds: 3600,
+    encryptionSecret: "public-agent-integration-secret",
+  });
+  const createCustomerAssessment = (principalId: string, suffix: string) => repository.createAssessment({
+    attestationId: `attestation_${suffix}`,
+    agentId: travelBotFixture.agent_id,
+    principalId,
+    keyId: travelBotFixture.verification_key.key_id,
+    buildFingerprint: travelBotFixture.build_fingerprint,
+    provider: "fake",
+    providerAssessmentId: `fake_assessment_${suffix}`,
+    bindingHash: agentBindingHash({
+      agentId: travelBotFixture.agent_id,
+      principalId,
+      keyId: travelBotFixture.verification_key.key_id,
+      buildFingerprint: travelBotFixture.build_fingerprint,
+    }),
+    evidenceHash: suffix === "alice" ? "a".repeat(64) : "b".repeat(64),
+    correlationId: `corr_${suffix}_onboarding`,
+    idempotencyKey: `idem_${suffix}_onboarding`,
+    now,
+  });
+
+  await createCustomerAssessment("principal_alice", "alice");
+  await createCustomerAssessment("principal_bob", "bob");
+
+  const alice = await repository.getCurrentForPrincipal(travelBotFixture.agent_id, "principal_alice", now);
+  const bob = await repository.getCurrentForPrincipal(travelBotFixture.agent_id, "principal_bob", now);
+  const aliceByEvidence = await repository.getCurrentByEvidenceReferenceHash(travelBotFixture.agent_id, "a".repeat(64), now);
+  const platform = await repository.getCurrent(travelBotFixture.agent_id, now);
+  assert.equal(alice.attestation_id, "attestation_alice");
+  assert.equal(aliceByEvidence.attestation_id, "attestation_alice");
+  assert.equal(bob.attestation_id, "attestation_bob");
+  assert.notEqual(alice.binding_hash, bob.binding_hash);
+  assert.equal(platform.principal_id, "principal_jaguary_platform");
+  assert.equal(platform.mode, "LOCAL");
+  assert.equal(platform.attestation_id, null);
+});
+
 integrationTest("the demo credential template resolves to an isolated customer reference", async () => {
   assert.ok(database);
   const now = new Date("2026-08-30T06:53:59.000Z");

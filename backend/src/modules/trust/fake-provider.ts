@@ -8,7 +8,7 @@ export class DeterministicFakeAttestationProvider implements AgentAttestationPro
   }
   async getAssessment(assessmentId: string): Promise<ProviderAssessmentResult> {
     return {
-      provider: "fake", assessmentId, subjectReference: `fake-subject:${assessmentId}`, status: "VERIFIED", claims: ["OPERATOR_IDENTITY"],
+      provider: "fake", assessmentId, subjectReference: `fake-subject:${assessmentId}`, status: "VERIFIED", claims: ["PRINCIPAL_IDENTITY"],
       evidenceHash: sha256CanonicalJson({ provider: "fake", assessment_id: assessmentId, status: "VERIFIED" }), providerCreatedAt: this.issuedAt,
     };
   }

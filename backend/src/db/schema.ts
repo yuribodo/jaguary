@@ -148,6 +148,7 @@ export const principalSessions = pgTable("principal_sessions", {
 export const agents = pgTable("agents", {
   agentId: varchar("agent_id", { length: 128 }).primaryKey(),
   principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
+  accessScope: varchar("access_scope", { length: 16 }).default("OWNER").notNull(),
   displayName: varchar("display_name", { length: 256 }).notNull(),
   status: varchar("status", { length: 16 }).notNull(),
   buildFingerprint: char("build_fingerprint", { length: 64 }).notNull(),
@@ -164,6 +165,7 @@ export const agents = pgTable("agents", {
   unique("agents_idempotency_key_unique").on(table.idempotencyKey),
   check("agents_agent_id_check", identifierCheck(table.agentId)),
   check("agents_principal_id_check", identifierCheck(table.principalId)),
+  check("agents_access_scope_check", sql`${table.accessScope} IN ('OWNER', 'PUBLIC')`),
   check("agents_status_check", sql`${table.status} IN (${sqlList(agentIdentityStatusSchema.options)})`),
   check("agents_build_fingerprint_check", hashCheck(table.buildFingerprint)),
   check("agents_verification_key_id_check", identifierCheck(table.verificationKeyId)),
@@ -205,16 +207,16 @@ export const agentAttestations = pgTable("agent_attestations", {
   unique("agent_attestations_creation_idempotency_unique").on(table.creationIdempotencyKey),
   unique("agent_attestations_provider_assessment_unique").on(table.provider, table.providerAssessmentHash),
   foreignKey({
-    name: "agent_attestations_agent_principal_fk",
-    columns: [table.agentId, table.principalId],
-    foreignColumns: [agents.agentId, agents.principalId],
+    name: "agent_attestations_agent_fk",
+    columns: [table.agentId],
+    foreignColumns: [agents.agentId],
   }),
   check("agent_attestations_id_check", identifierCheck(table.attestationId)),
   check("agent_attestations_status_check", sql`${table.status} IN (${sqlList(agentAttestationStatusSchema.options)})`),
   check("agent_attestations_hashes_check", sql`${hashCheck(table.providerAssessmentHash)} AND ${hashCheck(table.buildFingerprint)} AND ${hashCheck(table.bindingHash)} AND ${hashCheck(table.evidenceHash)} AND (${table.providerSubjectHash} IS NULL OR ${hashCheck(table.providerSubjectHash)})`),
   check("agent_attestations_verified_check", sql`${table.status} <> 'VERIFIED' OR (cardinality(${table.normalizedClaims}) > 0 AND ${table.providerSubjectHash} IS NOT NULL AND ${table.issuedAt} IS NOT NULL AND ${table.expiresAt} IS NOT NULL AND ${table.issuedAt} < ${table.expiresAt})`),
   check("agent_attestations_idempotency_check", sql`length(${table.creationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.creationIdempotencyKey)}`),
-  index("agent_attestations_current_idx").on(table.agentId, table.status, table.expiresAt),
+  index("agent_attestations_current_idx").on(table.agentId, table.principalId, table.status, table.expiresAt),
 ]);
 
 export const agentAttestationEvents = pgTable("agent_attestation_events", {

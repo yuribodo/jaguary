@@ -1,7 +1,7 @@
 import { PublicApiError, type AgentTrustRepositoryPort, type AgentTrustSnapshot } from "../../contracts/v1/index.js";
 import { agentBindingHash } from "./eligibility.js";
 
-export interface TrustAgentBinding { agentId: string; principalId: string; keyId: string; buildFingerprint: string; operationalStatus: "ACTIVE" | "SUSPENDED" | "REVOKED" }
+export interface TrustAgentBinding { agentId: string; principalId: string; keyId: string; buildFingerprint: string; operationalStatus: "ACTIVE" | "SUSPENDED" | "REVOKED"; accessScope?: "OWNER" | "PUBLIC" }
 interface Stored { trust: AgentTrustSnapshot; assessmentId: string; lastEventAt?: Date }
 export class InMemoryAgentTrustRepository implements AgentTrustRepositoryPort {
   readonly #agents = new Map<string, TrustAgentBinding>();
@@ -9,11 +9,21 @@ export class InMemoryAgentTrustRepository implements AgentTrustRepositoryPort {
   readonly #idempotency = new Map<string, string>();
   readonly #events = new Set<string>();
   constructor(private readonly options: { mode: AgentTrustSnapshot["mode"]; provider: "fake" | "didit"; attestationTtlSeconds: number }, agents: TrustAgentBinding[]) { for (const agent of agents) this.#agents.set(agent.agentId, agent); }
-  async getAgentBinding(agentId: string, principalId?: string): Promise<TrustAgentBinding> { const value = this.#agents.get(agentId); if (value === undefined || (principalId !== undefined && value.principalId !== principalId)) throw new PublicApiError(404, "not_found", "Agent not found for this principal"); return value; }
+  #key(agentId: string, principalId: string) { return `${agentId}:${principalId}`; }
+  async getAgentBinding(agentId: string, principalId?: string): Promise<TrustAgentBinding> {
+    const value = this.#agents.get(agentId);
+    if (value === undefined || (principalId !== undefined && value.accessScope !== "PUBLIC" && value.principalId !== principalId)) throw new PublicApiError(404, "not_found", "Agent not found for this principal");
+    return { ...value, principalId: principalId ?? value.principalId };
+  }
   async getProviderAssessmentId(attestationId: string): Promise<string> { const value = [...this.#stored.values()].find((item) => item.trust.attestation_id === attestationId); if (value === undefined) throw new Error("Attestation not found"); return value.assessmentId; }
+  async getCurrentByEvidenceReferenceHash(agentId: string, evidenceReferenceHash: string): Promise<AgentTrustSnapshot> {
+    const value = [...this.#stored.values()].find((item) => item.trust.agent_id === agentId && item.trust.evidence_reference_hash === evidenceReferenceHash);
+    if (value === undefined) throw new PublicApiError(404, "not_found", "Attestation not found");
+    return this.getCurrentForPrincipal(agentId, value.trust.principal_id);
+  }
   async findAssessmentByIdempotencyKey(idempotencyKey: string): Promise<AgentTrustSnapshot | undefined> {
-    const agentId = this.#idempotency.get(idempotencyKey);
-    return agentId === undefined ? undefined : this.#stored.get(agentId)?.trust;
+    const bindingKey = this.#idempotency.get(idempotencyKey);
+    return bindingKey === undefined ? undefined : this.#stored.get(bindingKey)?.trust;
   }
   async createAssessment(command: Parameters<AgentTrustRepositoryPort["createAssessment"]>[0]): Promise<AgentTrustSnapshot> {
     const existing = this.#idempotency.get(command.idempotencyKey); if (existing !== undefined) return this.#stored.get(existing)!.trust;
@@ -22,7 +32,8 @@ export class InMemoryAgentTrustRepository implements AgentTrustRepositoryPort {
       attestation_status: "PENDING", attestation_id: command.attestationId, key_id: agent.keyId, build_fingerprint: agent.buildFingerprint,
       provider: command.provider, assurance_claims: [], assurance_level: "LOCAL_CRYPTOGRAPHIC", binding_hash: command.bindingHash,
       evidence_reference_hash: command.evidenceHash, issued_at: null, expires_at: null };
-    this.#stored.set(agent.agentId, { trust, assessmentId: command.providerAssessmentId }); this.#idempotency.set(command.idempotencyKey, agent.agentId); return trust;
+    const bindingKey = this.#key(agent.agentId, agent.principalId);
+    this.#stored.set(bindingKey, { trust, assessmentId: command.providerAssessmentId }); this.#idempotency.set(command.idempotencyKey, bindingKey); return trust;
   }
   async applyProviderEvent(command: Parameters<AgentTrustRepositoryPort["applyProviderEvent"]>[0]): Promise<{ trust: AgentTrustSnapshot; applied: boolean }> {
     if (this.#events.has(command.event.eventId)) { const existing = [...this.#stored.values()].find((item) => item.assessmentId === command.event.assessmentId)!; return { trust: existing.trust, applied: false }; }
@@ -31,14 +42,23 @@ export class InMemoryAgentTrustRepository implements AgentTrustRepositoryPort {
     if (entry.lastEventAt !== undefined && command.event.providerCreatedAt <= entry.lastEventAt) return { trust: entry.trust, applied: false };
     entry.lastEventAt = command.event.providerCreatedAt;
     entry.trust = { ...entry.trust, attestation_status: command.event.status, assurance_claims: command.event.claims,
-      assurance_level: command.event.status === "VERIFIED" ? "EXTERNAL_OPERATOR_IDENTITY" : "LOCAL_CRYPTOGRAPHIC", evidence_reference_hash: command.event.evidenceHash,
+      assurance_level: command.event.status === "VERIFIED" ? (command.event.claims.includes("PRINCIPAL_IDENTITY") ? "EXTERNAL_PRINCIPAL_IDENTITY" : "EXTERNAL_OPERATOR_IDENTITY") : "LOCAL_CRYPTOGRAPHIC", evidence_reference_hash: command.event.evidenceHash,
       issued_at: command.event.status === "VERIFIED" ? command.event.providerCreatedAt.toISOString() : null,
       expires_at: command.event.status === "VERIFIED" ? new Date(command.event.providerCreatedAt.getTime() + this.options.attestationTtlSeconds * 1000).toISOString() : null };
     return { trust: entry.trust, applied: true };
   }
-  async getCurrent(agentId: string): Promise<AgentTrustSnapshot> { const stored = this.#stored.get(agentId); if (stored !== undefined) return stored.trust; const agent = await this.getAgentBinding(agentId); return { mode: this.options.mode, agent_id: agent.agentId, principal_id: agent.principalId, operational_status: agent.operationalStatus, attestation_status: null, attestation_id: null, key_id: agent.keyId, build_fingerprint: agent.buildFingerprint, provider: this.options.provider, assurance_claims: [], assurance_level: "LOCAL_CRYPTOGRAPHIC", binding_hash: agentBindingHash(agent), evidence_reference_hash: null, issued_at: null, expires_at: null }; }
+  async getCurrent(agentId: string): Promise<AgentTrustSnapshot> { const agent = await this.getAgentBinding(agentId); return this.getCurrentForPrincipal(agentId, agent.principalId); }
+  async getCurrentForPrincipal(agentId: string, principalId: string): Promise<AgentTrustSnapshot> {
+    const agent = await this.getAgentBinding(agentId, principalId);
+    const stored = this.#stored.get(this.#key(agentId, principalId));
+    if (stored !== undefined) return stored.trust;
+    const owner = this.#agents.get(agentId)!;
+    const mode = owner.accessScope === "PUBLIC" && principalId === owner.principalId ? "LOCAL" : this.options.mode;
+    return { mode, agent_id: agent.agentId, principal_id: agent.principalId, operational_status: agent.operationalStatus, attestation_status: null, attestation_id: null, key_id: agent.keyId, build_fingerprint: agent.buildFingerprint, provider: this.options.provider, assurance_claims: [], assurance_level: "LOCAL_CRYPTOGRAPHIC", binding_hash: agentBindingHash(agent), evidence_reference_hash: null, issued_at: null, expires_at: null };
+  }
   async revokeCurrent(agentId: string): Promise<AgentTrustSnapshot> {
-    const stored = this.#stored.get(agentId);
+    const agent = await this.getAgentBinding(agentId);
+    const stored = this.#stored.get(this.#key(agentId, agent.principalId));
     if (stored === undefined || stored.trust.attestation_id === null) throw new PublicApiError(404, "not_found", "Attestation not found");
     stored.trust = { ...stored.trust, attestation_status: "REVOKED", assurance_level: "LOCAL_CRYPTOGRAPHIC" };
     return stored.trust;

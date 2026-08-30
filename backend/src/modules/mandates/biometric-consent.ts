@@ -53,6 +53,7 @@ export interface MandateBiometricConsentGate {
 
 type TrustRepository = AgentTrustRepositoryPort & {
   getProviderAssessmentId(attestationId: string): Promise<string>;
+  getCurrentForPrincipal(agentId: string, principalId: string, now: Date): ReturnType<AgentTrustRepositoryPort["getCurrent"]>;
 };
 
 export interface MandateBiometricConsentServiceOptions {
@@ -107,9 +108,13 @@ export class MandateBiometricConsentService implements MandateBiometricConsentGa
     if (mandate.terms.principal_id !== session.principal.principal_id) throw new PublicApiError(404, "not_found", "Mandate not found");
     if (mandate.status !== "DRAFT") throw new PublicApiError(409, "mandate_not_active", "Only a draft mandate can receive biometric consent");
     const termsHash = sha256CanonicalJson(mandate.terms);
-    const trust = await this.options.trust.getCurrent(mandate.terms.agent_id, this.options.clock.now());
-    if (trust.principal_id !== session.principal.principal_id || trust.attestation_id === null || trust.attestation_status !== "VERIFIED") {
-      throw new PublicApiError(403, "agent_attestation_required", "An approved onboarding verification is required");
+    const trust = await this.options.trust.getCurrentForPrincipal(
+      mandate.terms.agent_id,
+      session.principal.principal_id,
+      this.options.clock.now(),
+    );
+    if (trust.attestation_id === null || trust.attestation_status !== "VERIFIED") {
+      throw new PublicApiError(403, "principal_attestation_required", "Your approved identity verification is required");
     }
     const onboardingAttestationId = trust.attestation_id;
 

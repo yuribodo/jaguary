@@ -100,7 +100,7 @@ function isSupportedPortrait(bytes: Uint8Array): boolean {
 function safeAssessment(value: Record<string, unknown>, fallbackNow: Date): ProviderAssessmentResult {
   if (typeof value.session_id !== "string") throw new Error("Didit response is unavailable");
   const normalized = normalizeStatus(value.status);
-  const claims: AgentAssuranceClaim[] = normalized.status === "VERIFIED" ? ["OPERATOR_IDENTITY"] : [];
+  const claims: AgentAssuranceClaim[] = normalized.status === "VERIFIED" ? ["PRINCIPAL_IDENTITY"] : [];
   const subjectReference = normalized.status === "VERIFIED"
     ? (typeof value.vendor_user_id === "string" ? value.vendor_user_id : value.session_id)
     : null;

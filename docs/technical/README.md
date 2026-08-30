@@ -25,14 +25,14 @@ The shortest accurate model is:
 | Mandates | Persist scoped, revocable authority | Principal, agent, merchant, route, limits, validity, credential reference | Mutable authority after activation |
 | Bound Verify | Produce a deterministic decision | Signatures, bindings, scope, limits, state, replay, reservation | LLM judgment or provider calls during evaluation |
 | Payments | Execute a reserved authorization once | Payment attempt, provider idempotency, result transition | Choosing amount, merchant, or credential from client input |
-| Trust | Normalize agent/operator assurance | Local key/build binding, Didit evidence, Agent Passport | Producing `ALLOW` by itself |
+| Trust | Normalize platform-agent and customer assurance | Local key/build binding, customer-bound Didit evidence, Agent Passport | Producing `ALLOW` by itself |
 | Ledger | Explain committed state transitions | Append-only correlated hash chain and receipts | A claim of blockchain or external immutability |
 
 ## Integration guides
 
 - [OpenAI and TravelBot](openai-travelbot.md) — why the model is present, how turns work, and where deterministic control resumes.
 - [Google Flights search through SerpApi](google-flights-search.md) — typed query mapping, normalization, caching, expiry, and the boundary before checkout.
-- [Didit and agent trust](didit-trust.md) — operator identity evidence, webhooks, biometric consent, and Agent Passports.
+- [Didit and customer trust](didit-trust.md) — customer identity evidence, webhooks, biometric consent, and Agent Passports.
 - [UCP commerce integration](ucp-commerce.md) — discovery, capability negotiation, merchant-authored checkout, and orders.
 - [AP2 and Bound authorization](ap2-bound.md) — mandates, exact checkout binding, Verify, replay protection, and the current conformance boundary.
 

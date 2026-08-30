@@ -44,12 +44,70 @@ test("execution eligibility separates the platform operator from the customer", 
   );
 });
 
+test("public TravelBot gives every customer an isolated identity verification", async () => {
+  const repository = new InMemoryAgentTrustRepository(
+    { mode: "EXTERNAL_REQUIRED", provider: "fake", attestationTtlSeconds: 3600 },
+    [{
+      agentId: "agent_travelbot",
+      principalId: "principal_jaguary_platform",
+      keyId: "key_travelbot",
+      buildFingerprint: "a".repeat(64),
+      operationalStatus: "ACTIVE",
+      accessScope: "PUBLIC",
+    }],
+  );
+  const passports = await BoundAgentPassportService.create({ issuer: "https://bound.example", audience: "bound-verify", ttlSeconds: 300, now: () => now });
+  const service = new AgentTrustService({
+    provider: new DeterministicFakeAttestationProvider(now),
+    providerName: "fake",
+    repository,
+    passports,
+    clock: { now: () => now },
+    callbackUrl: "https://bound.example/trust/callback",
+  });
+  const session = (principalId: string, displayName: string) => ({
+    sessionId: `session_${principalId}`,
+    principal: { principal_id: principalId, display_name: displayName },
+    tokenHash: "a".repeat(64),
+    csrfTokenHash: "b".repeat(64),
+    assurance: "OIDC" as const,
+    issuedAt: now,
+    expiresAt: new Date(now.getTime() + 3600_000),
+  });
+
+  const alice = await service.start(session("principal_alice", "Alice"), "agent_travelbot", {
+    consent: true,
+    idempotencyKey: "idem_alice_public_travelbot",
+    correlationId: "corr_alice_public_travelbot",
+  });
+  const bob = await service.start(session("principal_bob", "Bob"), "agent_travelbot", {
+    consent: true,
+    idempotencyKey: "idem_bob_public_travelbot",
+    correlationId: "corr_bob_public_travelbot",
+  });
+
+  assert.notEqual(alice.attestation_id, bob.attestation_id);
+  assert.equal((await service.eligibility.evaluate("agent_travelbot", { purpose: "EXECUTION" }, now)).eligible, true);
+  const aliceAssurance = await service.assurance(session("principal_alice", "Alice"), "agent_travelbot");
+  const bobAssurance = await service.assurance(session("principal_bob", "Bob"), "agent_travelbot");
+  assert.equal(aliceAssurance.attestation_id, alice.attestation_id);
+  assert.equal(bobAssurance.attestation_id, bob.attestation_id);
+  assert.equal(aliceAssurance.eligibility.eligible, true);
+  assert.equal(bobAssurance.eligibility.eligible, true);
+  assert.notEqual(aliceAssurance.attestation_id, bobAssurance.attestation_id);
+  const alicePassport = await service.passport(session("principal_alice", "Alice"), "agent_travelbot", "corr_alice_passport");
+  const bobPassport = await service.passport(session("principal_bob", "Bob"), "agent_travelbot", "corr_bob_passport");
+  assert.equal((await service.verifyPassport(alicePassport.passport, "bound-verify")).jti, alicePassport.claims.jti);
+  assert.equal((await service.verifyPassport(bobPassport.passport, "bound-verify")).jti, bobPassport.claims.jti);
+  assert.notEqual(alicePassport.claims.principal_ref, bobPassport.claims.principal_ref);
+});
+
 test("deterministic fake supplies evidence, not an authorization decision", async () => {
   const fake = new DeterministicFakeAttestationProvider(now);
   const session = await fake.createAssessment({ attestationId: "attestation_1", agentId: "agent_travelbot", principalId: "principal_marta", vendorData: "opaque", callbackUrl: "http://localhost:3000/trust/callback" });
   const result = await fake.getAssessment(session.assessmentId);
   assert.equal(result.status, "VERIFIED");
-  assert.deepEqual(result.claims, ["OPERATOR_IDENTITY"]);
+  assert.deepEqual(result.claims, ["PRINCIPAL_IDENTITY"]);
   assert.equal("decision" in result, false);
 });
 

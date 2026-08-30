@@ -1,4 +1,4 @@
-# ADR-007 — Agent operator and customer authority are separate identities
+# ADR-007 — Public TravelBot and customer-bound identity assurance
 
 - Status: accepted
 - Date: 2026-08-30
@@ -6,39 +6,39 @@
 
 ## Context
 
-TravelBot is a platform-operated agent that serves multiple authenticated customers. The original implementation used one `principal_id` both for the human/operator whose identity and key/build binding are attested and for the customer whose conversation and purchase authority are being executed. That happened to work for the Marta demo fixture, but denied every other valid customer with `agent_attestation_binding_mismatch`.
+TravelBot is a public platform agent that serves multiple authenticated customers. The original implementation registered Marta as its owner and reused her Didit assessment as the biometric reference for every purchase. That happened to work for the Marta demo fixture, but denied every other customer before biometric consent and sent them to an onboarding page they could never use.
 
 Those identities answer different security questions:
 
-- the **operator principal** answers who owns and operates the registered agent, public key, build, and Didit KYA evidence;
-- the **customer principal** answers who owns the browser session, conversation, mandate, credential reference, authorization, and receipt.
+- the **platform principal** owns the registered agent, public key, and build;
+- the **customer principal** owns the browser session, Didit identity evidence, conversation, mandate, credential reference, biometric consent, authorization, and receipt.
 
-Requiring the two IDs to match would make a platform agent single-user. Ignoring either binding would lose operator trust or customer authority.
+Marta is only one customer. She has no privileged relationship to TravelBot, and her portrait must never become another customer's biometric reference.
 
 ## Decision
 
 Model and enforce the identities independently.
 
-1. `agents.principal_id` remains the operator/owner binding used by registration, Didit attestation, assurance, and Agent Passport issuance.
-2. The public conversation API derives the customer from the opaque authenticated session. A browser cannot submit or replace `principal_id` when creating a conversation.
-3. Conversation reads, messages, and deletion are scoped to that customer. A different valid session receives `404` rather than learning whether the conversation exists.
-4. Agent eligibility has an explicit purpose:
-   - `OPERATOR` checks that the requesting principal owns the agent binding;
-   - `EXECUTION` checks agent status and required current trust evidence without comparing the operator to the customer.
-5. Verify requires one agent ID across registered identity, signed request, mandate, and authorization. Separately, it requires one customer principal across mandate and authorization.
-6. PostgreSQL uses independent foreign keys for the agent and customer on conversations, mandates, and travel watches. It does not encode a composite agent/customer equality that the domain does not require.
-7. The configured demo credential is a template only. Internal TravelBot authority preparation creates a deterministic, isolated logical credential reference owned by the customer. No payment secret or token is copied, and public mandate creation cannot request template expansion.
+1. `agent_travelbot` is owned by `principal_jaguary_platform` and marked `access_scope=PUBLIC`.
+2. Public access binds trust reads and onboarding sessions to the authenticated customer without changing the agent's global cryptographic identity.
+3. `agent_attestations` references agent and principal independently. Current assurance is selected by `(agent_id, principal_id)`, so two customers can never share a Didit assessment.
+4. The platform execution snapshot for a public agent uses local cryptographic assurance. Customer-bound authority uses the configured external trust mode and fails closed until that customer's assessment is verified.
+5. Biometric consent loads the current assessment for the mandate's customer and uses only that assessment as the reference portrait.
+6. The public conversation API derives the customer from the opaque authenticated session; reads, messages, and deletion remain customer-scoped.
+7. Verify requires one agent ID across registered identity, signed request, mandate, and authorization, and independently requires one customer across mandate and authorization.
+8. The configured demo credential remains a template; the internal flow creates an isolated logical reference owned by each customer.
 
 ## Consequences
 
-- One attested TravelBot can safely serve many authenticated customers.
-- Didit continues to establish operator evidence and biometric consent; it does not become the source of purchase authority or an `ALLOW` decision.
+- One public TravelBot can safely serve many authenticated customers.
+- Each customer completes and sees only their own Didit verification and biometric evidence.
+- Marta's existing assessment remains Marta's assessment after migration, but she is no longer the agent owner.
+- Didit establishes customer evidence; it does not become the source of purchase authority or an `ALLOW` decision.
 - Customer authority remains explicit, scoped, signed, revocable, and rechecked by Verify immediately before reservation.
-- Existing rows where operator and customer are both Marta remain valid through the migration.
-- Integrations must not infer that `agents.principal_id` is the shopper. Code and documentation should use “operator” or “agent owner” for that field and “customer” or “authority principal” for conversation/mandate ownership.
+- Integrations must not infer that `agents.principal_id` is the shopper. For TravelBot it is the platform principal; customer ownership comes from session-bound records.
 
 ## Verification
 
 - Route tests prove session-derived creation, CSRF/origin enforcement, and cross-principal privacy.
-- Policy tests prove that a platform-operated agent can execute authority for another customer while mismatched mandate/authorization customers still fail closed.
-- PostgreSQL integration tests prove independent agent/customer foreign keys, per-customer demo credential isolation, and the complete chat → Verify → payment → receipt path.
+- Trust tests prove that Alice and Bob receive different attestations for the same public TravelBot.
+- PostgreSQL integration tests prove public-agent migration, independent customer onboarding references, per-customer credential isolation, and the complete chat → Verify → payment → receipt path.

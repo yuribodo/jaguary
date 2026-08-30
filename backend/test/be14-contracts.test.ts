@@ -16,7 +16,7 @@ test("BE-14 trust and session contracts expose only normalized privacy-safe stat
     "PENDING", "VERIFIED", "REJECTED", "EXPIRED", "REVOKED", "ERROR",
   ]);
   assert.deepEqual(agentAssuranceClaimSchema.options, [
-    "OPERATOR_IDENTITY", "ORGANIZATION_OWNERSHIP", "AGENT_OPERATOR_BINDING", "BUILD_PROVENANCE",
+    "PRINCIPAL_IDENTITY", "OPERATOR_IDENTITY", "ORGANIZATION_OWNERSHIP", "AGENT_OPERATOR_BINDING", "BUILD_PROVENANCE",
   ]);
   assert.deepEqual(authAssuranceSchema.options, ["DEMO", "OIDC"]);
 

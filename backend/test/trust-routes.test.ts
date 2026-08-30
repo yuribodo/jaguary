@@ -38,7 +38,7 @@ test("authenticated owner starts KYA and receives assurance plus a verifiable pa
   const assurance = await app.inject({ method: "GET", url: "/trust/v1/agents/agent_travelbot/assurance", headers: { cookie: rotatedCookie } });
   assert.equal(assurance.statusCode, 200);
   assert.equal(assurance.json().eligibility.eligible, true);
-  assert.deepEqual(assurance.json().assurance_claims, ["OPERATOR_IDENTITY"]);
+  assert.deepEqual(assurance.json().assurance_claims, ["PRINCIPAL_IDENTITY"]);
 
   const passport = await app.inject({ method: "GET", url: "/trust/v1/agents/agent_travelbot/passport", headers: { cookie: rotatedCookie } });
   assert.equal(passport.statusCode, 200);

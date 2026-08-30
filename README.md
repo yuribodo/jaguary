@@ -88,7 +88,7 @@ External systems remain behind narrow adapters:
 ```text
 OpenAI      language understanding and constrained tool proposals
 SerpApi     Google Flights discovery
-Didit       operator identity and biometric evidence
+Didit       customer identity and biometric consent evidence
 VuelaYa     merchant-authored commerce terms
 Yuno        target payment provider; not yet wired into the runtime
 ```

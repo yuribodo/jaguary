@@ -10,6 +10,9 @@ import type { TransactionClient } from "../../db/database.js";
 type ExtendedTrustRepository = AgentTrustRepositoryPort & {
   getAgentBinding(agentId: string, principalId?: string): Promise<{ agentId: string; principalId: string; keyId: string; buildFingerprint: string; operationalStatus: "ACTIVE" | "SUSPENDED" | "REVOKED" }>;
   getProviderAssessmentId(attestationId: string): Promise<string>;
+  getCurrentForPrincipal?(agentId: string, principalId: string, now: Date): Promise<Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>>;
+  getCurrentForPrincipalInTransaction?(transaction: TransactionClient, agentId: string, principalId: string, now: Date): Promise<Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>>;
+  getCurrentByEvidenceReferenceHash?(agentId: string, evidenceReferenceHash: string, now: Date): Promise<Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>>;
   recordPassportIssued?(input: { passportId: string; trust: Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>; expiresAt: Date; correlationId: string; now: Date }): Promise<void>;
   recordPassportInvalidated?(input: { passportId: string; trust: Awaited<ReturnType<AgentTrustRepositoryPort["getCurrent"]>>; reason: "attestation_expired" | "attestation_revoked" | "binding_changed" | "agent_not_active"; correlationId: string; now: Date }): Promise<void>;
 };
@@ -24,10 +27,22 @@ export interface AgentTrustServiceOptions {
 }
 export class AgentEligibilityService implements AgentEligibilityPort {
   constructor(private readonly repository: AgentTrustRepositoryPort) {}
-  async evaluate(agentId: string, context: AgentEligibilityContext, now: Date) { return evaluateAgentEligibility(await this.repository.getCurrent(agentId, now), context, now); }
+  async evaluate(agentId: string, context: AgentEligibilityContext, now: Date) {
+    const repository = this.repository as AgentTrustRepositoryPort & Pick<ExtendedTrustRepository, "getCurrentForPrincipal">;
+    const trust = context.purpose === "OPERATOR" && repository.getCurrentForPrincipal !== undefined
+      ? await repository.getCurrentForPrincipal(agentId, context.principal_id, now)
+      : await repository.getCurrent(agentId, now);
+    return evaluateAgentEligibility(trust, context, now);
+  }
   async evaluateInTransaction(transaction: TransactionClient, agentId: string, context: AgentEligibilityContext, now: Date) {
-    const repository = this.repository as AgentTrustRepositoryPort & { getCurrentInTransaction?(transaction: TransactionClient, agentId: string, now: Date): ReturnType<AgentTrustRepositoryPort["getCurrent"]> };
-    const trust = repository.getCurrentInTransaction === undefined ? await repository.getCurrent(agentId, now) : await repository.getCurrentInTransaction(transaction, agentId, now);
+    const repository = this.repository as AgentTrustRepositoryPort & Pick<ExtendedTrustRepository, "getCurrentForPrincipalInTransaction" | "getCurrentForPrincipal"> & { getCurrentInTransaction?(transaction: TransactionClient, agentId: string, now: Date): ReturnType<AgentTrustRepositoryPort["getCurrent"]> };
+    const trust = context.purpose === "OPERATOR" && repository.getCurrentForPrincipalInTransaction !== undefined
+      ? await repository.getCurrentForPrincipalInTransaction(transaction, agentId, context.principal_id, now)
+      : repository.getCurrentInTransaction === undefined
+        ? context.purpose === "OPERATOR" && repository.getCurrentForPrincipal !== undefined
+          ? await repository.getCurrentForPrincipal(agentId, context.principal_id, now)
+          : await repository.getCurrent(agentId, now)
+        : await repository.getCurrentInTransaction(transaction, agentId, now);
     return evaluateAgentEligibility(trust, context, now);
   }
 }
@@ -82,7 +97,9 @@ export class AgentTrustService {
   }
   async refresh(session: PrincipalSession, agentId: string, correlationId: string) {
     await this.options.repository.getAgentBinding(agentId, session.principal.principal_id);
-    const current = await this.options.repository.getCurrent(agentId, this.options.clock.now());
+    const current = this.options.repository.getCurrentForPrincipal === undefined
+      ? await this.options.repository.getCurrent(agentId, this.options.clock.now())
+      : await this.options.repository.getCurrentForPrincipal(agentId, session.principal.principal_id, this.options.clock.now());
     if (current.attestation_id === null) throw new PublicApiError(404, "not_found", "Attestation not found");
     const assessmentId = await this.options.repository.getProviderAssessmentId(current.attestation_id);
     let result;
@@ -106,7 +123,9 @@ export class AgentTrustService {
   }
   async passport(session: PrincipalSession, agentId: string, correlationId: string) {
     await this.options.repository.getAgentBinding(agentId, session.principal.principal_id);
-    const trust = await this.options.repository.getCurrent(agentId, this.options.clock.now());
+    const trust = this.options.repository.getCurrentForPrincipal === undefined
+      ? await this.options.repository.getCurrent(agentId, this.options.clock.now())
+      : await this.options.repository.getCurrentForPrincipal(agentId, session.principal.principal_id, this.options.clock.now());
     const decision = evaluateAgentEligibility(trust, { purpose: "OPERATOR", principal_id: session.principal.principal_id }, this.options.clock.now());
     if (!decision.eligible || trust.attestation_status !== "VERIFIED") throw new PublicApiError(403, decision.reason ?? "agent_attestation_required", "Agent is not eligible for a passport");
     const issued = await this.options.passports.issue(trust);
@@ -115,9 +134,15 @@ export class AgentTrustService {
   }
   jwks() { return this.options.passports.jwks(); }
   async verifyPassport(token: string, audience: string, correlationId = "passport-verification") {
-    let agentId: string; let passportId: string;
-    try { const decoded = decodeJwt(token); if (typeof decoded.sub !== "string" || typeof decoded.jti !== "string") throw new Error(); agentId = decoded.sub; passportId = decoded.jti; } catch { throw new PublicApiError(400, "invalid_request", "Passport is malformed"); }
-    const trust = await this.options.repository.getCurrent(agentId, this.options.clock.now());
+    let agentId: string; let passportId: string; let evidenceReferenceHash: string;
+    try {
+      const decoded = decodeJwt(token);
+      if (typeof decoded.sub !== "string" || typeof decoded.jti !== "string" || typeof decoded.evidence_reference_hash !== "string" || !/^[0-9a-f]{64}$/.test(decoded.evidence_reference_hash)) throw new Error();
+      agentId = decoded.sub; passportId = decoded.jti; evidenceReferenceHash = decoded.evidence_reference_hash;
+    } catch { throw new PublicApiError(400, "invalid_request", "Passport is malformed"); }
+    const trust = this.options.repository.getCurrentByEvidenceReferenceHash === undefined
+      ? await this.options.repository.getCurrent(agentId, this.options.clock.now())
+      : await this.options.repository.getCurrentByEvidenceReferenceHash(agentId, evidenceReferenceHash, this.options.clock.now());
     try { return await this.options.passports.verify(token, audience, trust); }
     catch {
       const reason = trust.operational_status !== "ACTIVE" ? "agent_not_active"

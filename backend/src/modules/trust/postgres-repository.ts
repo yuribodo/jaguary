@@ -24,6 +24,9 @@ class ReferenceCipher {
 
 type AgentRow = typeof agents.$inferSelect;
 type AttestationRow = typeof agentAttestations.$inferSelect;
+function externalAssuranceLevel(claims: readonly string[]) {
+  return claims.includes("PRINCIPAL_IDENTITY") ? "EXTERNAL_PRINCIPAL_IDENTITY" as const : "EXTERNAL_OPERATOR_IDENTITY" as const;
+}
 async function loadAgent(database: DatabaseClient | TransactionClient, agentId: string): Promise<AgentRow | undefined> {
   return (await database.select().from(agents).where(eq(agents.agentId, agentId)))[0];
 }
@@ -40,37 +43,55 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
 
   async getAgentBinding(agentId: string, principalId?: string) {
     const agent = await loadAgent(this.database.db, agentId);
-    if (agent === undefined || (principalId !== undefined && agent.principalId !== principalId)) throw new PublicApiError(404, "not_found", "Agent not found for this principal");
-    return { agentId: agent.agentId, principalId: agent.principalId, keyId: agent.verificationKeyId, buildFingerprint: agent.buildFingerprint, operationalStatus: agent.status as "ACTIVE" | "SUSPENDED" | "REVOKED" };
+    if (agent === undefined || (principalId !== undefined && agent.accessScope !== "PUBLIC" && agent.principalId !== principalId)) {
+      throw new PublicApiError(404, "not_found", "Agent not found for this principal");
+    }
+    return { agentId: agent.agentId, principalId: principalId ?? agent.principalId, keyId: agent.verificationKeyId, buildFingerprint: agent.buildFingerprint, operationalStatus: agent.status as "ACTIVE" | "SUSPENDED" | "REVOKED" };
   }
   async getProviderAssessmentId(attestationId: string): Promise<string> {
     const row = (await this.database.db.select({ value: agentAttestations.providerAssessmentCiphertext }).from(agentAttestations).where(eq(agentAttestations.attestationId, attestationId)))[0];
     if (row === undefined) throw new PublicApiError(404, "not_found", "Attestation not found");
     return this.#cipher.decrypt(row.value);
   }
+  async getCurrentByEvidenceReferenceHash(agentId: string, evidenceReferenceHash: string, now: Date): Promise<AgentTrustSnapshot> {
+    const row = (await this.database.db.select({ principalId: agentAttestations.principalId }).from(agentAttestations).where(and(
+      eq(agentAttestations.agentId, agentId),
+      eq(agentAttestations.evidenceHash, evidenceReferenceHash),
+    )).limit(1))[0];
+    if (row === undefined) throw new PublicApiError(404, "not_found", "Attestation not found");
+    return this.getCurrentForPrincipal(agentId, row.principalId, now);
+  }
   async findAssessmentByIdempotencyKey(idempotencyKey: string): Promise<AgentTrustSnapshot | undefined> {
-    const row = (await this.database.db.select({ agentId: agentAttestations.agentId }).from(agentAttestations)
+    const row = (await this.database.db.select({ agentId: agentAttestations.agentId, principalId: agentAttestations.principalId }).from(agentAttestations)
       .where(eq(agentAttestations.creationIdempotencyKey, idempotencyKey)))[0];
-    return row === undefined ? undefined : this.#current(this.database.db, row.agentId);
+    return row === undefined ? undefined : this.#current(this.database.db, row.agentId, row.principalId);
   }
 
-  #snapshot(agent: AgentRow, attestation: AttestationRow | undefined): AgentTrustSnapshot {
-    const expectedBinding = agentBindingHash({ agentId: agent.agentId, principalId: agent.principalId, keyId: agent.verificationKeyId, buildFingerprint: agent.buildFingerprint });
+  #snapshot(agent: AgentRow, principalId: string, attestation: AttestationRow | undefined): AgentTrustSnapshot {
+    const expectedBinding = agentBindingHash({ agentId: agent.agentId, principalId, keyId: agent.verificationKeyId, buildFingerprint: agent.buildFingerprint });
+    const mode = agent.accessScope === "PUBLIC" && principalId === agent.principalId ? "LOCAL" : this.options.mode;
     return agentTrustSnapshotSchema.parse({
-      mode: this.options.mode, agent_id: agent.agentId, principal_id: agent.principalId, operational_status: agent.status,
+      mode, agent_id: agent.agentId, principal_id: principalId, operational_status: agent.status,
       attestation_status: attestation?.status ?? null, attestation_id: attestation?.attestationId ?? null,
       key_id: agent.verificationKeyId, build_fingerprint: agent.buildFingerprint, provider: attestation?.provider ?? this.options.provider,
       assurance_claims: attestation === undefined ? [] : agentAssuranceClaimSchema.array().parse(attestation.normalizedClaims),
-      assurance_level: attestation?.status === "VERIFIED" ? "EXTERNAL_OPERATOR_IDENTITY" : "LOCAL_CRYPTOGRAPHIC",
+      assurance_level: attestation?.status === "VERIFIED" ? externalAssuranceLevel(attestation.normalizedClaims) : "LOCAL_CRYPTOGRAPHIC",
       binding_hash: attestation?.bindingHash ?? expectedBinding, evidence_reference_hash: attestation?.evidenceHash ?? null,
       issued_at: attestation?.issuedAt?.toISOString() ?? null, expires_at: attestation?.expiresAt?.toISOString() ?? null,
     });
   }
-  async #current(database: DatabaseClient | TransactionClient, agentId: string): Promise<AgentTrustSnapshot> {
+  async #current(database: DatabaseClient | TransactionClient, agentId: string, principalId?: string): Promise<AgentTrustSnapshot> {
     const agent = await loadAgent(database, agentId);
     if (agent === undefined) throw new PublicApiError(404, "not_found", "Agent not found");
-    const attestation = (await database.select().from(agentAttestations).where(eq(agentAttestations.agentId, agentId)).orderBy(desc(agentAttestations.createdAt)).limit(1))[0];
-    return this.#snapshot(agent, attestation);
+    const boundPrincipalId = principalId ?? agent.principalId;
+    if (principalId !== undefined && agent.accessScope !== "PUBLIC" && agent.principalId !== principalId) {
+      throw new PublicApiError(404, "not_found", "Agent not found for this principal");
+    }
+    const attestation = (await database.select().from(agentAttestations).where(and(
+      eq(agentAttestations.agentId, agentId),
+      eq(agentAttestations.principalId, boundPrincipalId),
+    )).orderBy(desc(agentAttestations.createdAt)).limit(1))[0];
+    return this.#snapshot(agent, boundPrincipalId, attestation);
   }
 
   async createAssessment(command: Parameters<AgentTrustRepositoryPort["createAssessment"]>[0]): Promise<AgentTrustSnapshot> {
@@ -78,7 +99,7 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
       const replay = (await transaction.select().from(agentAttestations).where(eq(agentAttestations.creationIdempotencyKey, command.idempotencyKey)))[0];
       if (replay !== undefined) {
         if (replay.agentId !== command.agentId || replay.principalId !== command.principalId || replay.providerAssessmentHash !== sha256CanonicalJson(command.providerAssessmentId)) throw new PublicApiError(409, "idempotency_conflict", "Idempotency-Key was reused with another attestation");
-        return this.#current(transaction, command.agentId);
+        return this.#current(transaction, command.agentId, command.principalId);
       }
       await transaction.insert(agentAttestations).values({
         attestationId: command.attestationId, agentId: command.agentId, principalId: command.principalId, keyId: command.keyId,
@@ -90,7 +111,7 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
       await this.ledger.append(transaction, { correlationId: command.correlationId, eventType: "agent.attestation_started", subjectId: command.attestationId,
         payload: { attestation_id: command.attestationId, agent_id: command.agentId, principal_id: command.principalId, provider: command.provider, status: "PENDING", binding_hash: command.bindingHash, evidence_hash: command.evidenceHash, occurred_at: command.now.toISOString() },
         recordedAt: command.now, deduplicationKey: `attestation-started:${command.attestationId}` });
-      return this.#current(transaction, command.agentId);
+      return this.#current(transaction, command.agentId, command.principalId);
     });
   }
 
@@ -101,8 +122,8 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
       const duplicate = (await transaction.select({ attestationId: agentAttestationEvents.attestationId }).from(agentAttestationEvents)
         .where(and(eq(agentAttestationEvents.provider, command.event.provider), eq(agentAttestationEvents.providerEventIdHash, eventHash))))[0];
       if (duplicate !== undefined) {
-        const row = (await transaction.select({ agentId: agentAttestations.agentId }).from(agentAttestations).where(eq(agentAttestations.attestationId, duplicate.attestationId)))[0]!;
-        return { trust: await this.#current(transaction, row.agentId), applied: false };
+        const row = (await transaction.select({ agentId: agentAttestations.agentId, principalId: agentAttestations.principalId }).from(agentAttestations).where(eq(agentAttestations.attestationId, duplicate.attestationId)))[0]!;
+        return { trust: await this.#current(transaction, row.agentId, row.principalId), applied: false };
       }
       const attestation = (await transaction.select().from(agentAttestations).where(and(
         eq(agentAttestations.provider, command.event.provider), eq(agentAttestations.providerAssessmentHash, sha256CanonicalJson(command.event.assessmentId)),
@@ -122,14 +143,14 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
       if (applied) {
         const expiresAt = command.event.status === "VERIFIED" ? new Date(command.event.providerCreatedAt.getTime() + this.options.attestationTtlSeconds * 1000) : undefined;
         await transaction.update(agentAttestations).set({
-          status: command.event.status, normalizedClaims: command.event.claims, assuranceLevel: command.event.status === "VERIFIED" ? "EXTERNAL_OPERATOR_IDENTITY" : "LOCAL_CRYPTOGRAPHIC",
+          status: command.event.status, normalizedClaims: command.event.claims, assuranceLevel: command.event.status === "VERIFIED" ? externalAssuranceLevel(command.event.claims) : "LOCAL_CRYPTOGRAPHIC",
           providerSubjectHash: command.event.subjectReference === null ? null : sha256CanonicalJson(command.event.subjectReference),
           evidenceHash: command.event.evidenceHash, issuedAt: command.event.status === "VERIFIED" ? command.event.providerCreatedAt : null,
           expiresAt: expiresAt ?? null, lastCheckedAt: command.now, failureCode: command.event.failureCode, updatedAt: command.now,
         }).where(eq(agentAttestations.attestationId, attestation.attestationId));
         await this.#auditTransition(transaction, attestation, command, expiresAt);
       }
-      return { trust: await this.#current(transaction, attestation.agentId), applied };
+      return { trust: await this.#current(transaction, attestation.agentId, attestation.principalId), applied };
     });
   }
 
@@ -157,13 +178,36 @@ export class PostgresAgentTrustRepository implements AgentTrustRepositoryPort {
       return current;
     });
   }
+  async getCurrentForPrincipal(agentId: string, principalId: string, now: Date): Promise<AgentTrustSnapshot> {
+    return this.database.transaction(async (transaction) => {
+      const current = await this.#current(transaction, agentId, principalId);
+      if (current.attestation_status === "VERIFIED" && current.expires_at !== null && now.getTime() >= Date.parse(current.expires_at)) {
+        await transaction.update(agentAttestations).set({ status: "EXPIRED", failureCode: "attestation_ttl_expired", updatedAt: now }).where(eq(agentAttestations.attestationId, current.attestation_id!));
+        await this.ledger.append(transaction, { correlationId: `attestation-expiry-${current.attestation_id}`, eventType: "agent.attestation_expired", subjectId: current.attestation_id!,
+          payload: { attestation_id: current.attestation_id!, agent_id: current.agent_id, principal_id: current.principal_id, provider: current.provider, status: "EXPIRED", binding_hash: current.binding_hash, evidence_hash: current.evidence_reference_hash!, occurred_at: now.toISOString() },
+          recordedAt: now, deduplicationKey: `attestation-expired:${current.attestation_id}` });
+        return this.#current(transaction, agentId, principalId);
+      }
+      return current;
+    });
+  }
   async getCurrentInTransaction(transaction: TransactionClient, agentId: string, now: Date): Promise<AgentTrustSnapshot> {
     void now;
     const agent = (await transaction.select().from(agents).where(eq(agents.agentId, agentId)).for("update"))[0];
     if (agent === undefined) throw new PublicApiError(404, "not_found", "Agent not found");
     const attestation = (await transaction.select().from(agentAttestations).where(eq(agentAttestations.agentId, agentId))
       .orderBy(desc(agentAttestations.createdAt)).limit(1).for("update"))[0];
-    return this.#snapshot(agent, attestation);
+    return this.#snapshot(agent, agent.principalId, attestation);
+  }
+  async getCurrentForPrincipalInTransaction(transaction: TransactionClient, agentId: string, principalId: string, now: Date): Promise<AgentTrustSnapshot> {
+    void now;
+    const agent = (await transaction.select().from(agents).where(eq(agents.agentId, agentId)).for("update"))[0];
+    if (agent === undefined || (agent.accessScope !== "PUBLIC" && agent.principalId !== principalId)) throw new PublicApiError(404, "not_found", "Agent not found for this principal");
+    const attestation = (await transaction.select().from(agentAttestations).where(and(
+      eq(agentAttestations.agentId, agentId),
+      eq(agentAttestations.principalId, principalId),
+    )).orderBy(desc(agentAttestations.createdAt)).limit(1).for("update"))[0];
+    return this.#snapshot(agent, principalId, attestation);
   }
 
   async revokeCurrent(agentId: string, now: Date, correlationId: string): Promise<AgentTrustSnapshot> {

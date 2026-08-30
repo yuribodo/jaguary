@@ -103,7 +103,7 @@ test("Didit normalizes all ten official statuses without ever producing ALLOW", 
     const result = await provider.getAssessment("550e8400-e29b-41d4-a716-446655440001");
     assert.equal(result.status, expected, status);
     assert.equal("decision" in result, false);
-    assert.deepEqual(result.claims, status === "Approved" ? ["OPERATOR_IDENTITY"] : []);
+    assert.deepEqual(result.claims, status === "Approved" ? ["PRINCIPAL_IDENTITY"] : []);
   }
 });
 

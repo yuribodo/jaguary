@@ -147,9 +147,9 @@ type SubmitTurnOptions = {
 
 function asApiError(error: unknown) {
   if (error instanceof BoundApiError) {
-    if (error.code === "agent_attestation_required") {
+    if (error.code === "principal_attestation_required" || error.code === "agent_attestation_required") {
       return new BoundApiError({
-        message: "Complete the operator identity check in Identity & trust, then confirm this purchase again.",
+        message: "Verify your identity in Identity & trust, then confirm this purchase again.",
         code: error.code,
         status: error.status,
         correlationId: error.correlationId,
@@ -1337,7 +1337,7 @@ function TravelWatchCard({ conversation, watch, disabled, simulationMessage, sim
 }
 
 function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () => void }) {
-  const needsOperatorVerification = error.code === "agent_attestation_required";
+  const needsIdentityVerification = error.code === "principal_attestation_required" || error.code === "agent_attestation_required";
   return (
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50/70 p-3.5 text-sm" role="alert">
       {error.offline ? <WifiOffIcon className="mt-0.5 size-4 shrink-0 text-destructive" /> : <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />}
@@ -1346,8 +1346,8 @@ function ErrorNotice({ error, onRetry }: { error: BoundApiError; onRetry?: () =>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{error.message}</p>
         {error.correlationId ? <code className="mt-1 block break-all text-[10px] text-muted-foreground">{error.correlationId}</code> : null}
       </div>
-      {needsOperatorVerification ? (
-        <Button nativeButton={false} render={<Link href="/trust" />} size="sm" variant="outline"><FingerprintIcon />Open identity check</Button>
+      {needsIdentityVerification ? (
+        <Button nativeButton={false} render={<Link href="/trust" />} size="sm" variant="outline"><FingerprintIcon />Verify my identity</Button>
       ) : onRetry ? <Button onClick={onRetry} size="sm" variant="outline"><RefreshCwIcon />Try again</Button> : null}
     </div>
   );

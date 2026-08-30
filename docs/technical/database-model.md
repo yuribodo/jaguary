@@ -21,7 +21,7 @@ The detailed schema expands the five tables at the core of a purchase: `mandates
 
 | Domain | Tables | Purpose |
 | --- | --- | --- |
-| Identity and agent trust | `principals`, `principal_auth_identities`, `principal_login_transactions`, `principal_sessions`, `agents`, `agent_attestations`, `agent_attestation_events` | Principal authentication, browser sessions, agent ownership, and normalized trust evidence |
+| Identity and agent trust | `principals`, `principal_auth_identities`, `principal_login_transactions`, `principal_sessions`, `agents`, `agent_attestations`, `agent_attestation_events` | Principal authentication, browser sessions, platform-agent ownership/access scope, and customer-bound trust evidence |
 | TravelBot runtime | `travel_conversations`, `travel_messages`, `travel_intent_snapshots`, `travel_model_runs`, `travel_tool_executions`, `travel_approvals`, `travel_sse_events`, `travel_watches`, `travel_watch_checks` | Durable conversation workflow, OpenAI runs, tools, human interruptions, event replay, and autonomous flight watches |
 | Commerce inputs | `payment_credentials`, `checkouts` | Logical provider credential references and merchant-authored economic terms |
 | Authority and replay | `mandates`, `mandate_biometric_consents`, `nonces`, `authorizations` | Human authority, optional biometric evidence, replay prevention, and transactional `ALLOW` reservation |
@@ -38,7 +38,7 @@ The detailed schema expands the five tables at the core of a purchase: `mandates
 
 No displayed foreign key declares an explicit delete action, so PostgreSQL uses `ON DELETE NO ACTION`. That is appropriate for durable authority and evidence, but deletion tooling must remove dependent records in an explicit, safe order.
 
-Agent ownership and customer authority are deliberately separate relationships. `agents.principal_id` identifies the operator whose key/build trust is attested. The principal on a conversation, mandate, or watch identifies the authenticated customer for whom that platform-operated agent is acting. PostgreSQL enforces each reference independently; it does not require the operator and customer to be the same row.
+Agent ownership and customer authority are deliberately separate relationships. For public TravelBot, `agents.principal_id` identifies `principal_jaguary_platform` and `access_scope=PUBLIC`; it does not identify a shopper. The principal on an attestation, conversation, mandate, or watch identifies the authenticated customer. PostgreSQL enforces the attestation's agent and customer references independently, allowing one public agent to have isolated identity evidence per customer.
 
 ## Integrity boundaries to review
 

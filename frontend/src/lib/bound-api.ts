@@ -458,8 +458,8 @@ export type AgentAssurance = {
   attestation_id: string | null;
   attestation_status: AttestationStatus | null;
   provider: "fake" | "didit";
-  assurance_claims: Array<"OPERATOR_IDENTITY" | "ORGANIZATION_OWNERSHIP" | "AGENT_OPERATOR_BINDING" | "BUILD_PROVENANCE">;
-  assurance_level: "LOCAL_CRYPTOGRAPHIC" | "EXTERNAL_OPERATOR_IDENTITY";
+  assurance_claims: Array<"PRINCIPAL_IDENTITY" | "OPERATOR_IDENTITY" | "ORGANIZATION_OWNERSHIP" | "AGENT_OPERATOR_BINDING" | "BUILD_PROVENANCE">;
+  assurance_level: "LOCAL_CRYPTOGRAPHIC" | "EXTERNAL_PRINCIPAL_IDENTITY" | "EXTERNAL_OPERATOR_IDENTITY";
   issued_at: string | null;
   expires_at: string | null;
   eligibility: { eligible: boolean; reason?: string };

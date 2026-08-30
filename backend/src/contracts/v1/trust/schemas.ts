@@ -10,10 +10,10 @@ export const agentAttestationStatusSchema = z.enum([
 ]);
 export type AgentAttestationStatus = z.infer<typeof agentAttestationStatusSchema>;
 export const agentAssuranceClaimSchema = z.enum([
-  "OPERATOR_IDENTITY", "ORGANIZATION_OWNERSHIP", "AGENT_OPERATOR_BINDING", "BUILD_PROVENANCE",
+  "PRINCIPAL_IDENTITY", "OPERATOR_IDENTITY", "ORGANIZATION_OWNERSHIP", "AGENT_OPERATOR_BINDING", "BUILD_PROVENANCE",
 ]);
 export type AgentAssuranceClaim = z.infer<typeof agentAssuranceClaimSchema>;
-export const assuranceLevelSchema = z.enum(["LOCAL_CRYPTOGRAPHIC", "EXTERNAL_OPERATOR_IDENTITY"]);
+export const assuranceLevelSchema = z.enum(["LOCAL_CRYPTOGRAPHIC", "EXTERNAL_PRINCIPAL_IDENTITY", "EXTERNAL_OPERATOR_IDENTITY"]);
 
 export const agentTrustSnapshotSchema = z.object({
   mode: kyaModeSchema,

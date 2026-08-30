@@ -21,7 +21,7 @@ Shopping agents are good at interpreting intent and navigating choices, but econ
 
 PostgreSQL stores durable conversations, intent snapshots, tool executions, encrypted approval interruptions, identity/trust state, mandates, nonces, authorizations, payment attempts, receipts, and audit events.
 
-The registered agent owner and the shopping customer are different roles. TravelBot's `agents.principal_id` is its operator/trust binding; the authenticated session principal owns the conversation and is the principal on customer authority. Verify requires one agent across the proof, mandate, and authorization, and one customer across the mandate and authorization, but does not incorrectly require the agent operator to be that customer.
+TravelBot is a public, platform-owned agent. Its `agents.principal_id` points to `principal_jaguary_platform` and `access_scope=PUBLIC`; Marta has no special ownership. Every authenticated customer gets isolated conversation, onboarding, mandate, credential, authorization, and receipt state under the same public `agent_travelbot` identity. Verify requires one agent across the proof, mandate, and authorization, and one customer across the mandate and authorization.
 
 The [database model](database-model.md) maps all 25 tables and expands the transactional authority spine down to its selected columns and foreign keys.
 
@@ -40,7 +40,7 @@ The [database model](database-model.md) maps all 25 tables and expands the trans
 ## Trust boundaries
 
 - OpenAI can interpret text and suggest a tool call; it cannot commit authority or payment state.
-- Didit can provide operator identity or biometric evidence; it cannot decide a purchase.
+- Didit can provide customer identity and biometric evidence; it cannot decide a purchase.
 - VuelaYa can author checkout economics; it cannot claim that the principal approved them.
 - The browser can request and confirm; it cannot provide authoritative price, signature, payment amount, or credential material.
 - The payment executor can execute only the persisted authorization passed by `PaymentService`.

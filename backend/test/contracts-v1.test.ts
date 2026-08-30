@@ -238,6 +238,7 @@ test("decision and reason enums are complete and decision invariants hold", () =
     "agent_attestation_revoked",
     "agent_attestation_binding_mismatch",
     "agent_attestation_provider_unavailable",
+    "principal_attestation_required",
     "biometric_consent_required",
     "biometric_consent_pending",
     "biometric_consent_rejected",
