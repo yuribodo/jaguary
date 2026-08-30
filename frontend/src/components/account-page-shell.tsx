@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   ArrowLeftIcon,
   BotIcon,
@@ -29,14 +30,18 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-type AccountPage = "dashboard" | "payment-methods" | "purchases" | "merchants" | "audit";
+type AccountPage = "dashboard" | "agents" | "opportunities" | "approvals" | "payment-methods" | "purchases" | "merchants" | "audit" | "trust";
 
 const pages = [
   { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
+  { key: "agents", href: "/agents", label: "Agents", icon: BotIcon },
+  { key: "opportunities", href: "/opportunities", label: "Opportunities", icon: HandshakeIcon },
+  { key: "approvals", href: "/approval-center", label: "Approval Center", icon: ScrollTextIcon },
   { key: "payment-methods", href: "/metodos-de-pagamento", label: "Payment methods", icon: CreditCardIcon },
   { key: "purchases", href: "/compras", label: "Purchases", icon: HistoryIcon },
   { key: "merchants", href: "/lojas-conectadas", label: "Connected stores", icon: HandshakeIcon },
   { key: "audit", href: "/trilha-de-auditoria", label: "Audit trail", icon: ScrollTextIcon },
+  { key: "trust", href: "/trust-center", label: "Trust Center", icon: HandshakeIcon },
 ] as const;
 
 export function AccountPageShell({
@@ -46,6 +51,7 @@ export function AccountPageShell({
   activePage: AccountPage;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
   return (
     <SidebarProvider
       className="min-h-dvh"
@@ -74,7 +80,7 @@ export function AccountPageShell({
               <SidebarMenu>
                 {pages.map((page) => {
                   const Icon = page.icon;
-                  return <SidebarMenuItem key={page.key}><SidebarMenuButton render={<Link href={page.href} />} isActive={page.key === activePage} tooltip={page.label}><><Icon /><span>{page.label}</span></></SidebarMenuButton></SidebarMenuItem>;
+                  return <SidebarMenuItem key={page.key}><SidebarMenuButton render={<Link href={page.href} />} isActive={pathname === page.href} tooltip={page.label}><><Icon /><span>{page.label}</span></></SidebarMenuButton></SidebarMenuItem>;
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
