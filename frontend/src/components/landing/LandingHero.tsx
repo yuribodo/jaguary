@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { LandingAsciiField } from "@/components/landing/LandingAsciiField";
+import { LandingSessionNav } from "@/components/landing/LandingSessionNav";
 import { LandingStage } from "@/components/landing/LandingStage";
 
 const HEADLINE = ["Nothing", "moves", "off", "the", "rail."];
@@ -13,13 +14,7 @@ export function LandingHero() {
 
       <header className="relative z-10 flex items-center justify-between px-6 py-6 md:px-10">
         <p className="text-[0.95rem] tracking-[-0.03em]">Jaguary</p>
-        <Link
-          className="min-h-10 px-1 text-sm tracking-[-0.01em] transition-transform duration-[160ms] ease-[var(--ease-out)] hover:opacity-70 focus-visible:text-[var(--cobalt)] active:scale-[0.97]"
-          data-landing-link
-          href="/demo"
-        >
-          Open demo
-        </Link>
+        <LandingSessionNav />
       </header>
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-16 md:px-10">
