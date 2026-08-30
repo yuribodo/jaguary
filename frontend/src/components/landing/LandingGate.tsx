@@ -31,11 +31,10 @@ export function LandingGate() {
   const isPinned = useMediaQuery("(min-width: 768px)", true) && !isReduced;
   const sectionRef = useRef<HTMLElement>(null);
   const fillRef = useRef<HTMLSpanElement>(null);
-  const [phase, setPhase] = useState(0);
+  const [animatedPhase, setPhase] = useState(0);
 
   useEffect(() => {
     if (isReduced) {
-      setPhase(GATES.length - 1);
       if (fillRef.current) fillRef.current.style.clipPath = "inset(0 0 0 0)";
       return;
     }
@@ -108,6 +107,7 @@ export function LandingGate() {
     };
   }, [isPinned, isReduced]);
 
+  const phase = isReduced ? GATES.length - 1 : animatedPhase;
   const gate = GATES[phase];
 
   return (
@@ -122,7 +122,7 @@ export function LandingGate() {
             <div>
               <p className="text-sm text-[var(--muted-ink)]">How it works</p>
               <h2 className="mt-2 max-w-[12ch] text-[1.05rem] tracking-[-0.03em] text-[var(--graphite)] md:text-[1.15rem]">
-                Bound reads the letter. Payment does not start.
+                Jaguary reads the letter. Payment does not start.
               </h2>
             </div>
             <ol className="flex gap-4 font-mono text-[0.68rem] tracking-[0.16em] uppercase">

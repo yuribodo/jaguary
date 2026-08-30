@@ -169,14 +169,14 @@ export function PromptInputSubmit({
 
   return (
     <InputGroupButton
-      aria-label={pending ? "Processando" : "Enviar mensagem"}
+      aria-label={pending ? "Processing" : "Send message"}
       className={cn("rounded-lg", className)}
       size="icon-sm"
       type="submit"
       variant="default"
       {...props}
     >
-      <AnimatePresence initial={false} mode="wait">
+      <AnimatePresence initial={false} mode="popLayout">
         <motion.span
           animate={{ filter: "blur(0px)", opacity: 1, transform: "scale(1)" }}
           className="grid place-items-center"

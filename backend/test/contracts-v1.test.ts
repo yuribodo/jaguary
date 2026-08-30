@@ -231,6 +231,18 @@ test("decision and reason enums are complete and decision invariants hold", () =
     "usage_limit_exceeded",
     "replay_detected",
     "human_approval_required",
+    "agent_attestation_required",
+    "agent_attestation_pending",
+    "agent_attestation_rejected",
+    "agent_attestation_expired",
+    "agent_attestation_revoked",
+    "agent_attestation_binding_mismatch",
+    "agent_attestation_provider_unavailable",
+    "biometric_consent_required",
+    "biometric_consent_pending",
+    "biometric_consent_rejected",
+    "biometric_consent_expired",
+    "biometric_consent_binding_mismatch",
   ];
   assert.deepEqual(reasonCodeSchema.options, requiredReasons);
   const evidenceHash = "a".repeat(64);
@@ -270,6 +282,7 @@ test("pure policy evaluation and state inputs are shared v1 contracts", () => {
     uses: 0,
     nonce_status: "UNUSED",
     human_approval_required: false,
+    trust_snapshot: null,
   };
 
   assert.deepEqual(authorizationUsageSchema.parse({

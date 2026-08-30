@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   char,
   check,
   foreignKey,
@@ -19,6 +20,7 @@ import {
 
 import {
   agentIdentityStatusSchema,
+  agentAttestationStatusSchema,
   authorizationStatusSchema,
   cabinClassSchema,
   ISO_4217_CURRENCIES,
@@ -67,6 +69,76 @@ function moneyCheck(column: unknown): SQL {
   return sql`${column} >= 0 AND ${column} <= ${sql.raw(String(safeIntegerMaximum))}`;
 }
 
+export const principals = pgTable("principals", {
+  principalId: varchar("principal_id", { length: 128 }).primaryKey(),
+  displayName: varchar("display_name", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  check("principals_id_check", identifierCheck(table.principalId)),
+  check("principals_display_name_check", sql`length(${table.displayName}) BETWEEN 1 AND 128`),
+]);
+
+export const principalAuthIdentities = pgTable("principal_auth_identities", {
+  identityId: uuid("identity_id").primaryKey(),
+  principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  issuer: varchar("issuer", { length: 512 }).notNull(),
+  subjectHash: char("subject_hash", { length: 64 }).notNull(),
+  verifiedEmailHash: char("verified_email_hash", { length: 64 }),
+  maskedEmail: varchar("masked_email", { length: 128 }),
+  assurance: varchar("assurance", { length: 16 }).notNull(),
+  lastAuthenticatedAt: timestamp("last_authenticated_at", { withTimezone: true, mode: "date" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  unique("principal_auth_issuer_subject_unique").on(table.issuer, table.subjectHash),
+  check("principal_auth_subject_hash_check", hashCheck(table.subjectHash)),
+  check("principal_auth_email_hash_check", sql`${table.verifiedEmailHash} IS NULL OR ${hashCheck(table.verifiedEmailHash)}`),
+  check("principal_auth_assurance_check", sql`${table.assurance} IN ('DEMO', 'OIDC')`),
+  index("principal_auth_principal_idx").on(table.principalId),
+]);
+
+export const principalLoginTransactions = pgTable("principal_login_transactions", {
+  transactionId: uuid("transaction_id").primaryKey(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  stateHash: char("state_hash", { length: 64 }).notNull(),
+  nonceHash: char("nonce_hash", { length: 64 }).notNull(),
+  pkceVerifierHash: char("pkce_verifier_hash", { length: 64 }).notNull(),
+  pkceVerifierCiphertext: text("pkce_verifier_ciphertext").notNull(),
+  redirectPath: varchar("redirect_path", { length: 256 }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  unique("principal_login_state_hash_unique").on(table.stateHash),
+  check("principal_login_hashes_check", sql`${hashCheck(table.stateHash)} AND ${hashCheck(table.nonceHash)} AND ${hashCheck(table.pkceVerifierHash)}`),
+  check("principal_login_redirect_check", sql`${table.redirectPath} ~ '^/[A-Za-z0-9/_?&=.-]*$'`),
+  check("principal_login_validity_check", sql`${table.createdAt} < ${table.expiresAt}`),
+  index("principal_login_expiry_idx").on(table.expiresAt),
+]);
+
+export const principalSessions = pgTable("principal_sessions", {
+  sessionId: uuid("session_id").primaryKey(),
+  principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
+  tokenHash: char("token_hash", { length: 64 }).notNull(),
+  csrfTokenHash: char("csrf_token_hash", { length: 64 }).notNull(),
+  authMethod: varchar("auth_method", { length: 16 }).notNull(),
+  assurance: varchar("assurance", { length: 16 }).notNull(),
+  rotatedFromSessionId: uuid("rotated_from_session_id"),
+  issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }).notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
+}, (table) => [
+  unique("principal_sessions_token_hash_unique").on(table.tokenHash),
+  check("principal_sessions_hashes_check", sql`${hashCheck(table.tokenHash)} AND ${hashCheck(table.csrfTokenHash)}`),
+  check("principal_sessions_assurance_check", sql`${table.assurance} IN ('DEMO', 'OIDC')`),
+  check("principal_sessions_validity_check", sql`${table.issuedAt} < ${table.expiresAt}`),
+  index("principal_sessions_active_idx").on(table.tokenHash, table.expiresAt, table.revokedAt),
+  index("principal_sessions_principal_idx").on(table.principalId, table.expiresAt),
+]);
+
 export const agents = pgTable("agents", {
   agentId: varchar("agent_id", { length: 128 }).primaryKey(),
   principalId: varchar("principal_id", { length: 128 }).notNull(),
@@ -98,6 +170,65 @@ export const agents = pgTable("agents", {
   check("agents_idempotency_key_check", sql`length(${table.idempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.idempotencyKey)}`),
   index("agents_principal_id_idx").on(table.principalId),
   index("agents_status_idx").on(table.status),
+]);
+
+export const agentAttestations = pgTable("agent_attestations", {
+  attestationId: varchar("attestation_id", { length: 128 }).primaryKey(),
+  agentId: varchar("agent_id", { length: 128 }).notNull(),
+  principalId: varchar("principal_id", { length: 128 }).notNull().references(() => principals.principalId),
+  keyId: varchar("key_id", { length: 128 }).notNull(),
+  buildFingerprint: char("build_fingerprint", { length: 64 }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  providerAssessmentHash: char("provider_assessment_hash", { length: 64 }).notNull(),
+  providerAssessmentCiphertext: text("provider_assessment_ciphertext").notNull(),
+  providerSubjectHash: char("provider_subject_hash", { length: 64 }),
+  status: varchar("status", { length: 16 }).notNull(),
+  normalizedClaims: text("normalized_claims").array().notNull(),
+  assuranceLevel: varchar("assurance_level", { length: 64 }).notNull(),
+  bindingHash: char("binding_hash", { length: 64 }).notNull(),
+  evidenceHash: char("evidence_hash", { length: 64 }).notNull(),
+  issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true, mode: "date" }),
+  failureCode: varchar("failure_code", { length: 64 }),
+  correlationId: varchar("correlation_id", { length: 128 }).notNull(),
+  creationIdempotencyKey: varchar("creation_idempotency_key", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  unique("agent_attestations_creation_idempotency_unique").on(table.creationIdempotencyKey),
+  unique("agent_attestations_provider_assessment_unique").on(table.provider, table.providerAssessmentHash),
+  foreignKey({
+    name: "agent_attestations_agent_principal_fk",
+    columns: [table.agentId, table.principalId],
+    foreignColumns: [agents.agentId, agents.principalId],
+  }),
+  check("agent_attestations_id_check", identifierCheck(table.attestationId)),
+  check("agent_attestations_status_check", sql`${table.status} IN (${sqlList(agentAttestationStatusSchema.options)})`),
+  check("agent_attestations_hashes_check", sql`${hashCheck(table.providerAssessmentHash)} AND ${hashCheck(table.buildFingerprint)} AND ${hashCheck(table.bindingHash)} AND ${hashCheck(table.evidenceHash)} AND (${table.providerSubjectHash} IS NULL OR ${hashCheck(table.providerSubjectHash)})`),
+  check("agent_attestations_verified_check", sql`${table.status} <> 'VERIFIED' OR (cardinality(${table.normalizedClaims}) > 0 AND ${table.providerSubjectHash} IS NOT NULL AND ${table.issuedAt} IS NOT NULL AND ${table.expiresAt} IS NOT NULL AND ${table.issuedAt} < ${table.expiresAt})`),
+  check("agent_attestations_idempotency_check", sql`length(${table.creationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.creationIdempotencyKey)}`),
+  index("agent_attestations_current_idx").on(table.agentId, table.status, table.expiresAt),
+]);
+
+export const agentAttestationEvents = pgTable("agent_attestation_events", {
+  eventId: uuid("event_id").primaryKey(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  providerEventIdHash: char("provider_event_id_hash", { length: 64 }).notNull(),
+  attestationId: varchar("attestation_id", { length: 128 }).notNull().references(() => agentAttestations.attestationId),
+  normalizedEventType: varchar("normalized_event_type", { length: 64 }).notNull(),
+  payloadHash: char("payload_hash", { length: 64 }).notNull(),
+  signatureVerified: boolean("signature_verified").notNull(),
+  processingStatus: varchar("processing_status", { length: 24 }).notNull(),
+  failureCode: varchar("failure_code", { length: 64 }),
+  providerCreatedAt: timestamp("provider_created_at", { withTimezone: true, mode: "date" }).notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true, mode: "date" }).notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+}, (table) => [
+  unique("agent_attestation_events_provider_event_unique").on(table.provider, table.providerEventIdHash),
+  check("agent_attestation_events_hashes_check", sql`${hashCheck(table.providerEventIdHash)} AND ${hashCheck(table.payloadHash)}`),
+  check("agent_attestation_events_processing_check", sql`${table.processingStatus} IN ('APPLIED', 'DUPLICATE', 'IGNORED_OUT_OF_ORDER', 'REJECTED')`),
+  index("agent_attestation_events_attestation_received_idx").on(table.attestationId, table.receivedAt),
 ]);
 
 export const paymentCredentials = pgTable("payment_credentials", {
@@ -214,6 +345,51 @@ export const mandates = pgTable("mandates", {
   index("mandates_principal_status_idx").on(table.principalId, table.status),
   index("mandates_expires_at_idx").on(table.expiresAt),
   index("mandates_supersedes_idx").on(table.supersedesMandateId),
+]);
+
+export const mandateBiometricConsents = pgTable("mandate_biometric_consents", {
+  consentId: varchar("consent_id", { length: 128 }).primaryKey(),
+  mandateId: varchar("mandate_id", { length: 128 }).notNull().references(() => mandates.mandateId),
+  principalId: varchar("principal_id", { length: 128 }).notNull(),
+  agentId: varchar("agent_id", { length: 128 }).notNull(),
+  termsHash: char("terms_hash", { length: 64 }).notNull(),
+  onboardingAttestationId: varchar("onboarding_attestation_id", { length: 128 }).notNull().references(() => agentAttestations.attestationId),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  providerVendorDataHash: char("provider_vendor_data_hash", { length: 64 }).notNull(),
+  providerVendorDataCiphertext: text("provider_vendor_data_ciphertext").notNull(),
+  providerAssessmentHash: char("provider_assessment_hash", { length: 64 }),
+  providerAssessmentCiphertext: text("provider_assessment_ciphertext"),
+  hostedUrlCiphertext: text("hosted_url_ciphertext"),
+  status: varchar("status", { length: 16 }).notNull(),
+  evidenceHash: char("evidence_hash", { length: 64 }).notNull(),
+  failureCode: varchar("failure_code", { length: 64 }),
+  correlationId: varchar("correlation_id", { length: 128 }).notNull(),
+  creationIdempotencyKey: varchar("creation_idempotency_key", { length: 128 }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  unique("mandate_biometric_consents_creation_idempotency_unique").on(table.creationIdempotencyKey),
+  unique("mandate_biometric_consents_provider_assessment_unique").on(table.provider, table.providerAssessmentHash),
+  foreignKey({
+    name: "mandate_biometric_consents_identity_fk",
+    columns: [table.mandateId, table.agentId, table.principalId],
+    foreignColumns: [mandates.mandateId, mandates.agentId, mandates.principalId],
+  }),
+  check("mandate_biometric_consents_id_check", identifierCheck(table.consentId)),
+  check("mandate_biometric_consents_status_check", sql`${table.status} IN ('PREPARING', 'PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED', 'ERROR', 'CONSUMED')`),
+  check("mandate_biometric_consents_hashes_check", sql`${hashCheck(table.termsHash)} AND ${hashCheck(table.providerVendorDataHash)} AND ${hashCheck(table.evidenceHash)} AND (${table.providerAssessmentHash} IS NULL OR ${hashCheck(table.providerAssessmentHash)})`),
+  check("mandate_biometric_consents_provider_shape_check", sql`
+    (${table.status} IN ('PREPARING', 'ERROR') OR (${table.providerAssessmentHash} IS NOT NULL AND ${table.providerAssessmentCiphertext} IS NOT NULL))
+    AND (${table.status} <> 'VERIFIED' OR ${table.verifiedAt} IS NOT NULL)
+    AND (${table.status} <> 'CONSUMED' OR (${table.verifiedAt} IS NOT NULL AND ${table.consumedAt} IS NOT NULL))
+  `),
+  check("mandate_biometric_consents_idempotency_check", sql`length(${table.creationIdempotencyKey}) BETWEEN 8 AND 128 AND ${identifierCheck(table.creationIdempotencyKey)}`),
+  check("mandate_biometric_consents_validity_check", sql`${table.createdAt} < ${table.expiresAt}`),
+  index("mandate_biometric_consents_mandate_status_idx").on(table.mandateId, table.status, table.expiresAt),
+  index("mandate_biometric_consents_provider_idx").on(table.provider, table.providerAssessmentHash),
 ]);
 
 export const checkouts = pgTable("checkouts", {
@@ -625,9 +801,16 @@ export const travelSseEvents = pgTable("travel_sse_events", {
 ]);
 
 export const databaseSchema = {
+  principals,
+  principalAuthIdentities,
+  principalLoginTransactions,
+  principalSessions,
   agents,
+  agentAttestations,
+  agentAttestationEvents,
   paymentCredentials,
   mandates,
+  mandateBiometricConsents,
   checkouts,
   nonces,
   authorizations,

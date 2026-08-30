@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import Fastify, { type FastifyServerOptions } from "fastify";
+import Fastify, { LogController, type FastifyServerOptions } from "fastify";
 
 import {
   canonicalizeJson,
@@ -7,6 +7,7 @@ import {
   type AgentRequestVerifierPort,
   type ClockPort,
   type PaymentExecutor,
+  type PrincipalIdentityProviderPort,
   type SignerPort,
 } from "./contracts/v1/index.js";
 import { createDatabase, type DatabaseConnection } from "./db/database.js";
@@ -20,7 +21,12 @@ import {
   PostgresAuditEventRepository,
   PostgresReceiptStore,
 } from "./modules/ledger/index.js";
-import { mandateRoutes, MandateService } from "./modules/mandates/index.js";
+import {
+  mandateRoutes,
+  MandateBiometricConsentService,
+  MandateService,
+  type MandateBiometricConsentGate,
+} from "./modules/mandates/index.js";
 import {
   FakePaymentExecutor,
   PostgresPaymentClaimStore,
@@ -54,7 +60,23 @@ import {
   type LlmTelemetryPort,
   type TravelBotEventSource,
 } from "./modules/travelbot/index.js";
-import { listVuelaYaOffers } from "./modules/vuelaya/catalog.js";
+import { VuelaYaCatalog, type VuelaYaCatalogPort } from "./modules/vuelaya/catalog.js";
+import {
+  AuthCrypto,
+  authRoutes,
+  GoogleOidcPrincipalProvider,
+  PostgresPrincipalAuthRepository,
+  PrincipalAuthService,
+  DemoPrincipalAuthProvider,
+} from "./modules/auth/index.js";
+import {
+  AgentTrustService,
+  BoundAgentPassportService,
+  DeterministicFakeAttestationProvider,
+  DiditAgentAttestationProvider,
+  PostgresAgentTrustRepository,
+  trustRoutes,
+} from "./modules/trust/index.js";
 
 export interface BuildAppOptions {
   corsOrigin?: string;
@@ -80,6 +102,43 @@ export interface BuildAppOptions {
   travelBotCredentialId?: string;
   travelBotApprovalStateProtector?: ApprovalStateProtectorPort;
   llmTelemetry?: LlmTelemetryPort;
+  flightCatalog?: VuelaYaCatalogPort;
+  auth?: {
+    service: PrincipalAuthService;
+    mode: "demo" | "oidc";
+    allowedOrigin: string;
+    secureCookies: boolean;
+    sessionTtlSeconds: number;
+  };
+  principalAuth?: {
+    mode: "demo" | "oidc";
+    allowedOrigin: string;
+    secureCookies: boolean;
+    sessionTtlSeconds: number;
+    loginTransactionTtlSeconds: number;
+    issuer?: string;
+    clientId?: string;
+    clientSecret?: string;
+    callbackUrl?: string;
+    requestTimeoutMs?: number;
+    nodeEnvironment: "development" | "test" | "production";
+  };
+  trust?: { service: AgentTrustService; auth: PrincipalAuthService; allowedOrigin: string; secureCookies: boolean; sessionTtlSeconds: number };
+  agentTrust?: {
+    mode: "LOCAL" | "EXTERNAL_OPTIONAL" | "EXTERNAL_REQUIRED";
+    provider: "fake" | "didit";
+    requestTimeoutMs: number;
+    attestationTtlSeconds: number;
+    callbackUrl: string;
+    passportIssuer: string;
+    passportAudience?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    workflowId?: string;
+    biometricWorkflowId?: string;
+    biometricCallbackUrl?: string;
+    webhookSecret?: string;
+  };
 }
 
 const redactedLogPaths = [
@@ -87,8 +146,14 @@ const redactedLogPaths = [
   "databaseUrl",
   "connectionString",
   "req.headers.authorization",
+  "req.url",
   "req.headers.cookie",
+  "req.headers['x-csrf-token']",
+  "req.headers['x-signature-v2']",
+  "req.headers['x-api-key']",
   "req.body",
+  "req.query",
+  "res.headers['set-cookie']",
   "*.proof",
   "*.signature",
   "*.public_jwk",
@@ -104,6 +169,20 @@ const redactedLogPaths = [
   "LANGFUSE_SECRET_KEY",
   "TRAVELBOT_AGENT_PRIVATE_JWK",
   "TRAVELBOT_APPROVAL_ENCRYPTION_KEY",
+  "SERPAPI_API_KEY",
+  "AUTH_OIDC_CLIENT_SECRET",
+  "KYA_API_KEY",
+  "KYA_WEBHOOK_SECRET",
+  "*.authorization_code",
+  "*.access_token",
+  "*.id_token",
+  "*.refresh_token",
+  "*.csrf_token",
+  "*.code_verifier",
+  "*.state",
+  "*.nonce",
+  "*.vendor_data",
+  "*.webhook_payload",
   "*.sdk_run_state",
 ];
 
@@ -126,6 +205,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: loggerOptions(options.logger),
     genReqId: generateCorrelationId,
+    logController: new LogController({ disableRequestLogging: true }),
+  });
+  app.addHook("onRequest", async (request) => {
+    request.log.info({ correlation_id: request.id, method: request.method }, "request received");
   });
   const telemetryWithShutdown = options.llmTelemetry as (LlmTelemetryPort & {
     shutdown?: () => Promise<void>;
@@ -171,13 +254,70 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const ledger = database === undefined
     ? undefined
     : new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  let configuredAuth = options.auth;
+  if (configuredAuth === undefined && options.principalAuth !== undefined && database !== undefined) {
+    const config = options.principalAuth;
+    const secret = config.mode === "oidc" ? config.clientSecret! : "bound-development-demo-session-key";
+    const authCrypto = new AuthCrypto(secret);
+    const repository = new PostgresPrincipalAuthRepository(database, authCrypto, secret);
+    const callbackUrl = config.callbackUrl ?? "http://localhost:3001/auth/v1/login/google/callback";
+    const providers: Record<string, PrincipalIdentityProviderPort> = config.mode === "oidc" ? {
+      google: new GoogleOidcPrincipalProvider({
+        issuer: config.issuer!, clientId: config.clientId!, clientSecret: config.clientSecret!, requestTimeoutMs: config.requestTimeoutMs,
+      }),
+    } : {};
+    configuredAuth = {
+      service: new PrincipalAuthService({
+        mode: config.mode, providers, authRepository: repository, sessions: repository, crypto: authCrypto, clock,
+        callbackUrl, sessionTtlSeconds: config.sessionTtlSeconds, loginTransactionTtlSeconds: config.loginTransactionTtlSeconds,
+        ...(config.mode === "demo" ? { demoProvider: new DemoPrincipalAuthProvider(config.nodeEnvironment, config.mode) } : {}),
+      }),
+      mode: config.mode,
+      allowedOrigin: config.allowedOrigin,
+      secureCookies: config.secureCookies,
+      sessionTtlSeconds: config.sessionTtlSeconds,
+    };
+  }
+  if (configuredAuth !== undefined) await app.register(authRoutes, configuredAuth);
+  let configuredTrust = options.trust;
+  let configuredDiditProvider: DiditAgentAttestationProvider | undefined;
+  let configuredTrustRepository: PostgresAgentTrustRepository | undefined;
+  let biometricConsentService: MandateBiometricConsentService | undefined;
+  if (configuredTrust === undefined && options.agentTrust !== undefined && database !== undefined && ledger !== undefined && configuredAuth !== undefined) {
+    const config = options.agentTrust;
+    const encryptionSecret = config.provider === "didit" ? config.apiKey! : "bound-development-fake-kya-key";
+    const repository = new PostgresAgentTrustRepository(database, ledger, {
+      mode: config.mode, provider: config.provider, attestationTtlSeconds: config.attestationTtlSeconds, encryptionSecret,
+    });
+    const provider = config.provider === "didit"
+      ? new DiditAgentAttestationProvider({ baseUrl: config.baseUrl!, apiKey: config.apiKey!, workflowId: config.workflowId!, biometricWorkflowId: config.biometricWorkflowId, webhookSecret: config.webhookSecret!,
+        timeoutMs: config.requestTimeoutMs, allowedCallbackUrls: [config.callbackUrl, ...(config.biometricCallbackUrl === undefined ? [] : [config.biometricCallbackUrl])] })
+      : new DeterministicFakeAttestationProvider(clock.now());
+    if (provider instanceof DiditAgentAttestationProvider) {
+      configuredDiditProvider = provider;
+      configuredTrustRepository = repository;
+    }
+    const passports = await BoundAgentPassportService.create({ issuer: config.passportIssuer, audience: config.passportAudience ?? "bound-verify", ttlSeconds: Math.min(900, config.attestationTtlSeconds), now: clock.now });
+    configuredTrust = { service: new AgentTrustService({
+      provider,
+      providerName: config.provider,
+      repository,
+      passports,
+      clock,
+      callbackUrl: config.callbackUrl,
+      secondaryProviderEventConsumer: {
+        applyProviderEvent: async (event, correlationId) => biometricConsentService?.applyProviderEvent(event, correlationId) ?? false,
+      },
+    }), auth: configuredAuth.service, allowedOrigin: configuredAuth.allowedOrigin, secureCookies: configuredAuth.secureCookies, sessionTtlSeconds: configuredAuth.sessionTtlSeconds };
+  }
+  if (configuredTrust !== undefined) await app.register(trustRoutes, configuredTrust);
   const agentRegistry = options.agentRegistry
     ?? (database === undefined || ledger === undefined
       ? undefined
       : new DrizzleAgentIdentityRegistry(database, clock, ledger));
   const agentVerifier = agentRegistry === undefined
     ? undefined
-    : (options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock));
+    : (options.agentVerifier ?? new AgentRequestVerifier(agentRegistry, clock, configuredTrust?.service.eligibility));
   if (agentRegistry !== undefined && agentVerifier !== undefined) {
     await app.register(agentIdentityRoutes, {
       registry: agentRegistry,
@@ -187,16 +327,46 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const receiptStore = database === undefined || ledger === undefined
     ? undefined
     : new PostgresReceiptStore(database, ledger);
-  const merchant = new VuelaYaMerchant(signer, clock);
+  const flightCatalog = options.flightCatalog ?? new VuelaYaCatalog();
+  const merchant = new VuelaYaMerchant(signer, clock, flightCatalog);
   await app.register(vuelaYaRoutes, {
     merchant,
+    catalog: flightCatalog,
     ...(receiptStore === undefined ? {} : { orders: receiptStore }),
   });
   let mandateService: MandateService | undefined;
   if (database !== undefined && ledger !== undefined) {
-    mandateService = new MandateService(database, signer, clock, ledger);
+    const biometricEnabled = configuredDiditProvider !== undefined
+      && configuredTrustRepository !== undefined
+      && configuredAuth !== undefined
+      && options.agentTrust?.biometricWorkflowId !== undefined
+      && options.agentTrust.biometricCallbackUrl !== undefined;
+    const biometricGate: MandateBiometricConsentGate | undefined = biometricEnabled ? {
+      consumeInTransaction: (transaction, input) => {
+        if (biometricConsentService === undefined) throw new Error("Biometric consent service is unavailable");
+        return biometricConsentService.consumeInTransaction(transaction, input);
+      },
+    } : undefined;
+    mandateService = new MandateService(database, signer, clock, ledger, configuredTrust?.service.eligibility, biometricGate);
+    if (biometricEnabled) {
+      biometricConsentService = new MandateBiometricConsentService({
+        database,
+        mandates: mandateService,
+        trust: configuredTrustRepository!,
+        provider: configuredDiditProvider!,
+        ledger,
+        clock,
+        callbackUrl: options.agentTrust!.biometricCallbackUrl!,
+        encryptionSecret: options.agentTrust!.apiKey!,
+      });
+    }
     await app.register(mandateRoutes, {
       service: mandateService,
+      ...(biometricConsentService === undefined || configuredAuth === undefined ? {} : {
+        biometricConsent: biometricConsentService,
+        auth: configuredAuth.service,
+        allowedOrigin: configuredAuth.allowedOrigin,
+      }),
     });
   }
   let verifyOrchestrator = options.verifyOrchestrator;
@@ -223,9 +393,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
           }
         },
       },
-      reservationStore: new PostgresAuthorizationReservationStore(database, ledger),
+      reservationStore: new PostgresAuthorizationReservationStore(database, ledger, configuredTrust?.service.eligibility),
       clock,
       humanApprovalRequired: options.humanApprovalRequired ?? (() => false),
+      eligibility: configuredTrust?.service.eligibility,
     });
   }
   if (verifyOrchestrator !== undefined) {
@@ -250,7 +421,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   if (travelBotService === undefined && database !== undefined) {
     const telemetry = options.llmTelemetry ?? new NoopLlmTelemetry();
     const model = options.openAI?.model ?? "unavailable";
-    const repository = new PostgresTravelBotRepository(database, model);
+    const repository = new PostgresTravelBotRepository(database, model, configuredTrust?.service.eligibility);
     travelBotEvents = repository;
     if (
       options.openAI !== undefined
@@ -272,6 +443,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         clock,
         credentialId: options.travelBotCredentialId,
         audit: ledger,
+        catalog: flightCatalog,
       });
       travelBotService = new TravelBotService({
         repository,
@@ -292,7 +464,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       travelBotService = new TravelBotService({
         repository,
         runtime: new UnavailableAgentRuntime(),
-        tools: { findOffers: async () => listVuelaYaOffers() },
+        tools: { findOffers: async (intent) => flightCatalog.search(intent) },
         clock,
         model,
       });

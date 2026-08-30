@@ -1,13 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 
 import {
   authorizedCheckoutSchema,
+  currencySchema,
   PublicApiError,
   type AuthorizedCheckout,
   type PurchaseIntent,
 } from "../../contracts/v1/index.js";
 
-import { getVuelaYaProfile, listVuelaYaOffers } from "./catalog.js";
+import { getVuelaYaProfile, type VuelaYaCatalogPort } from "./catalog.js";
 import type { VuelaYaMerchant } from "./merchant.js";
 import type { VuelaYaOrderStore } from "./order-store.js";
 
@@ -41,8 +43,19 @@ function requireAp2Capabilities(header: string | string[] | undefined): void {
 
 interface VuelaYaRoutesOptions {
   merchant: VuelaYaMerchant;
+  catalog: VuelaYaCatalogPort;
   orders?: VuelaYaOrderStore;
 }
+
+const flightSearchQuerySchema = z.object({
+  origin: z.string().regex(/^[A-Z]{3}$/),
+  destination: z.string().regex(/^[A-Z]{3}$/),
+  date: z.iso.date(),
+  passengers: z.coerce.number().int().min(1).max(9).default(1),
+  cabin: z.enum(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]).default("ECONOMY"),
+  currency: currencySchema.default("BRL"),
+  max_budget_minor: z.coerce.number().int().positive(),
+}).strict();
 
 export const vuelaYaRoutes: FastifyPluginAsync<VuelaYaRoutesOptions> = async (app, options) => {
   app.get("/.well-known/ucp", async (request, reply) => {
@@ -54,7 +67,23 @@ export const vuelaYaRoutes: FastifyPluginAsync<VuelaYaRoutesOptions> = async (ap
     return getVuelaYaProfile();
   });
 
-  app.get("/merchant/flights", async () => listVuelaYaOffers());
+  app.get<{ Querystring: Record<string, unknown> }>("/merchant/flights", async (request) => {
+    if (Object.keys(request.query).length === 0) return options.catalog.list();
+    const parsed = flightSearchQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw new PublicApiError(400, "validation_error", "Flight search query is invalid");
+    }
+    return options.catalog.search({
+      origin_iata: parsed.data.origin,
+      destination_iata: parsed.data.destination,
+      departure_date: parsed.data.date,
+      passenger_count: parsed.data.passengers,
+      cabin: parsed.data.cabin,
+      max_total_budget: { amount: parsed.data.max_budget_minor, currency: parsed.data.currency },
+      selected_offer_id: null,
+      confirmation: null,
+    });
+  });
 
   app.post("/ucp/v1/checkout", async (request, reply) => {
     requireAp2Capabilities(request.headers["ucp-capabilities"]);

@@ -16,9 +16,9 @@ export const unavailableAuthorizationSource: AuthorizationDecisionSource = {
   async getState() {
     return {
       kind: "NOT_CONNECTED",
-      label: "Decisão ainda não conectada",
+      label: "Decision not connected yet",
       description:
-        "A policy BE-06 existe no backend, mas POST /verify e a reserva BE-07 ainda não estão conectados. Nenhum ALLOW foi simulado.",
+        "The BE-06 policy exists in the backend, but POST /verify and the BE-07 reservation are not connected yet. No ALLOW decision was simulated.",
     };
   },
 };

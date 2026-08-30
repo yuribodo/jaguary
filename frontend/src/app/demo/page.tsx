@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 
+import { AuthenticatedPage } from "@/components/authenticated-page";
 import { TrustedSurface } from "@/components/trusted-surface";
 
 export const metadata: Metadata = {
-  title: "JaguaryAI — new conversation",
+  title: "Jaguary — converse, limit, authorize",
   description:
-    "Chat with Jaguary and control a limited, revocable permission.",
+    "Talk to an identified agent and control limited, revocable authority.",
 };
 
 export default function DemoPage() {
-  return <TrustedSurface />;
+  return <AuthenticatedPage><TrustedSurface /></AuthenticatedPage>;
 }

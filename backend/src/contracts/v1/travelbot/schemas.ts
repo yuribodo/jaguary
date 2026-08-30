@@ -48,7 +48,7 @@ export type TravelConfirmation = z.infer<typeof travelConfirmationSchema>;
 export const travelIntentSchema = z.object({
   origin_iata: z.string().regex(/^[A-Z]{3}$/).nullable(),
   destination_iata: z.string().regex(/^[A-Z]{3}$/).nullable(),
-  departure_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  departure_date: z.string().regex(/^\d{4}-\d{2}(?:-\d{2})?$/).nullable(),
   passenger_count: z.number().int().min(1).max(9).nullable(),
   cabin: cabinClassSchema.nullable(),
   max_total_budget: moneySchema.nullable(),
@@ -68,7 +68,7 @@ export type TravelIntentAmbiguity = z.infer<typeof travelIntentAmbiguitySchema>;
 export const travelIntentProposalSchema = z.object({
   origin_iata: z.string().regex(/^[A-Z]{3}$/).nullable(),
   destination_iata: z.string().regex(/^[A-Z]{3}$/).nullable(),
-  departure_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  departure_date: z.string().regex(/^\d{4}-\d{2}(?:-\d{2})?$/).nullable(),
   passenger_count: z.number().int().min(1).max(9).nullable(),
   cabin: cabinClassSchema.nullable(),
   max_total_budget: moneySchema.nullable(),

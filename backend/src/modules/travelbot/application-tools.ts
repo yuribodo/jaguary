@@ -11,6 +11,7 @@ import {
   type PurchaseIntent,
 } from "../../contracts/v1/index.js";
 import { listVuelaYaOffers } from "../vuelaya/catalog.js";
+import type { VuelaYaCatalogPort } from "../vuelaya/catalog.js";
 import type { TravelBotConversation, TravelBotToolsPort } from "./types.js";
 
 interface MerchantPort {
@@ -76,6 +77,7 @@ export interface ApplicationTravelBotToolsOptions {
   clock: ClockPort;
   credentialId: string;
   audit: { getTimeline(correlationId: string): Promise<{ events: Array<{ event_type: string }> }> };
+  catalog?: VuelaYaCatalogPort;
 }
 
 function stableId(prefix: string, value: unknown): string {
@@ -90,7 +92,6 @@ function assertCompleteIntent(conversation: TravelBotConversation) {
     || intent.departure_date === null
     || intent.passenger_count === null
     || intent.cabin === null
-    || intent.max_total_budget === null
   ) throw new Error("TravelBot tool received an incomplete intent");
   return intent as typeof intent & {
     origin_iata: string;
@@ -98,15 +99,15 @@ function assertCompleteIntent(conversation: TravelBotConversation) {
     departure_date: string;
     passenger_count: number;
     cabin: NonNullable<typeof intent.cabin>;
-    max_total_budget: NonNullable<typeof intent.max_total_budget>;
+    max_total_budget: typeof intent.max_total_budget;
   };
 }
 
 export class ApplicationTravelBotTools implements TravelBotToolsPort {
   constructor(private readonly options: ApplicationTravelBotToolsOptions) {}
 
-  async findOffers(): Promise<OfferCandidate[]> {
-    return listVuelaYaOffers();
+  async findOffers(intent: TravelBotConversation["intent"]): Promise<OfferCandidate[]> {
+    return this.options.catalog?.search(intent) ?? listVuelaYaOffers();
   }
 
   async createCheckout(input: Parameters<NonNullable<TravelBotToolsPort["createCheckout"]>>[0]) {
@@ -114,6 +115,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
     if (input.conversation.state !== "AWAITING_OFFER_SELECTION") {
       throw new Error("create_checkout is unavailable in the current state");
     }
+    this.options.catalog?.remember?.([input.offer]);
     const checkout = await this.options.merchant.createCheckout({
       intent_id: stableId("intent", {
         conversation_id: input.conversation.conversation_id,
@@ -145,6 +147,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
     });
     const now = this.options.clock.now();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1_000);
+    const authorityLimit = intent.max_total_budget ?? input.checkout.total;
     const { mandate } = await this.options.mandates.createDraft({
       mandate_id: mandateId,
       principal_id: input.conversation.principal_id,
@@ -153,8 +156,8 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
       allowed_merchant_categories: [],
       route: { origin: intent.origin_iata, destination: intent.destination_iata },
       cabin: intent.cabin,
-      max_per_purchase: intent.max_total_budget,
-      max_aggregate: intent.max_total_budget,
+      max_per_purchase: authorityLimit,
+      max_aggregate: authorityLimit,
       max_uses: 1,
       valid_from: now.toISOString(),
       expires_at: expiresAt.toISOString(),
@@ -198,6 +201,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
       || operation.checkout_hash !== confirmation.checkout_hash
       || operation.mandate_id !== confirmation.mandate_id
     ) throw new Error("Purchase confirmation binding is invalid or stale");
+    this.options.catalog?.remember?.([offer]);
     const checkout = await this.options.merchant.createCheckout({
       intent_id: stableId("intent", {
         conversation_id: input.conversation.conversation_id,
@@ -215,7 +219,7 @@ export class ApplicationTravelBotTools implements TravelBotToolsPort {
       || checkout.checkout_hash !== operation.checkout_hash
       || checkout.terms.total.amount !== approval.amount
       || checkout.terms.total.currency !== approval.currency
-    ) throw new Error("Checkout changed after confirmation");
+    ) return { status: "FAILED" as const, reason_code: "checkout_stale" };
     const mandate = await this.options.mandates.loadActiveMandate(operation.mandate_id);
     const authorization = normalizedAuthorizationSchema.parse({
       principal_id: input.conversation.principal_id,

@@ -17,6 +17,10 @@ Anti-qualities: conversationally vague, finance-dashboard generic, falsely celeb
 - [Microsoft UX design for agents](https://microsoft.design/articles/ux-design-for-agents/): agent actions should remain visible and controllable, with uncertainty and status exposed. Bound implements this as a deterministic execution timeline beside the conversation.
 - [Microsoft Human–AI Interaction Guidelines](https://www.microsoft.com/en-us/research/?p=564561): clarify capabilities, support correction, explain behavior, and convey action consequences. Bound separates request, checkout, authority, verification, and payment into visible stages.
 - [Nielsen Norman Group: visibility of system status](https://www.nngroup.com/articles/visibility-system-status/): feedback should keep the user oriented and preserve trust. Bound uses persistent state in place of transient success toasts for economic events.
+- [Google Flights: best fares](https://support.google.com/travel/answer/7664728): “best” is a tradeoff between price, convenience, and booking ease, while the cheapest option may carry self-transfer or airport-change costs. Bound therefore shows airline, local times, duration, stops, party total, and source instead of ranking by price alone.
+- [KAYAK search and discovery](https://www.kayak.com/c/help/search/): flight comparison needs explicit traveler count, filters, live-source context, and honest language around predictive or changing prices. Bound repeats passenger count and marks each observed fare as subject to checkout reconfirmation.
+- [Flighty](https://flighty.com/) and [Apple Behind the Design](https://developer.apple.com/news/?id=970ncww4): the route, local times, airports, flight number, duration, and status should be immediately legible, while secondary evidence stays quieter. Bound applies that hierarchy to the single automatically selected flight without imitating a boarding pass.
+- [Airbnb special offers](https://www.airbnb.com/help/article/128): an offer sent inside a message thread should be reviewed again with its price and payment information before confirmation. Bound uses the same continuity principle for its in-chat flight offer and authorization artifact without copying Airbnb’s visual treatment.
 
 ## Information architecture
 
@@ -27,12 +31,14 @@ Anti-qualities: conversationally vague, finance-dashboard generic, falsely celeb
 
 On narrow screens the center remains primary, the left navigation becomes a sheet, and critical money impact is repeated inside the authority artifact because the inspector is not visible.
 
+The mobile conversation also contains a persistent “Entendi sua viagem” artifact. It makes the agent’s interpretation correctable without requiring the user to open the desktop-only inspector. Fare actions stack below totals on narrow widths and preserve a 44px tap target.
+
 ## Interaction state model
 
 | Stage | Agent feedback | Financial language | User control |
 | --- | --- | --- | --- |
 | Request | Intent extracted: route, cabin, ceiling | No impact yet | Edit or restart request |
-| Offer | Merchant and price found | “Purchase proposed” | Select or ignore |
+| Offer | Best-ranked current flight selected automatically, with rationale and source | “Purchase proposed” | Review at authorization or stop |
 | Checkout | Commercial terms fixed and signed | “Nothing spent or reserved” | Review evidence |
 | Draft | Authority terms persisted | “Will remain after purchase” | Activate or leave as draft |
 | Active mandate | Authority signed and revocable | Still not a purchase | Revoke or continue |
@@ -54,6 +60,7 @@ On narrow screens the center remains primary, the left navigation becomes a shee
 ## Motion and feedback
 
 - Timeline steps change only when their backend-backed state changes.
+- Search feedback names the current operation (“consultando voos”, “fixando a oferta”, or “validando a autorização”) instead of using an indefinite typing indicator.
 - Progress indicators use restrained pulses for active work; completed steps settle without looping motion.
 - Balance changes transition over 300–500 ms and retain the final textual delta in transaction history.
 - Destructive revocation always has a confirmation step.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import {
   emptyTravelIntent,
   InMemoryTravelBotRepository,
@@ -53,7 +53,7 @@ test("TravelBot v1 routes create, read and append a durable conversation", async
       "idempotency-key": "idem_route_message_001",
       "x-correlation-id": "corr_route_message_001",
     },
-    payload: { content: "Quero viajar." },
+    payload: { content: "I want to travel." },
   });
   assert.equal(message.statusCode, 200);
   assert.equal(message.json().messages.length, 2);
@@ -94,7 +94,7 @@ test("TravelBot SSE uses persisted event sequence IDs and supports Last-Event-ID
       "idempotency-key": "idem_sse_message_001",
       "x-correlation-id": "corr_sse_message_001",
     },
-    payload: { content: "Quero viajar." },
+    payload: { content: "I want to travel." },
   });
   assert.equal(response.statusCode, 200);
   assert.match(String(response.headers["content-type"] ?? ""), /^text\/event-stream/);

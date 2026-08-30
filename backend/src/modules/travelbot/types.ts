@@ -87,8 +87,13 @@ export interface AgentRuntimeRequest {
   model: string;
   state: TravelBotState;
   intent: TravelIntent;
+  conversation_history?: Array<{
+    role: TravelBotMessage["role"];
+    content: string;
+  }>;
   user_message: string;
   available_tools: TravelBotToolName[];
+  backend_directive?: "PREPARE_PURCHASE_APPROVAL";
 }
 
 export interface AgentRuntimeResult {

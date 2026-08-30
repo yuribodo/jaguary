@@ -7,6 +7,7 @@ import {
   verifiedAgentRequestSchema,
   type AgentIdentityRegistryPort,
   type AgentIdentity,
+  type AgentEligibilityPort,
   type AgentRequestProof,
   type AgentRequestVerifierPort,
   type AuthorizationDecision,
@@ -78,6 +79,7 @@ export interface VerifyOrchestratorOptions {
   reservationStore: AuthorizationReservationPort;
   clock: ClockPort;
   humanApprovalRequired(input: VerifyRequestBody): boolean;
+  eligibility?: AgentEligibilityPort;
 }
 
 function decisionFrom(evaluation: PolicyEvaluation): AuthorizationDecision {
@@ -133,10 +135,11 @@ export class VerifyOrchestrator {
         });
       }
     }
-    const [agent, mandate, checkoutSignatureValid] = await Promise.all([
+    const [agent, mandate, checkoutSignatureValid, eligibility] = await Promise.all([
       this.options.agentRegistry.get(agentRequest?.agent_id ?? request.proof.payload.agent_id),
       loadMandateOrUndefined(this.options.mandateLoader, authorization.mandate_id),
       this.options.checkoutVerifier.verify(checkout),
+      this.options.eligibility?.evaluate(request.proof.payload.agent_id, authorization.principal_id, now),
     ]);
     const mandateSignatureValid = mandate !== undefined && "principal_signature" in mandate
       ? await this.options.mandateSignatureVerifier.verify(
@@ -166,6 +169,8 @@ export class VerifyOrchestrator {
       now: now.toISOString(),
       usage: inspection.usage,
       nonce_status: inspection.nonce_status,
+      agent_trust: eligibility?.trust,
+      agent_eligibility_reason: eligibility?.reason,
     });
     if (evaluation.decision !== "ALLOW") {
       await this.options.reservationStore.recordDecision({

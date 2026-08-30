@@ -106,11 +106,33 @@ The claim transaction writes `payment.attempt_started` together with `PAYMENT_PE
 
 No real Yuno request, webhook or public reconciliation endpoint is present. Internal reconciliation reuses the existing payment attempt and provider idempotency key; it does not create another attempt or invoke the executor again.
 
+## Principal login, KYA and Agent Passport (BE-14)
+
+The backend now owns opaque principal sessions, Google OIDC Authorization Code + PKCE, development-only Marta demo login, provider-neutral agent assurance, a real Didit adapter and short-lived Bound Agent Passports. The complete threat model, provider setup, modes, privacy boundary, real-validation checklist and terminal-evidence purge procedure are documented in [BE-14 principal auth and KYA](../docs/be-14-principal-auth-kya.md).
+
+Authentication routes are `/auth/v1/login/:provider/start`, callback, session and logout; demo adds `/auth/v1/demo/session`. Trust routes create/reconcile attestation sessions, expose sanitized assurance and passports, receive provider webhooks, verify passports and publish JWKS. KYA initiation requires the authenticated owner, Origin, session-bound CSRF, `Idempotency-Key` and `X-Correlation-Id`. Only the signed webhook route is exempt from the global client idempotency header and deduplicates by its authenticated provider event ID.
+
+`KYA_MODE=LOCAL` and `KYA_PROVIDER=fake` are credential-free and make no external request. Any external mode fails startup unless all Didit settings are present and its API origin is the official HTTPS origin. Set `KYA_BIOMETRIC_WORKFLOW_ID` to a published Didit Biometric Authentication workflow to require a live selfie before mandate activation. The consent is bound to the exact immutable terms and consumed atomically during activation; no biometric media is persisted. Verify and purchase paths consume persisted trust/consent snapshots and never call a provider.
+
 ## TravelBot chat (BE-13)
 
 TravelBot is a backend-only OpenAI Agents SDK runtime behind `AgentRuntimePort`. PostgreSQL owns the sanitized messages, normalized intent, deterministic state, model-run correlation, tool executions, approvals and replayable SSE events. OpenAI response/session IDs are metadata only. The browser never receives `OPENAI_API_KEY` and never calls OpenAI.
 
-The flight inventory is the existing deterministic VuelaYa catalog returned by `GET /merchant/flights`: the MVP has one GRU → COR economy flight on 2026-09-15 for USD 137. TravelBot does not browse external travel sites. Its only available function tools are the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from the persisted state and every economic operation is revalidated by application services.
+Flight discovery uses live Google Flights results through SerpApi when `SERPAPI_API_KEY` is configured. The adapter requests structured one-way results for the validated route, date, cabin, currency and per-passenger ceiling, then normalizes at most five offers into the signed VuelaYa checkout contract. Identical searches are deduplicated and cached in-process for five minutes; SerpApi may also serve its own one-hour cache. Without the key, runtime search fails closed instead of inventing inventory. The deterministic fixture remains available only through injected test catalogs.
+
+`GET /merchant/flights` returns the catalog's currently observed offers without query parameters. It performs a live search when passed `origin`, `destination`, `date`, `passengers`, `cabin`, `currency` and `max_budget_minor`. TravelBot's available function tools remain the narrow `find_offers`, `create_checkout`, `prepare_authority`, `request_purchase`, `get_receipt` and `get_audit_timeline` contracts. Tool availability is derived from persisted state and every economic operation is revalidated by application services.
+
+Configure the backend-only flight provider variables:
+
+```text
+SERPAPI_API_KEY
+FLIGHT_SEARCH_TIMEOUT_MS=15000
+GOOGLE_FLIGHTS_DEEP_SEARCH=false
+```
+
+`GOOGLE_FLIGHTS_DEEP_SEARCH=true` asks SerpApi for browser-equivalent results at the cost of higher latency. Provider credentials and URLs containing them are never returned to the browser or written to application logs.
+
+When the intent is complete, the service filters compatible flights and deterministically chooses one recommendation by lowest total price, earliest departure and stable offer ID. It persists only that offer, prepares checkout and authority, then asks for explicit purchase approval with the complete flight details and official source URL. `AWAITING_OFFER_SELECTION` is retained only as an internal/legacy checkout seam; the normal UI has no flight-selection step.
 
 Configure these backend-only environment names to enable OpenAI chat; `.env.example` intentionally contains no values:
 

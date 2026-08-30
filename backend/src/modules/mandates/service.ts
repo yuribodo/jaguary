@@ -8,6 +8,7 @@ import {
   PublicApiError,
   sha256CanonicalJson,
   type ActiveMandate,
+  type AgentEligibilityPort,
   type ClockPort,
   type CreateMandateDraftInput,
   type Mandate,
@@ -21,6 +22,7 @@ import {
   PostgresAuditEventRepository,
   type AuditLedgerPort,
 } from "../ledger/index.js";
+import type { MandateBiometricConsentGate } from "./biometric-consent.js";
 
 type MandateRow = typeof mandates.$inferSelect;
 
@@ -146,6 +148,8 @@ export class MandateService {
     private readonly ledger: AuditLedgerPort = new AuditLedgerService(
       new PostgresAuditEventRepository(database.db),
     ),
+    private readonly eligibility?: AgentEligibilityPort,
+    private readonly biometricConsent?: MandateBiometricConsentGate,
   ) {}
 
   async createDraft(
@@ -176,12 +180,13 @@ export class MandateService {
         throw new PublicApiError(409, "idempotency_conflict", "Mandate ID already exists");
       }
 
-      const agent = (await transaction
-        .select({ status: agents.status })
-        .from(agents)
-        .where(and(eq(agents.agentId, input.agent_id), eq(agents.principalId, input.principal_id))))[0];
-      if (agent === undefined || agent.status !== "ACTIVE") {
-        throw new PublicApiError(400, "invalid_request", "Mandate agent is unknown or inactive");
+      if (this.eligibility !== undefined) {
+        const decision = await this.eligibility.evaluate(input.agent_id, input.principal_id, this.clock.now());
+        if (!decision.eligible) throw new PublicApiError(403, decision.reason ?? "agent_not_active", "Mandate agent is not eligible");
+      } else {
+        const agent = (await transaction.select({ status: agents.status }).from(agents)
+          .where(and(eq(agents.agentId, input.agent_id), eq(agents.principalId, input.principal_id))))[0];
+        if (agent === undefined || agent.status !== "ACTIVE") throw new PublicApiError(400, "invalid_request", "Mandate agent is unknown or inactive");
       }
       const credential = (await transaction
         .select({ display: paymentCredentials.display })
@@ -325,6 +330,14 @@ export class MandateService {
       const terms = rowTerms(stored.row);
       const canonicalTerms = canonicalizeJson(terms);
       const termsHash = sha256CanonicalJson(terms);
+      const biometricProof = this.biometricConsent === undefined ? undefined : await this.biometricConsent.consumeInTransaction(transaction, {
+        mandateId,
+        principalId: terms.principal_id,
+        agentId: terms.agent_id,
+        termsHash,
+        correlationId,
+        now,
+      });
       const signature = await this.signer.sign(new TextEncoder().encode(canonicalTerms));
       const updated = (await transaction
         .update(mandates)
@@ -350,6 +363,10 @@ export class MandateService {
           from_status: "DRAFT",
           to_status: "ACTIVE",
           terms_hash: termsHash,
+          ...(biometricProof === undefined ? {} : {
+            biometric_consent_id: biometricProof.consentId,
+            biometric_evidence_hash: biometricProof.evidenceHash,
+          }),
           occurred_at: now.toISOString(),
         },
         recordedAt: now,

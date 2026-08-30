@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { ConfigurationError, loadEnv } from "../src/config/env.js";
 
 const validEnvironment = {
-  NODE_ENV: "test",
+  NODE_ENV: "development",
   DATABASE_URL: "postgresql://bound_app:local_password@localhost:55433/bound_test",
 };
 
@@ -18,10 +18,99 @@ test("database configuration accepts only PostgreSQL URLs", () => {
   assert.deepEqual(env.openai, { enabled: false });
   assert.deepEqual(env.travelbot, { enabled: false });
   assert.deepEqual(env.langfuse, { enabled: false });
+  assert.deepEqual(env.flightSearch, { enabled: false });
   assert.throws(
     () => loadEnv({ ...validEnvironment, DATABASE_URL: "sqlite::memory:" }),
     ConfigurationError,
   );
+});
+
+test("BE-14 defaults to explicit local trust and development-only demo auth", () => {
+  const env = loadEnv({ ...validEnvironment, NODE_ENV: "development" });
+  assert.deepEqual(env.auth, {
+    mode: "demo",
+    sessionTtlSeconds: 28_800,
+    loginTransactionTtlSeconds: 600,
+  });
+  assert.deepEqual(env.kya, {
+    mode: "LOCAL",
+    provider: "fake",
+    requestTimeoutMs: 5_000,
+    attestationTtlSeconds: 31_536_000,
+  });
+});
+
+test("BE-14 production rejects demo auth and incomplete or unsafe OIDC", () => {
+  assert.throws(() => loadEnv({ ...validEnvironment, NODE_ENV: "test", AUTH_MODE: "demo" }), ConfigurationError);
+  assert.throws(() => loadEnv({ ...validEnvironment, NODE_ENV: "production", AUTH_MODE: "demo" }), ConfigurationError);
+  assert.throws(() => loadEnv({ ...validEnvironment, AUTH_MODE: "oidc" }), ConfigurationError);
+  assert.throws(() => loadEnv({
+    ...validEnvironment,
+    NODE_ENV: "production",
+    AUTH_MODE: "oidc",
+    AUTH_OIDC_ISSUER: "http://accounts.google.com",
+    AUTH_OIDC_CLIENT_ID: "client-id",
+    AUTH_OIDC_CLIENT_SECRET: "client-secret-never-log",
+    AUTH_OIDC_CALLBACK_URL: "http://bound.example/auth/v1/login/google/callback",
+  }), ConfigurationError);
+  const env = loadEnv({
+    ...validEnvironment,
+    NODE_ENV: "production",
+    AUTH_MODE: "oidc",
+    AUTH_OIDC_ISSUER: "https://accounts.google.com",
+    AUTH_OIDC_CLIENT_ID: "client-id",
+    AUTH_OIDC_CLIENT_SECRET: "client-secret-never-log",
+    AUTH_OIDC_CALLBACK_URL: "https://bound.example/auth/v1/login/google/callback",
+  });
+  assert.equal(env.auth.mode, "oidc");
+});
+
+test("BE-14 external KYA is complete and pinned to the official Didit origin", () => {
+  const incomplete = {
+    ...validEnvironment,
+    KYA_MODE: "EXTERNAL_REQUIRED",
+    KYA_PROVIDER: "didit",
+  };
+  assert.throws(() => loadEnv(incomplete), ConfigurationError);
+  assert.throws(() => loadEnv({
+    ...incomplete,
+    KYA_API_BASE_URL: "https://attacker.example",
+    KYA_API_KEY: "secret",
+    KYA_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440000",
+    KYA_BIOMETRIC_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440010",
+    KYA_WEBHOOK_SECRET: "webhook-secret",
+  }), ConfigurationError);
+  const env = loadEnv({
+    ...incomplete,
+    KYA_API_BASE_URL: "https://verification.didit.me",
+    KYA_API_KEY: "secret",
+    KYA_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440000",
+    KYA_BIOMETRIC_WORKFLOW_ID: "550e8400-e29b-41d4-a716-446655440010",
+    KYA_WEBHOOK_SECRET: "webhook-secret",
+  });
+  assert.equal(env.kya.mode, "EXTERNAL_REQUIRED");
+  assert.equal(env.kya.provider, "didit");
+  assert.equal(env.kya.biometricWorkflowId, "550e8400-e29b-41d4-a716-446655440010");
+});
+
+test("Google Flights search is backend-only, optional, and validates its controls", () => {
+  const env = loadEnv({
+    ...validEnvironment,
+    SERPAPI_API_KEY: "serpapi-secret",
+    FLIGHT_SEARCH_TIMEOUT_MS: "12000",
+    GOOGLE_FLIGHTS_DEEP_SEARCH: "true",
+  });
+  assert.deepEqual(env.flightSearch, {
+    enabled: true,
+    apiKey: "serpapi-secret",
+    timeoutMs: 12_000,
+    deepSearch: true,
+  });
+  assert.throws(() => loadEnv({
+    ...validEnvironment,
+    SERPAPI_API_KEY: "serpapi-secret",
+    FLIGHT_SEARCH_TIMEOUT_MS: "60000",
+  }), ConfigurationError);
 });
 
 test("OpenAI chat configuration validates the model and fails closed when incomplete", () => {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  agentAssuranceClaimSchema,
   identifierSchema,
   moneySchema,
   reasonCodeSchema,
@@ -8,11 +9,23 @@ import {
   utcRfc3339Schema,
 } from "../../contracts/v1/index.js";
 
+const attestationEvidenceBase = {
+  attestation_id: identifierSchema,
+  agent_id: identifierSchema,
+  principal_id: identifierSchema,
+  provider: z.enum(["fake", "didit"]),
+  binding_hash: sha256Schema,
+  evidence_hash: sha256Schema,
+  occurred_at: utcRfc3339Schema,
+};
+
 const mandateTransitionSchema = z.object({
   mandate_id: identifierSchema,
   from_status: z.enum(["DRAFT", "ACTIVE"]),
   to_status: z.enum(["ACTIVE", "REVOKED"]),
   terms_hash: sha256Schema.optional(),
+  biometric_consent_id: identifierSchema.optional(),
+  biometric_evidence_hash: sha256Schema.optional(),
   payment_executor_called: z.literal(false).optional(),
   occurred_at: utcRfc3339Schema,
 }).strict();
@@ -54,6 +67,13 @@ export const ledgerPayloadSchemas = {
     key_id: identifierSchema,
     registered_at: utcRfc3339Schema,
   }).strict(),
+  "agent.attestation_started": z.object({ ...attestationEvidenceBase, status: z.literal("PENDING") }).strict(),
+  "agent.attestation_verified": z.object({ ...attestationEvidenceBase, status: z.literal("VERIFIED"), assurance_claims: z.array(agentAssuranceClaimSchema).min(1), expires_at: utcRfc3339Schema }).strict(),
+  "agent.attestation_rejected": z.object({ ...attestationEvidenceBase, status: z.literal("REJECTED"), failure_code: z.string().min(1).max(64) }).strict(),
+  "agent.attestation_expired": z.object({ ...attestationEvidenceBase, status: z.literal("EXPIRED") }).strict(),
+  "agent.attestation_revoked": z.object({ ...attestationEvidenceBase, status: z.literal("REVOKED") }).strict(),
+  "agent.passport_issued": z.object({ passport_id: identifierSchema, attestation_id: identifierSchema, agent_id: identifierSchema, binding_hash: sha256Schema, evidence_hash: sha256Schema, expires_at: utcRfc3339Schema, occurred_at: utcRfc3339Schema }).strict(),
+  "agent.passport_invalidated": z.object({ passport_id: identifierSchema, attestation_id: identifierSchema, agent_id: identifierSchema, reason: z.enum(["attestation_expired", "attestation_revoked", "binding_changed", "agent_not_active"]), occurred_at: utcRfc3339Schema }).strict(),
   "mandate.created": z.object({
     mandate_id: identifierSchema,
     principal_id: identifierSchema,
@@ -61,10 +81,42 @@ export const ledgerPayloadSchemas = {
     status: z.literal("DRAFT"),
     created_at: utcRfc3339Schema,
   }).strict(),
+  "mandate.biometric_consent_started": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.literal("PREPARING"),
+    expires_at: utcRfc3339Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_verified": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.literal("VERIFIED"),
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_failed": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    status: z.enum(["REJECTED", "EXPIRED", "ERROR"]),
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
+  "mandate.biometric_consent_consumed": z.object({
+    consent_id: identifierSchema,
+    mandate_id: identifierSchema,
+    terms_hash: sha256Schema,
+    evidence_hash: sha256Schema,
+    occurred_at: utcRfc3339Schema,
+  }).strict(),
   "mandate.activated": mandateTransitionSchema.refine(
     (payload) => payload.from_status === "DRAFT"
       && payload.to_status === "ACTIVE"
       && payload.terms_hash !== undefined
+      && ((payload.biometric_consent_id === undefined) === (payload.biometric_evidence_hash === undefined))
       && payload.payment_executor_called === undefined,
     "Mandate activation must bind DRAFT to ACTIVE and include terms_hash",
   ),

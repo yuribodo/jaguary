@@ -1,17 +1,18 @@
 import type {
   AgentIdentity,
   AuditTimeline,
-  OrderReceipt,
-  TravelBotConversation,
   CreateMandateDraftInput,
   Mandate,
   MerchantCapabilities,
   NormalizedCheckout,
   OfferCandidate,
+  OrderReceipt,
   PurchaseIntent,
+  TravelBotConversation,
 } from "@/lib/contracts";
 
 const DEFAULT_API_URL = "http://localhost:3001";
+const REQUEST_TIMEOUT_MS = 10_000;
 const UCP_CAPABILITIES = [
   "dev.ucp.shopping.checkout",
   "dev.ucp.common.payment.ap2_mandate",
@@ -71,23 +72,47 @@ async function request<T>(
   init: RequestInit = {},
 ): Promise<ApiResult<T>> {
   let response: Response;
+  const requestController = new AbortController();
+  const callerSignal = init.signal;
+  const forwardCallerAbort = () => requestController.abort(callerSignal?.reason);
+  const timeout = setTimeout(() => {
+    requestController.abort(new DOMException("Request timed out", "TimeoutError"));
+  }, REQUEST_TIMEOUT_MS);
+
+  if (callerSignal?.aborted) forwardCallerAbort();
+  else callerSignal?.addEventListener("abort", forwardCallerAbort, { once: true });
 
   try {
     response = await fetch(`${apiUrl}${path}`, {
       cache: "no-store",
+      credentials: "include",
       ...init,
+      signal: requestController.signal,
       headers: {
         Accept: "application/json",
         ...init.headers,
       },
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    if (callerSignal?.aborted) throw error;
+    if (
+      requestController.signal.reason instanceof DOMException
+      && requestController.signal.reason.name === "TimeoutError"
+    ) {
+      throw new BoundApiError({
+        message: "The Jaguary API took more than 10 seconds to respond. Check that the backend is running and try again.",
+        code: "api_timeout",
+        offline: true,
+      });
+    }
     throw new BoundApiError({
-      message: "Não foi possível alcançar a API do Bound.",
+      message: "Could not reach the Jaguary API.",
       code: "api_offline",
       offline: true,
     });
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", forwardCallerAbort);
   }
 
   const headerCorrelationId = response.headers.get("x-correlation-id") ?? undefined;
@@ -96,16 +121,20 @@ async function request<T>(
   if (!response.ok) {
     const errorBody = body as ApiErrorBody | undefined;
     throw new BoundApiError({
-      message: errorBody?.error?.message ?? `A API respondeu com status ${response.status}.`,
+      message: errorBody?.error?.message ?? `The API returned status ${response.status}.`,
       code: errorBody?.error?.code,
       status: response.status,
       correlationId: errorBody?.correlation_id ?? headerCorrelationId,
     });
   }
 
+  if (response.status === 204) {
+    return { data: undefined as T, correlationId: headerCorrelationId };
+  }
+
   if (body === undefined) {
     throw new BoundApiError({
-      message: "A API respondeu sem um corpo JSON válido.",
+      message: "The API returned an invalid JSON body.",
       code: "invalid_response",
       status: response.status,
       correlationId: headerCorrelationId,
@@ -116,6 +145,58 @@ async function request<T>(
 }
 
 export const boundApi = {
+  getPrincipalSession(signal?: AbortSignal) {
+    return request<PrincipalSessionView>("/auth/v1/session", { signal });
+  },
+
+  createDemoPrincipalSession(requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AuthenticatedPrincipalSession>("/auth/v1/demo/session", {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey },
+    });
+  },
+
+  logoutPrincipal(csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<never>("/auth/v1/logout", {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey, "X-CSRF-Token": csrfToken },
+    });
+  },
+
+  startAgentAttestation(agentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AttestationSession>(`/trust/v1/agents/${encodeURIComponent(agentId)}/attestation-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ consent: true }),
+    });
+  },
+
+  getAgentAssurance(agentId: string, signal?: AbortSignal) {
+    return request<AgentAssurance>(`/trust/v1/agents/${encodeURIComponent(agentId)}/assurance`, { signal });
+  },
+
+  refreshAgentAttestation(agentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<AgentAssurance>(`/trust/v1/agents/${encodeURIComponent(agentId)}/attestations/refresh`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+    });
+  },
+
+  startMandateBiometricConsent(mandateId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<MandateBiometricConsent>(`/v1/mandates/${encodeURIComponent(mandateId)}/biometric-consent-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ consent: true }),
+    });
+  },
+
+  refreshMandateBiometricConsent(mandateId: string, consentId: string, csrfToken: string, requestIdentity: ReturnType<typeof createRequestIdentity>) {
+    return request<MandateBiometricConsent>(`/v1/mandates/${encodeURIComponent(mandateId)}/biometric-consent-sessions/${encodeURIComponent(consentId)}/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdentity.idempotencyKey, "X-Correlation-Id": requestIdentity.correlationId, "X-CSRF-Token": csrfToken },
+      body: "{}",
+    });
+  },
   health(signal?: AbortSignal) {
     return request<{ status: string }>("/health", { signal });
   },
@@ -132,16 +213,54 @@ export const boundApi = {
     return request<OfferCandidate[]>("/merchant/flights", { signal });
   },
 
-  getAuditTimeline(correlationId: string, signal?: AbortSignal) {
-    return request<AuditTimeline>(`/audit/${encodeURIComponent(correlationId)}`, { signal });
-  },
-
-  getReceipt(receiptId: string, signal?: AbortSignal) {
-    return request<OrderReceipt>(`/receipts/${encodeURIComponent(receiptId)}`, { signal });
+  createConversation(
+    input: { principal_id: string; agent_id: string },
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+    signal?: AbortSignal,
+  ) {
+    return request<TravelBotConversation>("/v1/conversations", {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestIdentity.idempotencyKey,
+        "X-Correlation-Id": requestIdentity.correlationId,
+      },
+      body: JSON.stringify(input),
+    });
   },
 
   getConversation(conversationId: string, signal?: AbortSignal) {
-    return request<TravelBotConversation>(`/v1/conversations/${encodeURIComponent(conversationId)}`, { signal });
+    return request<TravelBotConversation>(`/v1/conversations/${conversationId}`, {
+      signal,
+    });
+  },
+
+  getReceipt(receiptId: string, signal?: AbortSignal) {
+    return request<OrderReceipt>(`/receipts/${receiptId}`, { signal });
+  },
+
+  getAuditTimeline(correlationId: string, signal?: AbortSignal) {
+    return request<AuditTimeline>(`/audit/${correlationId}`, { signal });
+  },
+
+  postConversationMessage(
+    conversationId: string,
+    content: string,
+    requestIdentity: ReturnType<typeof createRequestIdentity>,
+  ) {
+    return request<TravelBotConversation>(
+      `/v1/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": requestIdentity.idempotencyKey,
+          "X-Correlation-Id": requestIdentity.correlationId,
+        },
+        body: JSON.stringify({ content }),
+      },
+    );
   },
 
   createCheckout(
@@ -208,4 +327,36 @@ export const boundApi = {
       body: "{}",
     });
   },
+};
+
+export type AuthenticatedPrincipalSession = {
+  authenticated: true;
+  principal: { principal_id: string; display_name: string };
+  assurance: "DEMO" | "OIDC";
+  demo: boolean;
+  csrf_token: string;
+  expires_at: string;
+};
+export type PrincipalSessionView = { authenticated: false } | AuthenticatedPrincipalSession;
+export type AttestationStatus = "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "REVOKED" | "ERROR";
+export type AttestationSession = { attestation_id: string | null; status: AttestationStatus | null; expires_at: string | null; hosted_verification_url: string | null };
+export type AgentAssurance = {
+  agent_id: string;
+  operational_status: "ACTIVE" | "SUSPENDED" | "REVOKED";
+  attestation_id: string | null;
+  attestation_status: AttestationStatus | null;
+  provider: "fake" | "didit";
+  assurance_claims: Array<"OPERATOR_IDENTITY" | "ORGANIZATION_OWNERSHIP" | "AGENT_OPERATOR_BINDING" | "BUILD_PROVENANCE">;
+  assurance_level: "LOCAL_CRYPTOGRAPHIC" | "EXTERNAL_OPERATOR_IDENTITY";
+  issued_at: string | null;
+  expires_at: string | null;
+  eligibility: { eligible: boolean; reason?: string };
+};
+export type MandateBiometricConsent = {
+  consent_id: string;
+  mandate_id: string;
+  status: "PREPARING" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "ERROR" | "CONSUMED";
+  terms_hash: string;
+  expires_at: string;
+  hosted_verification_url: string | null;
 };

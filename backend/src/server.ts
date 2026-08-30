@@ -1,6 +1,7 @@
 import "dotenv/config";
+import "fastify";
 
-import { buildApp } from "./app.js";
+import { buildApp } from "./build-app.js";
 import { ConfigurationError, loadEnv } from "./config/env.js";
 import {
   Aes256GcmApprovalStateProtector,
@@ -8,6 +9,11 @@ import {
   LangfuseTelemetryAdapter,
   NoopLlmTelemetry,
 } from "./modules/travelbot/index.js";
+import {
+  GoogleFlightsSearchProvider,
+  UnavailableFlightSearchProvider,
+  VuelaYaCatalog,
+} from "./modules/vuelaya/index.js";
 
 async function start(): Promise<void> {
   const env = loadEnv();
@@ -20,11 +26,56 @@ async function start(): Promise<void> {
       ...(env.RELEASE === undefined ? {} : { release: env.RELEASE }),
     })
     : new NoopLlmTelemetry();
+  const runtimeClock = { now: () => new Date() };
+  const flightProvider = env.flightSearch.enabled
+    ? new GoogleFlightsSearchProvider({
+      apiKey: env.flightSearch.apiKey,
+      timeoutMs: env.flightSearch.timeoutMs,
+      deepSearch: env.flightSearch.deepSearch,
+      clock: runtimeClock,
+    })
+    : new UnavailableFlightSearchProvider();
   const app = await buildApp({
     corsOrigin: env.CORS_ORIGIN,
     databaseUrl: env.DATABASE_URL,
     logger: { level: env.LOG_LEVEL },
     llmTelemetry: telemetry,
+    clock: runtimeClock,
+    flightCatalog: new VuelaYaCatalog(flightProvider, [], {
+      clock: runtimeClock,
+      ttlMs: 5 * 60_000,
+      maxEntries: 100,
+    }),
+    principalAuth: {
+      mode: env.auth.mode,
+      nodeEnvironment: env.NODE_ENV,
+      allowedOrigin: env.CORS_ORIGIN,
+      secureCookies: !["localhost", "127.0.0.1", "::1"].includes(new URL(env.CORS_ORIGIN).hostname),
+      sessionTtlSeconds: env.auth.sessionTtlSeconds,
+      loginTransactionTtlSeconds: env.auth.loginTransactionTtlSeconds,
+      ...(env.auth.mode === "oidc" ? {
+        issuer: env.auth.issuer,
+        clientId: env.auth.clientId,
+        clientSecret: env.auth.clientSecret,
+        callbackUrl: env.auth.callbackUrl,
+      } : {}),
+    },
+    agentTrust: {
+      mode: env.kya.mode,
+      provider: env.kya.provider,
+      requestTimeoutMs: env.kya.requestTimeoutMs,
+      attestationTtlSeconds: env.kya.attestationTtlSeconds,
+      callbackUrl: new URL("/trust/callback", env.CORS_ORIGIN).toString(),
+      passportIssuer: new URL(env.auth.mode === "oidc" ? env.auth.callbackUrl : `http://localhost:${env.PORT}`).origin,
+      ...(env.kya.baseUrl === undefined ? {} : { baseUrl: env.kya.baseUrl }),
+      ...(env.kya.apiKey === undefined ? {} : { apiKey: env.kya.apiKey }),
+      ...(env.kya.workflowId === undefined ? {} : { workflowId: env.kya.workflowId }),
+      ...(env.kya.biometricWorkflowId === undefined ? {} : {
+        biometricWorkflowId: env.kya.biometricWorkflowId,
+        biometricCallbackUrl: new URL("/biometric-callback", env.CORS_ORIGIN).toString(),
+      }),
+      ...(env.kya.webhookSecret === undefined ? {} : { webhookSecret: env.kya.webhookSecret }),
+    },
     ...(env.openai.enabled && env.travelbot.enabled ? {
       openAI: {
         apiKey: env.openai.apiKey,

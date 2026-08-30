@@ -10,6 +10,7 @@ import {
   verifiedAgentRequestSchema,
   type AgentHttpRequest,
   type AgentIdentityRegistryPort,
+  type AgentEligibilityPort,
   type AgentRequestProof,
   type AgentRequestVerifierPort,
   type ClockPort,
@@ -37,6 +38,7 @@ export class AgentRequestVerifier implements AgentRequestVerifierPort {
   constructor(
     private readonly registry: Pick<AgentIdentityRegistryPort, "get">,
     private readonly clock: ClockPort,
+    private readonly eligibility?: AgentEligibilityPort,
   ) {}
 
   async verify(input: unknown, request: AgentHttpRequest) {
@@ -47,7 +49,11 @@ export class AgentRequestVerifier implements AgentRequestVerifierPort {
     if (agent === undefined) {
       throw new PublicApiError(401, "agent_not_found", "Agent identity is not registered");
     }
-    if (agent.status !== "ACTIVE") {
+    const eligibility = this.eligibility === undefined ? undefined : await this.eligibility.evaluate(agent.agent_id, agent.principal_id, this.clock.now());
+    if (eligibility !== undefined && !eligibility.eligible) {
+      throw new PublicApiError(403, eligibility.reason ?? "agent_not_active", "Agent identity is not eligible");
+    }
+    if (eligibility === undefined && agent.status !== "ACTIVE") {
       throw new PublicApiError(403, "agent_not_active", "Agent identity is not active");
     }
 

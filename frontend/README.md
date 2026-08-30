@@ -31,24 +31,19 @@ The conversation shell uses the installed AI Elements Conversation, Message, Pro
 | --- | --- | --- |
 | `GET` | `/health` | API availability |
 | `GET` | `/trust/v1/agents/agent_travelbot` | public TravelBot identity, status, key ID and build fingerprint |
-| `GET` | `/.well-known/ucp` | VuelaYa merchant identity and UCP profile |
-| `GET` | `/merchant/flights` | GRU → COR offer discovery and empty state |
-| `POST` | `/ucp/v1/checkout` | merchant-authored checkout with AP2 capabilities, hash and signature |
-| `POST` | `/v1/mandates` | unsigned `DRAFT` creation |
-| `POST` | `/v1/mandates/:id/activate` | explicit user activation |
-| `GET` | `/v1/mandates/:id` | mandate detail and current-state refresh |
-| `POST` | `/v1/mandates/:id/revoke` | explicit, confirmed revocation |
+| `POST` | `/v1/conversations` | create a durable TravelBot conversation |
+| `GET` | `/v1/conversations/:id` | reopen backend-stored messages and operation state |
+| `POST` | `/v1/conversations/:id/messages` | send user text through the OpenAI-backed TravelBot runtime |
 
 All mutable requests send an `Idempotency-Key` and a client-generated `X-Correlation-Id`. Checkout creation also sends both required UCP capabilities.
 
-The mandate API expects the backend environment to contain the existing Marta/TravelBot and logical credential references (`principal_marta`, `agent_travelbot`, `cred_demo_marta_visa`). The frontend does not bypass those references or write directly to PostgreSQL.
+The conversation service orchestrates merchant discovery, checkout, mandate, verification, payment and receipt APIs on the server. It expects the backend environment to contain the existing Marta/TravelBot and logical credential references (`principal_marta`, `agent_travelbot`, `cred_demo_marta_visa`). The frontend does not bypass that orchestration or write directly to PostgreSQL.
 
-### Deliberately not connected or simulated
+### Chat behavior and boundaries
 
-- There is no chat or LLM API in this release. The composer starts the fixed GRU → COR demonstration and a deterministic client state machine arranges real API results in the thread; it does not claim to understand arbitrary travel requests.
-- No `POST /verify` call is made. The implemented identity verification route is not presented as the future Bound purchase decision.
-- `src/lib/authorization-state.ts` defines the replaceable `AuthorizationDecisionSource` seam for the future HTTP decision/reservation integration. The pure BE-06 policy now exists in the backend, but `POST /verify` and BE-07 reservation do not; the current UI state is `NOT_CONNECTED` and does **not** fabricate `ALLOW`, `DENY` or `ESCALATE`.
-- Checkout completion, order receipts, authorization reservation/consumption, payment execution and Yuno are outside this surface.
-- There is no `pay()` tool or payment action.
-- No PAN, CVV, Yuno token or reusable payment credential enters frontend state. Only the logical credential reference and defensively masked display returned by the mandate API are rendered.
-- The proposed policy values (economy cabin, USD 150 per-purchase/aggregate limit, one use and 24-hour validity) are local review inputs derived from the P0 demo brief; the resulting mandate state, signature, hash and timestamps are always read from real API responses.
+- Messages, extracted intent, offers, approval state and receipts are rendered from the durable conversation response. The browser no longer runs a parallel scripted purchase state machine.
+- The backend returns one selected recommendation. The chat renders its itinerary, cabin, duration, total and availability directly beside the approval controls, plus an official-flight link; there is no offer-picker tab in the normal journey.
+- The sidebar remembers up to eight conversation IDs in local storage and reloads their messages from the API. This is a client-side index because the backend does not expose a conversation-list endpoint.
+- Every message uses an idempotency key. A failed response can be retried with the same key, avoiding duplicate turns when the server completed but the network response was lost.
+- The microphone control uses the browser Web Speech API when available. Dictation only fills the composer; the user must review and explicitly send it.
+- No PAN, CVV, Yuno token, OpenAI key or reusable payment credential enters frontend state. OpenAI and payment execution remain server-side.

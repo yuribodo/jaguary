@@ -4,7 +4,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Pool } from "pg";
 
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/build-app.js";
 import {
   agentRequestProofFixture,
   approvedPaymentFixture,
@@ -20,6 +20,7 @@ import {
   orderReceiptSchema,
   paymentResultSchema,
   purchaseIntentFixture,
+  PublicApiError,
   reservedAuthorizationFixture,
   reservedAuthorizationSchema,
   sha256CanonicalJson,
@@ -39,6 +40,7 @@ import { DrizzleAgentIdentityRegistry } from "../src/modules/identity/registry.j
 import { AgentRequestVerifier } from "../src/modules/identity/verifier.js";
 import {
   agents,
+  agentAttestationEvents,
   auditEvents,
   authorizations,
   checkouts,
@@ -47,6 +49,7 @@ import {
   orders,
   paymentCredentials,
   payments,
+  principalSessions,
   travelMessages,
   travelModelRuns,
   travelToolExecutions,
@@ -74,6 +77,8 @@ import {
   type AgentRuntimePort,
 } from "../src/modules/travelbot/index.js";
 import { listVuelaYaOffers } from "../src/modules/vuelaya/catalog.js";
+import { AuthCrypto, PostgresPrincipalAuthRepository, sha256Text } from "../src/modules/auth/index.js";
+import { agentBindingHash, PostgresAgentTrustRepository, purgeTerminalAgentAttestationEvidence } from "../src/modules/trust/index.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const integrationTest = testDatabaseUrl === undefined ? test.skip : test;
@@ -512,6 +517,12 @@ beforeEach(async () => {
   if (administrationPool === undefined) return;
   await administrationPool.query(`
     TRUNCATE TABLE
+      agent_attestation_events,
+      agent_attestations,
+      principal_sessions,
+      principal_login_transactions,
+      principal_auth_identities,
+      principals,
       travel_approvals,
       travel_tool_executions,
       travel_sse_events,
@@ -546,15 +557,22 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
   assert.deepEqual(
     result.rows.map(({ table_name }) => table_name),
     [
+      "agent_attestation_events",
+      "agent_attestations",
       "agents",
       "audit_events",
       "authorizations",
       "checkouts",
+      "mandate_biometric_consents",
       "mandates",
       "nonces",
       "orders",
       "payment_credentials",
       "payments",
+      "principal_auth_identities",
+      "principal_login_transactions",
+      "principal_sessions",
+      "principals",
       "travel_approvals",
       "travel_conversations",
       "travel_intent_snapshots",
@@ -564,6 +582,69 @@ integrationTest("an empty PostgreSQL database migrates from zero", async () => {
       "travel_tool_executions",
     ],
   );
+});
+
+integrationTest("opaque principal sessions persist only token hashes and rotate atomically", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-29T12:00:00.000Z");
+  const crypto = new AuthCrypto("integration-auth-encryption-secret");
+  const repository = new PostgresPrincipalAuthRepository(database, crypto, "integration-auth-encryption-secret");
+  const principal = await repository.ensureDemoPrincipal(now);
+  const issued = await repository.create({ principal, assurance: "DEMO", now, expiresAt: new Date(now.getTime() + 3600_000) });
+
+  const stored = (await database.db.select().from(principalSessions).where(eq(principalSessions.sessionId, issued.session.sessionId)))[0]!;
+  assert.equal(stored.tokenHash, sha256Text(issued.token));
+  assert.notEqual(stored.tokenHash, issued.token);
+  assert.equal(JSON.stringify(stored).includes(issued.token), false);
+
+  const rotated = await repository.rotate(issued.session.sessionId, new Date(now.getTime() + 1000));
+  assert.equal(await repository.getByTokenHash(sha256Text(issued.token), new Date(now.getTime() + 1001)), undefined);
+  assert.equal((await repository.getByTokenHash(sha256Text(rotated.token), new Date(now.getTime() + 1001)))?.principal.principal_id, "principal_marta");
+  await repository.revoke(rotated.session.sessionId, new Date(now.getTime() + 2000));
+  assert.equal(await repository.getByTokenHash(sha256Text(rotated.token), new Date(now.getTime() + 2001)), undefined);
+});
+
+integrationTest("signed provider events deduplicate concurrently, ignore older state and support Bound revocation", async () => {
+  assert.ok(database);
+  const now = new Date("2026-08-29T12:00:00.000Z");
+  await database.transaction(async (transaction) => {
+    await transaction.insert(agents).values({
+      agentId: travelBotFixture.agent_id, principalId: travelBotFixture.principal_id, displayName: travelBotFixture.display_name,
+      status: "ACTIVE", buildFingerprint: travelBotFixture.build_fingerprint, verificationKeyId: travelBotFixture.verification_key.key_id,
+      verificationAlgorithm: "ES256", verificationPublicKey: canonicalizeJson(travelBotFixture.verification_key.public_jwk),
+      correlationId: "corr_kya_agent_seed", idempotencyKey: "idem_kya_agent_seed", createdAt: now,
+    });
+    await transaction.execute(sql`INSERT INTO principals (principal_id, display_name, created_at, updated_at) VALUES (${travelBotFixture.principal_id}, 'Marta', ${now}, ${now})`);
+  });
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const repository = new PostgresAgentTrustRepository(database, ledger, { mode: "EXTERNAL_REQUIRED", provider: "fake", attestationTtlSeconds: 3600, encryptionSecret: "integration-kya-secret" });
+  const bindingHash = agentBindingHash({ agentId: travelBotFixture.agent_id, principalId: travelBotFixture.principal_id, keyId: travelBotFixture.verification_key.key_id, buildFingerprint: travelBotFixture.build_fingerprint });
+  await repository.createAssessment({
+    attestationId: "attestation_integration_001", agentId: travelBotFixture.agent_id, principalId: travelBotFixture.principal_id,
+    keyId: travelBotFixture.verification_key.key_id, buildFingerprint: travelBotFixture.build_fingerprint, provider: "fake",
+    providerAssessmentId: "fake_assessment_integration_001", bindingHash, evidenceHash: "a".repeat(64),
+    correlationId: "corr_kya_started", idempotencyKey: "idem_kya_started_001", now,
+  });
+  const verifiedEvent = {
+    provider: "fake" as const, assessmentId: "fake_assessment_integration_001", eventId: "provider_event_verified_001",
+    subjectReference: "opaque-provider-subject", status: "VERIFIED" as const, claims: ["OPERATOR_IDENTITY" as const],
+    evidenceHash: "b".repeat(64), providerCreatedAt: new Date(now.getTime() + 10_000),
+  };
+  const concurrent = await Promise.all([
+    repository.applyProviderEvent({ event: verifiedEvent, now: new Date(now.getTime() + 11_000), correlationId: "corr_kya_webhook_1" }),
+    repository.applyProviderEvent({ event: verifiedEvent, now: new Date(now.getTime() + 11_001), correlationId: "corr_kya_webhook_2" }),
+  ]);
+  assert.deepEqual(concurrent.map(({ applied }) => applied).sort(), [false, true]);
+  assert.equal((await database.db.select({ count: sql<number>`count(*)::int` }).from(agentAttestationEvents))[0]!.count, 1);
+
+  const older = await repository.applyProviderEvent({ event: { ...verifiedEvent, eventId: "provider_event_old_001", status: "REJECTED", claims: [], providerCreatedAt: new Date(now.getTime() + 5000), evidenceHash: "c".repeat(64) }, now: new Date(now.getTime() + 12_000), correlationId: "corr_kya_old" });
+  assert.equal(older.applied, false);
+  assert.equal(older.trust.attestation_status, "VERIFIED");
+  assert.equal((await repository.revokeCurrent(travelBotFixture.agent_id, new Date(now.getTime() + 13_000), "corr_kya_revoke")).attestation_status, "REVOKED");
+  const auditCount = (await database.db.select({ count: sql<number>`count(*)::int` }).from(auditEvents))[0]!.count;
+  assert.equal(await purgeTerminalAgentAttestationEvidence(database, travelBotFixture.agent_id), 1);
+  assert.equal((await database.db.select({ count: sql<number>`count(*)::int` }).from(agentAttestationEvents))[0]!.count, 0);
+  assert.equal((await database.db.select({ count: sql<number>`count(*)::int` }).from(auditEvents))[0]!.count, auditCount);
 });
 
 integrationTest("TravelBot persists sanitized idempotent turns, tool executions and recoverable SSE events", async () => {
@@ -587,14 +668,23 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
           ambiguities: [],
           requested_action: "FIND_OFFERS",
         },
-        assistant_message: "Oferta local encontrada.",
+        assistant_message: "Local offer found.",
       };
     },
   };
   const service = new TravelBotService({
     repository,
     runtime,
-    tools: { findOffers: async () => listVuelaYaOffers() },
+    tools: {
+      findOffers: async () => listVuelaYaOffers(),
+      createCheckout: async ({ offer }) => ({
+        checkout_id: "checkout_travelbot_integration_001",
+        checkout_hash: "c".repeat(64),
+        merchant_id: offer.merchant_id,
+        total: offer.total,
+      }),
+      prepareAuthority: async () => ({ mandate_id: "mandate_chat_integration_001", status: "DRAFT" }),
+    },
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
     model: "fake-integration-model",
   });
@@ -606,7 +696,7 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   });
   const command = {
     conversation_id: conversation.conversation_id,
-    content: "GRU para COR; api_key=sk-supersecret123456",
+    content: "GRU to COR; api_key=sk-supersecret123456",
     idempotency_key: "idem_travelbot_integration_message_001",
     correlation_id: "corr_travelbot_integration_message_001",
   };
@@ -614,14 +704,55 @@ integrationTest("TravelBot persists sanitized idempotent turns, tool executions 
   const replay = await service.postMessage(command);
   assert.deepEqual(replay, first);
   assert.equal(modelRuns, 1);
-  assert.equal(first.state, "AWAITING_OFFER_SELECTION");
+  assert.equal(first.state, "AWAITING_AUTHORITY_CONFIRMATION");
   const messages = await database.db.select().from(travelMessages);
   assert.equal(messages.some(({ content }) => content.includes("sk-supersecret")), false);
   assert.equal((await database.db.select().from(travelModelRuns)).length, 1);
-  assert.equal((await database.db.select().from(travelToolExecutions)).length, 1);
+  assert.equal((await database.db.select().from(travelToolExecutions)).length, 3);
   const events = await repository.listSseEvents(conversation.conversation_id, 1);
   assert.equal(events.length, 4);
   assert.equal(events.at(-1)?.event_type, "turn.completed");
+});
+
+integrationTest("TravelBot persists distinct calls to the same tool within one model run", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const repository = new PostgresTravelBotRepository(database, "fake-repeated-tool-model");
+  const conversation = await repository.create({
+    principal_id: travelBotFixture.principal_id,
+    agent_id: travelBotFixture.agent_id,
+    idempotency_key: "idem_repeated_tool_create_001",
+    correlation_id: "corr_repeated_tool_create_001",
+  }, new Date("2026-08-29T12:04:01.000Z"));
+  const claimed = await repository.claimTurn({
+    conversation_id: conversation.conversation_id,
+    content: "I select the available offer.",
+    idempotency_key: "idem_repeated_tool_message_001",
+    correlation_id: "corr_repeated_tool_message_001",
+  }, new Date("2026-08-29T12:04:01.000Z"));
+  assert.equal(claimed.kind, "CLAIMED");
+  if (claimed.kind !== "CLAIMED") return;
+
+  await repository.recordToolExecutions(claimed.claim.run_id, [
+    {
+      tool_call_id: "call_model_create_checkout",
+      tool_name: "create_checkout",
+      status: "COMPLETED",
+      arguments: { offer_id: offerCandidateFixture.offer_id },
+      result: { status: "OK", reference_id: offerCandidateFixture.offer_id },
+    },
+    {
+      tool_call_id: "call_application_create_checkout",
+      tool_name: "create_checkout",
+      status: "COMPLETED",
+      arguments: { offer_id: offerCandidateFixture.offer_id },
+      result: { checkout_id: "checkout_test_repeated_tool" },
+    },
+  ], new Date("2026-08-29T12:04:01.000Z"));
+
+  const persisted = await database.db.select().from(travelToolExecutions)
+    .where(eq(travelToolExecutions.runId, claimed.claim.run_id));
+  assert.equal(persisted.length, 2);
 });
 
 integrationTest("TravelBot serializes concurrent messages on one conversation", async () => {
@@ -644,7 +775,7 @@ integrationTest("TravelBot serializes concurrent messages on one conversation", 
           ambiguities: [],
           requested_action: "NONE",
         },
-        assistant_message: "Informe os dados.",
+        assistant_message: "Provide the details.",
       };
     },
   };
@@ -662,7 +793,7 @@ integrationTest("TravelBot serializes concurrent messages on one conversation", 
   });
   const results = await Promise.allSettled([1, 2].map((suffix) => service.postMessage({
     conversation_id: conversation.conversation_id,
-    content: `mensagem ${suffix}`,
+    content: `message ${suffix}`,
     idempotency_key: `idem_travelbot_concurrent_message_00${suffix}`,
     correlation_id: `corr_travelbot_concurrent_message_00${suffix}`,
   })));
@@ -683,7 +814,7 @@ integrationTest("a crashed TravelBot run lease is reclaimed with the same run an
   }, startedAt);
   const command = {
     conversation_id: conversation.conversation_id,
-    content: "mensagem antes do restart",
+    content: "message before restart",
     idempotency_key: "idem_travelbot_restart_message_001",
     correlation_id: "corr_travelbot_restart_message_001",
   };
@@ -784,7 +915,7 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
         ambiguities: [],
         requested_action: "NONE" as const,
       };
-      if (request.user_message === "pedido completo") {
+      if (request.user_message === "complete request") {
         return {
           proposal: {
             ...base,
@@ -796,7 +927,7 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
             max_total_budget: { amount: 15000, currency: "USD" },
             requested_action: "FIND_OFFERS",
           },
-          assistant_message: "Buscando oferta.",
+          assistant_message: "Searching for an offer.",
         };
       }
       if (request.user_message === "seleciono") {
@@ -825,15 +956,9 @@ integrationTest("canonical GRU to COR chat completes through Verify, fake paymen
   });
   await chat.postMessage({
     conversation_id: conversation.conversation_id,
-    content: "pedido completo",
+    content: "complete request",
     idempotency_key: "idem_chat_happy_request_001",
     correlation_id: "corr_chat_happy_request_001",
-  });
-  await chat.postMessage({
-    conversation_id: conversation.conversation_id,
-    content: "seleciono",
-    idempotency_key: "idem_chat_happy_select_001",
-    correlation_id: "corr_chat_happy_select_001",
   });
   const completed = await chat.postMessage({
     conversation_id: conversation.conversation_id,
@@ -1477,6 +1602,67 @@ integrationTest("a changed mandate creates a linked version without mutating act
     payload: { cabin: "BUSINESS" },
   });
   assert.equal(mutation.statusCode, 404);
+});
+
+integrationTest("mandate activation fails closed until biometric consent matches the exact immutable terms hash", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const now = new Date("2026-08-29T12:05:00.000Z");
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  let observedTermsHash: string | undefined;
+  const service = new MandateService(
+    database,
+    new EphemeralEs256Signer(),
+    { now: () => now },
+    ledger,
+    undefined,
+    {
+      async consumeInTransaction(_transaction, input) {
+        observedTermsHash = input.termsHash;
+        throw new PublicApiError(403, "biometric_consent_required", "Biometric consent is required before mandate activation");
+      },
+    },
+  );
+  const input = mandateDraftRequest("mandate_biometric_gate_001");
+  const { mandate } = await service.createDraft(input, "idem_biometric_gate_create_001", "corr_biometric_gate_001");
+
+  await assert.rejects(
+    service.activate(input.mandate_id, "idem_biometric_gate_activate_001", "corr_biometric_gate_001"),
+    (error: unknown) => error instanceof PublicApiError && error.code === "biometric_consent_required",
+  );
+  assert.equal(observedTermsHash, sha256CanonicalJson(mandate.terms));
+  assert.equal((await service.getMandate(input.mandate_id)).status, "DRAFT");
+});
+
+integrationTest("a verified biometric consent is consumed in the same transaction that activates the bound mandate", async () => {
+  assert.ok(database);
+  await seedMandateReferences();
+  const now = new Date("2026-08-29T12:05:00.000Z");
+  const ledger = new AuditLedgerService(new PostgresAuditEventRepository(database.db));
+  const service = new MandateService(
+    database,
+    new EphemeralEs256Signer(),
+    { now: () => now },
+    ledger,
+    undefined,
+    {
+      async consumeInTransaction(_transaction, input) {
+        return {
+          consentId: "bioconsent_verified_001",
+          evidenceHash: sha256CanonicalJson({ terms_hash: input.termsHash, result: "VERIFIED" }),
+        };
+      },
+    },
+  );
+  const input = mandateDraftRequest("mandate_biometric_gate_002");
+  await service.createDraft(input, "idem_biometric_gate_create_002", "corr_biometric_gate_002");
+  const active = await service.activate(input.mandate_id, "idem_biometric_gate_activate_002", "corr_biometric_gate_002");
+
+  assert.equal(active.status, "ACTIVE");
+  const timeline = await ledger.getTimeline("corr_biometric_gate_002");
+  const activation = timeline.events.find(({ event_type: eventType }) => eventType === "mandate.activated");
+  assert.equal(activation?.payload?.biometric_consent_id, "bioconsent_verified_001");
+  assert.equal(activation?.payload?.terms_hash, sha256CanonicalJson(active.terms));
 });
 
 integrationTest("mandate responses defensively mask malformed credential displays", async (t) => {

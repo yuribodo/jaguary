@@ -34,6 +34,9 @@ pnpm check
 
 ## Documentation
 
+- [Initial deployment — Vercel + Neon](docs/deployment.md)
+- [Current implementation — complete visual guide](docs/diagrams/bound-current-system.html)
+- [Diagram index](docs/diagrams/README.md)
 - [Visual discovery and Jaguary/Bound moodboards](docs/design/visual-directions.md)
 - [Backend MVP delivery plan](docs/backend-mvp-plan.md)
 - [GitHub Project — Jaguary Backend MVP](https://github.com/users/yuribodo/projects/2)

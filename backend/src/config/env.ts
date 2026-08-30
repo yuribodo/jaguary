@@ -65,6 +65,14 @@ const encryptionKeySchema = z.string().refine(
   "must be a base64-encoded 32-byte key",
 );
 const httpsUrlSchema = z.url().refine((value) => new URL(value).protocol === "https:", "must use HTTPS");
+const secretSchema = z.string().min(1).max(4096).refine((value) => value === value.trim(), "must not have surrounding whitespace");
+const diditBaseUrlSchema = z.url().superRefine((value, context) => {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.hostname !== "verification.didit.me" || url.port !== ""
+    || !["", "/"].includes(url.pathname) || url.search !== "" || url.hash !== "") {
+    context.addIssue({ code: "custom", message: "must be the official HTTPS Didit API origin" });
+  }
+});
 
 const envSchema = z.object({
   NODE_ENV: z
@@ -77,6 +85,22 @@ const envSchema = z.object({
     .default("info"),
   CORS_ORIGIN: z.url().default("http://localhost:3000"),
   DATABASE_URL: databaseUrlSchema,
+  AUTH_MODE: z.enum(["demo", "oidc"]).default("demo"),
+  AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(604_800).default(28_800),
+  AUTH_LOGIN_TRANSACTION_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(600),
+  AUTH_OIDC_ISSUER: z.url().optional(),
+  AUTH_OIDC_CLIENT_ID: secretSchema.optional(),
+  AUTH_OIDC_CLIENT_SECRET: secretSchema.optional(),
+  AUTH_OIDC_CALLBACK_URL: z.url().optional(),
+  KYA_MODE: z.enum(["LOCAL", "EXTERNAL_OPTIONAL", "EXTERNAL_REQUIRED"]).default("LOCAL"),
+  KYA_PROVIDER: z.enum(["fake", "didit"]).default("fake"),
+  KYA_API_BASE_URL: diditBaseUrlSchema.optional(),
+  KYA_API_KEY: secretSchema.optional(),
+  KYA_WORKFLOW_ID: z.uuid().optional(),
+  KYA_BIOMETRIC_WORKFLOW_ID: z.uuid().optional(),
+  KYA_WEBHOOK_SECRET: secretSchema.optional(),
+  KYA_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(250).max(30_000).default(5_000),
+  KYA_ATTESTATION_TTL_SECONDS: z.coerce.number().int().min(60).max(63_072_000).default(31_536_000),
   YUNO_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   YUNO_BASE_URL: yunoSandboxBaseUrlSchema.optional(),
   YUNO_ACCOUNT_ID: z.uuid().optional(),
@@ -97,7 +121,32 @@ const envSchema = z.object({
   LANGFUSE_SECRET_KEY: yunoSecretSchema.optional(),
   LANGFUSE_BASE_URL: httpsUrlSchema.optional(),
   RELEASE: safeIdentifierSchema.optional(),
+  SERPAPI_API_KEY: yunoSecretSchema.optional(),
+  FLIGHT_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(59_000).default(15_000),
+  GOOGLE_FLIGHTS_DEEP_SEARCH: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 }).superRefine((value, context) => {
+  if (value.NODE_ENV !== "development" && value.AUTH_MODE === "demo") {
+    context.addIssue({ code: "custom", message: "demo authentication is available only in development", path: ["AUTH_MODE"] });
+  }
+  if (value.AUTH_MODE === "oidc") {
+    for (const field of ["AUTH_OIDC_ISSUER", "AUTH_OIDC_CLIENT_ID", "AUTH_OIDC_CLIENT_SECRET", "AUTH_OIDC_CALLBACK_URL"] as const) {
+      if (value[field] === undefined) context.addIssue({ code: "custom", message: "is required when AUTH_MODE=oidc", path: [field] });
+    }
+    if (value.NODE_ENV === "production") {
+      for (const field of ["AUTH_OIDC_ISSUER", "AUTH_OIDC_CALLBACK_URL"] as const) {
+        const configured = value[field];
+        if (configured !== undefined && new URL(configured).protocol !== "https:") {
+          context.addIssue({ code: "custom", message: "must use HTTPS in production", path: [field] });
+        }
+      }
+    }
+  }
+  if (value.KYA_MODE !== "LOCAL") {
+    if (value.KYA_PROVIDER !== "didit") context.addIssue({ code: "custom", message: "external KYA requires the didit provider", path: ["KYA_PROVIDER"] });
+    for (const field of ["KYA_API_BASE_URL", "KYA_API_KEY", "KYA_WORKFLOW_ID", "KYA_WEBHOOK_SECRET"] as const) {
+      if (value[field] === undefined) context.addIssue({ code: "custom", message: "is required for external KYA", path: [field] });
+    }
+  }
   if (value.YUNO_ENABLED) {
     const requiredFields = [
       "YUNO_BASE_URL",
@@ -186,11 +235,42 @@ export type LangfuseConfig = { enabled: false } | {
   baseUrl: string;
 };
 
-export type Env = Omit<ParsedEnv, `YUNO_${string}` | `OPENAI_${string}` | `TRAVELBOT_${string}` | `LANGFUSE_${string}`> & {
+export type FlightSearchConfig = { enabled: false } | {
+  enabled: true;
+  apiKey: string;
+  timeoutMs: number;
+  deepSearch: boolean;
+};
+
+export type AuthConfig = { mode: "demo"; sessionTtlSeconds: number; loginTransactionTtlSeconds: number } | {
+  mode: "oidc";
+  sessionTtlSeconds: number;
+  loginTransactionTtlSeconds: number;
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  callbackUrl: string;
+};
+export type KyaConfig = {
+  mode: "LOCAL" | "EXTERNAL_OPTIONAL" | "EXTERNAL_REQUIRED";
+  provider: "fake" | "didit";
+  requestTimeoutMs: number;
+  attestationTtlSeconds: number;
+  baseUrl?: string;
+  apiKey?: string;
+  workflowId?: string;
+  biometricWorkflowId?: string;
+  webhookSecret?: string;
+};
+
+export type Env = Omit<ParsedEnv, `YUNO_${string}` | `OPENAI_${string}` | `TRAVELBOT_${string}` | `LANGFUSE_${string}` | `AUTH_${string}` | `KYA_${string}` | "SERPAPI_API_KEY" | "FLIGHT_SEARCH_TIMEOUT_MS" | "GOOGLE_FLIGHTS_DEEP_SEARCH"> & {
   yuno: YunoConfig;
   openai: OpenAIConfig;
   travelbot: TravelBotRuntimeConfig;
   langfuse: LangfuseConfig;
+  flightSearch: FlightSearchConfig;
+  auth: AuthConfig;
+  kya: KyaConfig;
 };
 
 export class ConfigurationError extends Error {
@@ -228,6 +308,25 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
     LANGFUSE_PUBLIC_KEY,
     LANGFUSE_SECRET_KEY,
     LANGFUSE_BASE_URL,
+    SERPAPI_API_KEY,
+    FLIGHT_SEARCH_TIMEOUT_MS,
+    GOOGLE_FLIGHTS_DEEP_SEARCH,
+    AUTH_MODE,
+    AUTH_SESSION_TTL_SECONDS,
+    AUTH_LOGIN_TRANSACTION_TTL_SECONDS,
+    AUTH_OIDC_ISSUER,
+    AUTH_OIDC_CLIENT_ID,
+    AUTH_OIDC_CLIENT_SECRET,
+    AUTH_OIDC_CALLBACK_URL,
+    KYA_MODE,
+    KYA_PROVIDER,
+    KYA_API_BASE_URL,
+    KYA_API_KEY,
+    KYA_WORKFLOW_ID,
+    KYA_BIOMETRIC_WORKFLOW_ID,
+    KYA_WEBHOOK_SECRET,
+    KYA_REQUEST_TIMEOUT_MS,
+    KYA_ATTESTATION_TTL_SECONDS,
     ...environment
   } = result.data;
   const openai: OpenAIConfig = OPENAI_API_KEY === undefined || OPENAI_MODEL === undefined
@@ -256,13 +355,39 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
       secretKey: LANGFUSE_SECRET_KEY!,
       baseUrl: LANGFUSE_BASE_URL!.replace(/\/$/, ""),
     };
-  if (!YUNO_ENABLED) return { ...environment, yuno: { enabled: false }, openai, travelbot, langfuse };
+  const flightSearch: FlightSearchConfig = SERPAPI_API_KEY === undefined
+    ? { enabled: false }
+    : {
+      enabled: true,
+      apiKey: SERPAPI_API_KEY,
+      timeoutMs: FLIGHT_SEARCH_TIMEOUT_MS,
+      deepSearch: GOOGLE_FLIGHTS_DEEP_SEARCH,
+    };
+  const auth: AuthConfig = AUTH_MODE === "demo" ? {
+    mode: "demo", sessionTtlSeconds: AUTH_SESSION_TTL_SECONDS, loginTransactionTtlSeconds: AUTH_LOGIN_TRANSACTION_TTL_SECONDS,
+  } : {
+    mode: "oidc", sessionTtlSeconds: AUTH_SESSION_TTL_SECONDS, loginTransactionTtlSeconds: AUTH_LOGIN_TRANSACTION_TTL_SECONDS,
+    issuer: AUTH_OIDC_ISSUER!, clientId: AUTH_OIDC_CLIENT_ID!, clientSecret: AUTH_OIDC_CLIENT_SECRET!, callbackUrl: AUTH_OIDC_CALLBACK_URL!,
+  };
+  const kya: KyaConfig = {
+    mode: KYA_MODE, provider: KYA_PROVIDER, requestTimeoutMs: KYA_REQUEST_TIMEOUT_MS,
+    attestationTtlSeconds: KYA_ATTESTATION_TTL_SECONDS,
+    ...(KYA_API_BASE_URL === undefined ? {} : { baseUrl: KYA_API_BASE_URL.replace(/\/$/, "") }),
+    ...(KYA_API_KEY === undefined ? {} : { apiKey: KYA_API_KEY }),
+    ...(KYA_WORKFLOW_ID === undefined ? {} : { workflowId: KYA_WORKFLOW_ID }),
+    ...(KYA_BIOMETRIC_WORKFLOW_ID === undefined ? {} : { biometricWorkflowId: KYA_BIOMETRIC_WORKFLOW_ID }),
+    ...(KYA_WEBHOOK_SECRET === undefined ? {} : { webhookSecret: KYA_WEBHOOK_SECRET }),
+  };
+  if (!YUNO_ENABLED) return { ...environment, yuno: { enabled: false }, openai, travelbot, langfuse, flightSearch, auth, kya };
 
   return {
     ...environment,
     openai,
     travelbot,
     langfuse,
+    flightSearch,
+    auth,
+    kya,
     yuno: {
       enabled: true,
       baseUrl: YUNO_BASE_URL!.replace(/\/$/, ""),

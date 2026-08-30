@@ -19,6 +19,7 @@ import {
   type PurchaseIntent,
   type SignerPort,
 } from "../../contracts/v1/index.js";
+import { VuelaYaCatalog, type VuelaYaCatalogPort } from "./catalog.js";
 
 const encoder = new TextEncoder();
 
@@ -49,6 +50,7 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
   constructor(
     private readonly signer: SignerPort,
     private readonly clock: ClockPort,
+    private readonly catalog: VuelaYaCatalogPort = new VuelaYaCatalog(),
   ) {}
 
   async discoverProfile() {
@@ -61,19 +63,20 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
     if (!parsedIntent.success) throw validationError(parsedIntent.error.issues);
     const intent = parsedIntent.data;
 
-    if (intent.offer_id !== offerCandidateFixture.offer_id) {
+    const offer = this.catalog.get(intent.offer_id);
+    if (offer === undefined) {
       throw new PublicApiError(404, "not_found", "Offer not found", { offer_id: intent.offer_id });
     }
-    if (intent.merchant_id !== offerCandidateFixture.merchant_id) {
+    if (intent.merchant_id !== offer.merchant_id) {
       throw new PublicApiError(400, "invalid_request", "PurchaseIntent merchant does not match offer");
     }
-    if (this.clock.now().getTime() >= Date.parse(offerCandidateFixture.available_until)) {
+    if (this.clock.now().getTime() >= Date.parse(offer.available_until)) {
       throw new PublicApiError(410, "invalid_request", "Offer has expired", {
-        offer_id: offerCandidateFixture.offer_id,
+        offer_id: offer.offer_id,
       });
     }
 
-    const items = offerCandidateFixture.items.map((item) => {
+    const items = offer.items.map((item) => {
       const amount = item.unit_price.amount * intent.quantity;
       if (!Number.isSafeInteger(amount)) {
         throw new PublicApiError(422, "invalid_request", "Checkout total exceeds the safe integer range");
@@ -96,16 +99,57 @@ export class VuelaYaMerchant implements CommerceProtocolAdapter {
         offer_id: intent.offer_id,
         quantity: intent.quantity,
       }).slice(0, 24)}`;
-    const terms: CheckoutTerms = checkoutTermsSchema.parse({
+    const existing = this.#checkouts.get(checkoutId);
+    if (existing !== undefined) {
+      if (this.clock.now().getTime() >= Date.parse(existing.terms.expires_at)) {
+        throw new PublicApiError(410, "invalid_request", "Checkout has expired", {
+          checkout_id: checkoutId,
+        });
+      }
+      const expectedEconomics = {
+        merchant_id: offer.merchant_id,
+        merchant_url: offer.merchant_url,
+        items,
+        total: { amount: totalAmount, currency: offer.total.currency },
+        fulfillment: offer.fulfillment,
+      };
+      const persistedEconomics = {
+        merchant_id: existing.terms.merchant_id,
+        merchant_url: existing.terms.merchant_url,
+        items: existing.terms.items,
+        total: existing.terms.total,
+        fulfillment: existing.terms.fulfillment,
+      };
+      if (canonicalizeJson(expectedEconomics) !== canonicalizeJson(persistedEconomics)) {
+        throw new PublicApiError(409, "invalid_request", "Checkout economics changed for the same intent", {
+          checkout_id: checkoutId,
+        });
+      }
+      return structuredClone(existing);
+    }
+    const fixtureOffer = offer.offer_id === offerCandidateFixture.offer_id;
+    const now = this.clock.now();
+    const createdAt = offer.observed_at === undefined ? now : new Date(offer.observed_at);
+    const expiresAt = new Date(Math.min(
+      Date.parse(offer.available_until),
+      createdAt.getTime() + 15 * 60_000,
+    ));
+    const terms: CheckoutTerms = checkoutTermsSchema.parse(fixtureOffer ? {
       ...checkoutTermsFixture,
       checkout_id: checkoutId,
       items,
-      total: { amount: totalAmount, currency: offerCandidateFixture.total.currency },
+      total: { amount: totalAmount, currency: offer.total.currency },
+    } : {
+      checkout_id: checkoutId,
+      merchant_id: offer.merchant_id,
+      merchant_url: offer.merchant_url,
+      items,
+      total: { amount: totalAmount, currency: offer.total.currency },
+      fulfillment: offer.fulfillment,
+      created_at: createdAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      protocol: checkoutTermsFixture.protocol,
     });
-    const existing = this.#checkouts.get(terms.checkout_id);
-    if (existing !== undefined && canonicalizeJson(existing.terms) === canonicalizeJson(terms)) {
-      return structuredClone(existing);
-    }
     const checkoutHash = sha256CanonicalJson(terms);
     const merchantSignature = await this.signer.sign(encoder.encode(canonicalizeJson(terms)), "ES256");
     const checkout = normalizedCheckoutSchema.parse({

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { moneySchema, identifierSchema, sha256Schema, utcRfc3339Schema } from "../common/primitives.js";
 import { normalizedCheckoutSchema } from "../commerce/schemas.js";
+import { agentTrustSnapshotSchema } from "../trust/schemas.js";
 
 export const reasonCodeSchema = z.enum([
   "invalid_agent_signature",
@@ -22,6 +23,18 @@ export const reasonCodeSchema = z.enum([
   "usage_limit_exceeded",
   "replay_detected",
   "human_approval_required",
+  "agent_attestation_required",
+  "agent_attestation_pending",
+  "agent_attestation_rejected",
+  "agent_attestation_expired",
+  "agent_attestation_revoked",
+  "agent_attestation_binding_mismatch",
+  "agent_attestation_provider_unavailable",
+  "biometric_consent_required",
+  "biometric_consent_pending",
+  "biometric_consent_rejected",
+  "biometric_consent_expired",
+  "biometric_consent_binding_mismatch",
 ]);
 
 export type ReasonCode = z.infer<typeof reasonCodeSchema>;
@@ -85,6 +98,7 @@ export const policyEvidenceInputsSchema = z
     uses: z.number().int().safe().nonnegative().nullable(),
     nonce_status: nonceStatusSchema.nullable(),
     human_approval_required: z.boolean().nullable(),
+    trust_snapshot: agentTrustSnapshotSchema.nullable(),
   })
   .strict();
 
