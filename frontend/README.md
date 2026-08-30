@@ -42,6 +42,7 @@ The conversation service orchestrates merchant discovery, checkout, mandate, ver
 ### Chat behavior and boundaries
 
 - Messages, extracted intent, offers, approval state and receipts are rendered from the durable conversation response. The browser no longer runs a parallel scripted purchase state machine.
+- The backend returns one selected recommendation. The chat renders its itinerary, cabin, duration, total and availability directly beside the approval controls, plus an official-flight link; there is no offer-picker tab in the normal journey.
 - The sidebar remembers up to eight conversation IDs in local storage and reloads their messages from the API. This is a client-side index because the backend does not expose a conversation-list endpoint.
 - Every message uses an idempotency key. A failed response can be retried with the same key, avoiding duplicate turns when the server completed but the network response was lost.
 - The microphone control uses the browser Web Speech API when available. Dictation only fills the composer; the user must review and explicitly send it.

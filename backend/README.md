@@ -124,6 +124,8 @@ GOOGLE_FLIGHTS_DEEP_SEARCH=false
 
 `GOOGLE_FLIGHTS_DEEP_SEARCH=true` asks SerpApi for browser-equivalent results at the cost of higher latency. Provider credentials and URLs containing them are never returned to the browser or written to application logs.
 
+When the intent is complete, the service filters compatible flights and deterministically chooses one recommendation by lowest total price, earliest departure and stable offer ID. It persists only that offer, prepares checkout and authority, then asks for explicit purchase approval with the complete flight details and official source URL. `AWAITING_OFFER_SELECTION` is retained only as an internal/legacy checkout seam; the normal UI has no flight-selection step.
+
 Configure these backend-only environment names to enable OpenAI chat; `.env.example` intentionally contains no values:
 
 ```text

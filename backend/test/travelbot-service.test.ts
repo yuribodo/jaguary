@@ -12,8 +12,16 @@ import {
   type AgentRuntimeRequest,
 } from "../src/modules/travelbot/index.js";
 
-test("a complete one-message request automatically reaches authorization review", async () => {
+test("a complete one-message request keeps only the best offer and asks for purchase approval", async () => {
   const runtimeRequests: AgentRuntimeRequest[] = [];
+  let checkouts = 0;
+  let authorities = 0;
+  const moreExpensiveOffer = {
+    ...structuredClone(offerCandidateFixture),
+    offer_id: "offer_vy_999_gru_cor",
+    total: { amount: 14900, currency: "USD" },
+    source_url: "https://demo.vuelaya.example/flights/vy-999",
+  };
   const runtime: AgentRuntimePort = {
     async run(request) {
       runtimeRequests.push(request);
@@ -36,6 +44,29 @@ test("a complete one-message request automatically reaches authorization review"
         usage: { input_tokens: 10, output_tokens: 8 },
       };
     },
+    async prepareApproval() {
+      return {
+        proposal: {
+          origin_iata: null,
+          destination_iata: null,
+          departure_date: null,
+          passenger_count: null,
+          cabin: null,
+          max_total_budget: null,
+          selected_offer_id: null,
+          explicit_confirmation: null,
+          ambiguities: [],
+          requested_action: "REQUEST_PURCHASE",
+        },
+        assistant_message: "Paused for approval.",
+        interruption: {
+          tool_call_id: "call_auto_purchase_001",
+          tool_name: "request_purchase",
+          arguments: {},
+          sdk_run_state: "sdk-auto-selection-state",
+        },
+      };
+    },
   };
   const repository = new InMemoryTravelBotRepository();
   const service = new TravelBotService({
@@ -43,15 +74,27 @@ test("a complete one-message request automatically reaches authorization review"
     runtime,
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
     tools: {
-      findOffers: async () => [offerCandidateFixture],
-      createCheckout: async () => ({
-        checkout_id: "checkout_auto_001",
-        checkout_hash: "a".repeat(64),
-        merchant_id: offerCandidateFixture.merchant_id,
-        total: offerCandidateFixture.total,
-      }),
-      prepareAuthority: async () => ({ mandate_id: "mandate_auto_001", status: "DRAFT" }),
+      findOffers: async () => [moreExpensiveOffer, offerCandidateFixture],
+      createCheckout: async ({ conversation: current, offer }) => {
+        checkouts += 1;
+        assert.equal(current.state, "AWAITING_OFFER_SELECTION");
+        assert.equal(offer.offer_id, offerCandidateFixture.offer_id);
+        return {
+          checkout_id: "checkout_auto_001",
+          checkout_hash: "a".repeat(64),
+          merchant_id: offer.merchant_id,
+          total: offer.total,
+        };
+      },
+      prepareAuthority: async ({ conversation: current }) => {
+        authorities += 1;
+        assert.equal(current.state, "AWAITING_OFFER_SELECTION");
+        return { mandate_id: "mandate_auto_001", status: "DRAFT" };
+      },
     },
+    approvalStateProtector: new Aes256GcmApprovalStateProtector(
+      Buffer.alloc(32, 7).toString("base64"),
+    ),
     telemetry: { emit: async () => { throw new Error("langfuse unavailable"); } },
   });
   const conversation = await service.createConversation({
@@ -71,11 +114,16 @@ test("a complete one-message request automatically reaches authorization review"
   assert.equal(result.state, "AWAITING_AUTHORITY_CONFIRMATION");
   assert.equal(result.offers.length, 1);
   assert.equal(result.offers[0]?.offer_id, offerCandidateFixture.offer_id);
+  assert.equal(result.offers[0]?.source_url, offerCandidateFixture.source_url);
   assert.equal(result.intent.selected_offer_id, offerCandidateFixture.offer_id);
-  assert.equal(result.operation.pending_approval?.checkout_hash, "a".repeat(64));
+  assert.equal(result.operation.checkout_id, "checkout_auto_001");
+  assert.equal(result.operation.pending_approval?.mandate_id, "mandate_auto_001");
+  assert.equal(result.operation.pending_approval?.amount, offerCandidateFixture.total.amount);
   assert.deepEqual(result.missing_fields, []);
   assert.deepEqual(runtimeRequests[0]?.available_tools, []);
   assert.equal(runtimeRequests.length, 1);
+  assert.equal(checkouts, 1);
+  assert.equal(authorities, 1);
 });
 
 test("delegated airport and month choices are retained without asking for an exact day", async () => {
@@ -336,16 +384,7 @@ test("a flexible month reports the exact earliest date selected by the provider"
         };
       },
     },
-    tools: {
-      findOffers: async () => [monthlyOffer],
-      createCheckout: async () => ({
-        checkout_id: "checkout_monthly_001",
-        checkout_hash: "b".repeat(64),
-        merchant_id: monthlyOffer.merchant_id,
-        total: monthlyOffer.total,
-      }),
-      prepareAuthority: async () => ({ mandate_id: "mandate_monthly_001", status: "DRAFT" }),
-    },
+    tools: { findOffers: async () => [monthlyOffer] },
     clock: { now: () => new Date("2026-08-29T12:04:01.000Z") },
   });
   const conversation = await service.createConversation({
@@ -362,7 +401,7 @@ test("a flexible month reports the exact earliest date selected by the provider"
     correlation_id: "corr_monthly_offer_message_001",
   });
 
-  assert.equal(result.state, "AWAITING_AUTHORITY_CONFIRMATION");
+  assert.equal(result.state, "AWAITING_OFFER_SELECTION");
   assert.match(result.messages.at(-1)?.content ?? "", /first date.*01\/09\/2026/i);
 });
 
@@ -497,7 +536,7 @@ test("rate limit preserves state and the same idempotency key retries without du
   assert.equal(attempts, 2);
 });
 
-test("the automatically selected offer creates a bound approval and duplicate confirmation never repeats purchase", async () => {
+test("automatic offer choice creates a bound approval and duplicate confirmation never repeats purchase", async () => {
   let purchases = 0;
   let resumes = 0;
   const protector = new Aes256GcmApprovalStateProtector(Buffer.alloc(32, 9).toString("base64"));

@@ -20,7 +20,7 @@ import type {
   TravelBotToolName,
   TravelBotToolsPort,
 } from "./types.js";
-import type { ClockPort, OfferCandidate } from "../../contracts/v1/index.js";
+import type { ClockPort } from "../../contracts/v1/index.js";
 import type { ApprovalStateProtectorPort } from "./approval-state.js";
 import { emitBestEffort, NoopLlmTelemetry, type LlmTelemetryPort } from "./telemetry.js";
 
@@ -73,6 +73,41 @@ function legalTools(state: TravelBotConversation["state"]): TravelBotToolName[] 
     case "COMPLETED": return ["get_receipt", "get_audit_timeline"];
     default: return [];
   }
+}
+
+function selectPreferredOffer(offers: readonly TravelBotConversation["offers"][number][]) {
+  return offers.toSorted((left, right) => (
+    left.total.amount - right.total.amount
+    || Date.parse(left.fulfillment.departure_at) - Date.parse(right.fulfillment.departure_at)
+    || left.offer_id.localeCompare(right.offer_id)
+  ))[0];
+}
+
+function flexibleDateNotice(
+  requestedDate: string | null,
+  offer: TravelBotConversation["offers"][number],
+): string {
+  if (requestedDate === null || !/^\d{4}-\d{2}$/.test(requestedDate)) return "";
+  const selectedDate = (
+    offer.fulfillment.departure_local
+    ?? offer.fulfillment.departure_at
+  ).slice(0, 10).split("-").toReversed().join("/");
+  return ` You provided only the month, so I used the first date with a matching flight: ${selectedDate}.`;
+}
+
+function approvalMessage(
+  offer: TravelBotConversation["offers"][number],
+  requestedDate: string | null,
+): string {
+  const departure = new Date(offer.fulfillment.departure_at).toISOString();
+  const arrival = new Date(offer.fulfillment.arrival_at).toISOString();
+  const total = `${offer.total.currency} ${(offer.total.amount / 100).toFixed(2)}`;
+  return [
+    `I chose the best matching flight: ${offer.fulfillment.origin} → ${offer.fulfillment.destination}.${flexibleDateNotice(requestedDate, offer)}`,
+    `Departure ${departure}; arrival ${arrival}; ${offer.fulfillment.cabin.toLowerCase()} cabin; total ${total}.`,
+    `Official flight: ${offer.source_url}`,
+    `Explicitly confirm or deny this ${total} purchase from ${offer.merchant_id}.`,
+  ].join("\n");
 }
 
 export class TravelBotService {
@@ -196,18 +231,21 @@ export class TravelBotService {
       let offers = applied.invalidates_downstream ? [] : conversation.offers;
       let operation = applied.invalidates_downstream ? emptyOperation() : conversation.operation;
       let assistantMessage = runtimeResult.assistant_message;
-
-      const prepareApprovalForOffer = async (selected: OfferCandidate) => {
+      const prepareOfferApproval = async (
+        selected: TravelBotConversation["offers"][number],
+      ): Promise<boolean> => {
         if (
           this.options.tools.createCheckout === undefined
           || this.options.tools.prepareAuthority === undefined
-        ) {
-          throw new Error("TravelBot checkout tools are not configured");
-        }
+        ) return false;
+
         applied.intent.selected_offer_id = selected.offer_id;
-        const current: TravelBotConversation = {
+        offers = [selected];
+        // The application tools still require their narrow checkout-preparation
+        // seam. This internal state is never persisted as a user-facing step.
+        const current = {
           ...conversation,
-          state: "AWAITING_OFFER_SELECTION",
+          state: "AWAITING_OFFER_SELECTION" as const,
           intent: applied.intent,
           offers,
         };
@@ -254,9 +292,10 @@ export class TravelBotService {
         ) {
           applied.intent.selected_offer_id = null;
           operation = emptyOperation();
-          state = "FAILED";
-          assistantMessage = "I found a flight, but could not prepare its secure confirmation. Nothing was charged; try the request again.";
-          return;
+          offers = [];
+          state = "READY_TO_SEARCH";
+          assistantMessage = "I could not prepare a secure confirmation. I did not create an authorization or payment.";
+          return true;
         }
         const protectedRunState = sdkRunState === undefined
           ? JSON.stringify({ version: 1, run_id: runId, action: "request_purchase" })
@@ -279,7 +318,8 @@ export class TravelBotService {
           },
         };
         state = "AWAITING_AUTHORITY_CONFIRMATION";
-        assistantMessage = "I selected the best-ranked current flight, locked its checkout, and prepared a one-time authorization. Review the flight, travelers, and total before deciding.";
+        assistantMessage = approvalMessage(selected, applied.intent.departure_date);
+        return true;
       };
 
       if (missing.length > 0 || applied.invalid_fields.length > 0) {
@@ -346,9 +386,10 @@ export class TravelBotService {
             decided_at: this.options.clock.now().toISOString(),
           };
           applied.intent.selected_offer_id = null;
+          offers = [];
           operation = emptyOperation();
-          state = "FAILED";
-          assistantMessage = "Operation safely denied. Nothing was charged; ask me to search again whenever you want to continue.";
+          state = "COLLECTING";
+          assistantMessage = "Operation safely denied. Tell me what you would like to change before I choose another flight.";
         } else {
           if (this.options.tools.activateAuthority === undefined || this.options.tools.requestPurchase === undefined) {
             throw new Error("TravelBot purchase tools are not configured");
@@ -406,9 +447,10 @@ export class TravelBotService {
           if (purchase.status === "FAILED" && purchase.reason_code === "checkout_stale") {
             applied.intent.selected_offer_id = null;
             applied.intent.confirmation = null;
+            offers = [];
             operation = emptyOperation();
-            state = "FAILED";
-            assistantMessage = "The previous checkout became stale before payment. Nothing was charged; ask me to search again to create a fresh authorization.";
+            state = "READY_TO_SEARCH";
+            assistantMessage = "The previous checkout became stale before payment. Nothing was charged; ask me to refresh the search and I will choose the best current flight again.";
           } else {
             state = purchase.status === "COMPLETED" ? "COMPLETED" : "FAILED";
             operation = {
@@ -428,34 +470,29 @@ export class TravelBotService {
       ) {
         const selected = offers.find(({ offer_id: offerId }) => offerId === runtimeResult.proposal.selected_offer_id);
         if (selected === undefined) {
-          const fallback = offers.find(({ ranking }) => ranking === "BEST") ?? offers[0];
-          if (fallback === undefined) {
-            applied.intent.selected_offer_id = null;
-            state = "FAILED";
-            assistantMessage = "The previous offers are no longer available. Ask me to search again.";
-          } else {
-            await prepareApprovalForOffer(fallback);
-          }
-        } else {
-          await prepareApprovalForOffer(selected);
+          applied.intent.selected_offer_id = null;
+          state = "AWAITING_OFFER_SELECTION";
+          assistantMessage = "The selected offer is unavailable. Choose one of the current offers.";
+        } else if (!(await prepareOfferApproval(selected))) {
+          throw new Error("TravelBot checkout tools are not configured");
         }
       } else if (conversation.state === "AWAITING_AUTHORITY_CONFIRMATION") {
-        state = "AWAITING_AUTHORITY_CONFIRMATION";
         const approval = operation.pending_approval;
         if (approval === null) {
-          state = "FAILED";
-          assistantMessage = "The previous confirmation is stale. Ask me to search again.";
+          applied.intent.selected_offer_id = null;
+          offers = [];
+          operation = emptyOperation();
+          state = "READY_TO_SEARCH";
+          assistantMessage = "The previous confirmation is stale. I cleared it without creating an authorization or payment.";
         } else {
+          state = "AWAITING_AUTHORITY_CONFIRMATION";
           assistantMessage = `Explicitly confirm or deny ${approval.currency} ${(approval.amount / 100).toFixed(2)} for ${approval.merchant_id}.`;
         }
       } else if (conversation.state === "AWAITING_OFFER_SELECTION") {
-        const selected = offers.find(({ ranking }) => ranking === "BEST") ?? offers[0];
-        if (selected === undefined) {
-          state = "FAILED";
-          assistantMessage = "The previous offers are stale. Ask me to search again.";
-        } else {
-          await prepareApprovalForOffer(selected);
-        }
+        state = "AWAITING_OFFER_SELECTION";
+        assistantMessage = offers.length === 0
+          ? "The offers are stale. Correct the details to search again."
+          : "Choose one of the current options below to continue.";
       } else {
         state = "READY_TO_SEARCH";
         offers = (await executeTool("find_offers", {
@@ -476,18 +513,11 @@ export class TravelBotService {
           )
         ));
         if (offers.length > 0) {
-          const selectedDate = (
-            offers[0]?.fulfillment.departure_local
-            ?? offers[0]?.fulfillment.departure_at
-            ?? ""
-          ).slice(0, 10).split("-").toReversed().join("/");
-          const flexibleDateNotice = /^\d{4}-\d{2}$/.test(applied.intent.departure_date!)
-            ? ` Because you provided only the month, I used the first date with flights matching your criteria: ${selectedDate}.`
-            : "";
-          const selected = offers.find(({ ranking }) => ranking === "BEST") ?? offers[0]!;
-          await prepareApprovalForOffer(selected);
-          if (applied.intent.selected_offer_id !== null && flexibleDateNotice) {
-            assistantMessage += flexibleDateNotice;
+          const selected = selectPreferredOffer(offers)!;
+          if (!(await prepareOfferApproval(selected))) {
+            offers = [selected];
+            state = "AWAITING_OFFER_SELECTION";
+            assistantMessage = `I chose ${selected.offer_id}.${flexibleDateNotice(applied.intent.departure_date, selected)} Checkout tools are unavailable.`;
           }
         } else {
           assistantMessage = "I found no flights matching these criteria. I can try another airport, date, or budget.";
@@ -507,6 +537,8 @@ export class TravelBotService {
         tool_executions: toolExecutions,
         state_transitions: conversation.state === "COLLECTING" && state === "AWAITING_AUTHORITY_CONFIRMATION"
           ? ["READY_TO_SEARCH", "AWAITING_AUTHORITY_CONFIRMATION"]
+          : conversation.state === "COLLECTING" && state === "AWAITING_OFFER_SELECTION"
+            ? ["READY_TO_SEARCH", "AWAITING_OFFER_SELECTION"]
           : conversation.state === "AWAITING_AUTHORITY_CONFIRMATION" && state === "COMPLETED"
             ? ["READY_TO_PURCHASE", "EXECUTING", "COMPLETED"]
             : conversation.state === state ? [] : [state],
