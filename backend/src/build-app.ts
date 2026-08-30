@@ -51,6 +51,7 @@ import {
   ApplicationTravelWatchPurchases,
   NoopLlmTelemetry,
   OpenAIAgentsRuntime,
+  OpenAIRealtimeVoiceSessionIssuer,
   PostgresTravelBotRepository,
   PostgresTravelWatchRepository,
   StateGuardedAgentToolExecutor,
@@ -66,6 +67,7 @@ import {
   type LlmTelemetryPort,
   type TravelBotEventSource,
   type TravelWatchSimulatorPort,
+  type VoiceSessionIssuerPort,
 } from "./modules/travelbot/index.js";
 import { VuelaYaCatalog, type VuelaYaCatalogPort } from "./modules/vuelaya/catalog.js";
 import {
@@ -108,7 +110,11 @@ export interface BuildAppOptions {
     apiKey: string;
     model: string;
     requestTimeoutMs: number;
+    realtimeModel: string;
+    transcriptionModel: string;
+    voice: "marin" | "cedar";
   };
+  voiceSessionIssuer?: VoiceSessionIssuerPort;
   travelBotProofFactory?: AgentProofFactoryPort;
   travelBotCredentialId?: string;
   travelBotApprovalStateProtector?: ApprovalStateProtectorPort;
@@ -487,6 +493,13 @@ export async function buildApp(options: BuildAppOptions = {}) {
     }
   }
   if (travelBotService !== undefined) {
+    const voice = options.voiceSessionIssuer ?? (options.openAI === undefined ? undefined : new OpenAIRealtimeVoiceSessionIssuer({
+      apiKey: options.openAI.apiKey,
+      realtimeModel: options.openAI.realtimeModel,
+      transcriptionModel: options.openAI.transcriptionModel,
+      voice: options.openAI.voice,
+      timeoutMs: options.openAI.requestTimeoutMs,
+    }));
     await app.register(travelBotRoutes, {
       service: travelBotService,
       ...(travelBotEvents === undefined ? {} : { events: travelBotEvents }),
@@ -494,6 +507,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
         auth: configuredAuth.service,
         allowedOrigin: configuredAuth.allowedOrigin,
       }),
+      ...(voice === undefined ? {} : { voice }),
     });
   }
   let travelWatchService = options.travelWatchService;

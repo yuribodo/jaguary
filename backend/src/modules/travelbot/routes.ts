@@ -4,6 +4,7 @@ import { z } from "zod";
 import { correlationIdSchema, identifierSchema, PublicApiError } from "../../contracts/v1/index.js";
 import { readSessionCookie, type PrincipalAuthService } from "../auth/index.js";
 import type { TravelBotService } from "./service.js";
+import type { VoiceSessionIssuerPort } from "./voice.js";
 
 const createConversationBodySchema = z.object({
   principal_id: identifierSchema,
@@ -31,6 +32,7 @@ interface TravelBotRoutesOptions {
   events?: TravelBotEventSource;
   auth?: PrincipalAuthService;
   allowedOrigin?: string;
+  voice?: VoiceSessionIssuerPort;
 }
 
 function idempotencyKey(headers: Record<string, unknown>): string {
@@ -101,6 +103,21 @@ export const travelBotRoutes: FastifyPluginAsync<TravelBotRoutesOptions> = async
     const session = await mutablePrincipalSession(request, options);
     await options.service.discardConversation(parsed.data.id, session.principal.principal_id);
     return reply.code(204).send();
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/conversations/:id/voice-sessions", async (request, reply) => {
+    requireCorrelationId(request.headers);
+    const params = conversationParamsSchema.safeParse(request.params);
+    if (!params.success || options.voice === undefined) {
+      throw new PublicApiError(404, "not_found", "Voice mode is unavailable");
+    }
+    const session = await mutablePrincipalSession(request, options);
+    const conversation = await options.service.getConversation(params.data.id);
+    if (conversation.principal_id !== session.principal.principal_id) {
+      throw new PublicApiError(404, "not_found", "Conversation not found");
+    }
+    const secret = await options.voice.createClientSecret(session.principal.principal_id);
+    return reply.header("cache-control", "no-store").status(201).send(secret);
   });
 
   app.post<{ Params: { id: string } }>("/v1/conversations/:id/messages", async (request, reply) => {

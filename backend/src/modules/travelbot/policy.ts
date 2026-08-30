@@ -98,6 +98,31 @@ function mentionsThailand(recentMessages: readonly string[]): boolean {
   });
 }
 
+function budgetFrom(recentMessages: readonly string[]): TravelIntent["max_total_budget"] | undefined {
+  for (const message of recentMessages.toReversed()) {
+    const normalized = normalizedText(message);
+    const match = normalized.match(
+      /\b(?:max(?:imum)?\s+budget|budget|up to|spend(?:ing)?(?:\s+up to)?|limit(?:\s+of)?|orcamento(?:\s+maximo)?|ate|gastar(?:\s+ate)?|limite(?:\s+de)?)\b[^0-9]{0,40}(\d+(?:[.,]\d+)?)\s*(k|thousand|mil)?\b/,
+    );
+    if (match?.[1] === undefined) continue;
+    const suffix = match[2];
+    const majorAmount = suffix === undefined
+      ? Number(match[1].replace(/,(?=\d{3}\b)/g, "").replace(",", "."))
+      : Number(match[1].replace(",", ".")) * 1_000;
+    const amount = Math.round(majorAmount * 100);
+    if (!Number.isSafeInteger(amount) || amount <= 0) continue;
+    const currency = /\b(?:brl|reais?|r\$)\b/.test(normalized)
+      ? "BRL"
+      : /\b(?:usd|dollars?|us\$)\b/.test(normalized)
+        ? "USD"
+        : /\b(?:orcamento|maximo|ate|gastar|cerca|quero|passagem|voo|mil)\b/.test(normalized)
+          ? "BRL"
+          : "USD";
+    return { amount, currency };
+  }
+  return undefined;
+}
+
 function withoutAmbiguities(
   proposal: TravelIntentProposal,
   resolved: ReadonlySet<RequiredTravelIntentField>,
@@ -231,6 +256,14 @@ export function applyConversationConventions(
     if (departureDate !== undefined) {
       contextual.departure_date = departureDate;
       resolved.add("departure_date");
+    }
+  }
+
+  if (current.max_total_budget === null && contextual.max_total_budget === null) {
+    const budget = budgetFrom(recentMessages);
+    if (budget !== undefined) {
+      contextual.max_total_budget = budget;
+      resolved.add("max_total_budget");
     }
   }
 

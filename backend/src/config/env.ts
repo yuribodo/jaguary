@@ -111,6 +111,9 @@ const envSchema = z.object({
   OPENAI_API_KEY: yunoSecretSchema.optional(),
   OPENAI_MODEL: openAIModelSchema.optional(),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1).max(59_000).default(20_000),
+  OPENAI_REALTIME_MODEL: openAIModelSchema.default("gpt-realtime-2.1"),
+  OPENAI_TRANSCRIPTION_MODEL: openAIModelSchema.default("gpt-live-transcribe"),
+  OPENAI_VOICE: z.enum(["marin", "cedar"]).default("marin"),
   TRAVELBOT_AGENT_PRIVATE_JWK: privateJwkSchema.optional(),
   TRAVELBOT_AGENT_KEY_ID: safeIdentifierSchema.optional(),
   TRAVELBOT_AGENT_BUILD_FINGERPRINT: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -217,6 +220,9 @@ export type OpenAIConfig = { enabled: false } | {
   apiKey: string;
   model: string;
   requestTimeoutMs: number;
+  realtimeModel: string;
+  transcriptionModel: string;
+  voice: "marin" | "cedar";
 };
 
 export type TravelBotRuntimeConfig = { enabled: false } | {
@@ -299,6 +305,9 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OPENAI_REQUEST_TIMEOUT_MS,
+    OPENAI_REALTIME_MODEL,
+    OPENAI_TRANSCRIPTION_MODEL,
+    OPENAI_VOICE,
     TRAVELBOT_AGENT_PRIVATE_JWK,
     TRAVELBOT_AGENT_KEY_ID,
     TRAVELBOT_AGENT_BUILD_FINGERPRINT,
@@ -336,6 +345,9 @@ export function loadEnv(input: NodeJS.ProcessEnv = process.env): Env {
       apiKey: OPENAI_API_KEY,
       model: OPENAI_MODEL,
       requestTimeoutMs: OPENAI_REQUEST_TIMEOUT_MS,
+      realtimeModel: OPENAI_REALTIME_MODEL,
+      transcriptionModel: OPENAI_TRANSCRIPTION_MODEL,
+      voice: OPENAI_VOICE,
     };
   const travelbot: TravelBotRuntimeConfig = !openai.enabled
     ? { enabled: false }

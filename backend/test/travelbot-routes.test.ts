@@ -202,6 +202,93 @@ test("discarding a conversation requires the owning principal session, CSRF and 
   await app.close();
 });
 
+test("voice sessions are short-lived, authenticated and bound to the conversation owner", async () => {
+  const auth = fixtureAuthService();
+  const issuedFor: string[] = [];
+  const app = await buildApp({
+    travelBotService: fixtureService(),
+    voiceSessionIssuer: {
+      async createClientSecret(principalId) {
+        issuedFor.push(principalId);
+        return { value: "ek_test_ephemeral_only", expires_at: 1_788_072_900 };
+      },
+    },
+    auth: {
+      service: auth,
+      mode: "demo",
+      allowedOrigin: "http://localhost:3000",
+      secureCookies: false,
+      sessionTtlSeconds: 28_800,
+    },
+    logger: false,
+  });
+  const created = await app.inject({
+    method: "POST",
+    url: "/v1/conversations",
+    headers: {
+      "idempotency-key": "idem_voice_create_001",
+      "x-correlation-id": "corr_voice_create_001",
+    },
+    payload: { principal_id: "principal_marta", agent_id: "agent_travelbot" },
+  });
+  const conversationId = created.json().conversation_id as string;
+  const session = await auth.createDemoSession();
+  const cookie = `bound_session=${encodeURIComponent(session.token)}`;
+  const commonHeaders = {
+    origin: "http://localhost:3000",
+    cookie,
+    "x-csrf-token": session.csrfToken,
+    "idempotency-key": "idem_voice_session_001",
+    "x-correlation-id": "corr_voice_session_001",
+  };
+
+  const unauthenticated = await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${conversationId}/voice-sessions`,
+    headers: {
+      origin: commonHeaders.origin,
+      "idempotency-key": commonHeaders["idempotency-key"],
+      "x-correlation-id": commonHeaders["x-correlation-id"],
+    },
+  });
+  assert.equal(unauthenticated.statusCode, 401);
+
+  const crossOrigin = await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${conversationId}/voice-sessions`,
+    headers: { ...commonHeaders, origin: "https://attacker.example" },
+  });
+  assert.equal(crossOrigin.statusCode, 403);
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${conversationId}/voice-sessions`,
+    headers: commonHeaders,
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.deepEqual(response.json(), { value: "ek_test_ephemeral_only", expires_at: 1_788_072_900 });
+  assert.deepEqual(issuedFor, ["principal_marta"]);
+
+  const other = await app.inject({
+    method: "POST",
+    url: "/v1/conversations",
+    headers: {
+      "idempotency-key": "idem_voice_create_other",
+      "x-correlation-id": "corr_voice_create_other",
+    },
+    payload: { principal_id: "principal_other", agent_id: "agent_travelbot" },
+  });
+  const refused = await app.inject({
+    method: "POST",
+    url: `/v1/conversations/${other.json().conversation_id as string}/voice-sessions`,
+    headers: { ...commonHeaders, "idempotency-key": "idem_voice_session_other" },
+  });
+  assert.equal(refused.statusCode, 404);
+  assert.deepEqual(issuedFor, ["principal_marta"]);
+  await app.close();
+});
+
 test("travel watch routes create authority first and activate monitoring only after liveness", async () => {
   const now = new Date("2026-08-30T12:00:00.000Z");
   const conversation: TravelBotConversation = {

@@ -82,6 +82,9 @@ async function start(): Promise<void> {
         apiKey: env.openai.apiKey,
         model: env.openai.model,
         requestTimeoutMs: env.openai.requestTimeoutMs,
+        realtimeModel: env.openai.realtimeModel,
+        transcriptionModel: env.openai.transcriptionModel,
+        voice: env.openai.voice,
       },
       travelBotProofFactory: new Es256AgentProofFactory({
         privateJwk: env.travelbot.privateJwk,
