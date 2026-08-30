@@ -2,6 +2,7 @@
 
 ## Focused technical guides
 
+- [Hackathon architecture submission](hackathon-architecture-submission.pdf) ([HTML source](hackathon-architecture-submission.html))
 - [README authority rail](readme-authority-rail.html) ([SVG](readme-authority-rail.svg))
 - [System context and trust boundaries](system-context.html)
 - [OpenAI and TravelBot sequence](openai-travelbot-sequence.html)

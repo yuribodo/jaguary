@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jaguary — Governed agentic commerce architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #f4f0e7;
+      --paper-2: #faf8f2;
+      --ink: #141511;
+      --muted: #5e6158;
+      --soft: #777b82;
+      --rule: rgba(20,21,17,0.16);
+      --accent: #334de8;
+      --accent-tint: rgba(51,77,232,0.08);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', Georgia, serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      padding: 24px;
+    }
+    main { width: min(100%, 1120px); }
+    svg { display: block; width: 100%; height: auto; }
+    @media print {
+      @page { size: A4 landscape; margin: 0; }
+      body { padding: 0; }
+      main { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <svg viewBox="0 0 1120 792" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hackathon-architecture-title hackathon-architecture-desc">
+      <title id="hackathon-architecture-title">Jaguary governed agentic commerce architecture</title>
+      <desc id="hackathon-architecture-desc">Architecture showing a human-approved request moving from the Next.js Trusted Surface through TravelBot, merchant-authored checkout, deterministic Bound verification, atomic PostgreSQL reservation, and payment execution, with a direct agent-to-payment bypass visibly blocked.</desc>
+      <defs>
+        <marker id="hackathon-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#5e6158"/>
+        </marker>
+        <marker id="hackathon-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#334de8"/>
+        </marker>
+        <marker id="hackathon-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#334de8"/>
+        </marker>
+      </defs>
+
+      <rect width="1120" height="792" fill="#f4f0e7"/>
+
+      <!-- Visible document header -->
+      <text x="40" y="28" fill="#5e6158" font-size="8" font-weight="500" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ARCHITECTURE · HACKATHON SUBMISSION · CURRENT IMPLEMENTATION</text>
+      <text x="40" y="64" fill="#141511" font-size="32" font-weight="400" font-family="'Instrument Serif', Georgia, serif">Jaguary: permission before payment</text>
+      <text x="40" y="92" fill="#5e6158" font-size="12" font-family="'Geist', sans-serif">The model proposes. The merchant fixes the terms. Bound decides. Payment waits for a transactionally reserved ALLOW.</text>
+
+      <!-- Trust zones: background first -->
+      <rect x="40" y="128" width="208" height="512" rx="8" fill="rgba(94,97,88,0.04)" stroke="rgba(20,21,17,0.16)" stroke-width="0.8"/>
+      <rect x="52" y="132" width="88" height="16" rx="4" fill="#f4f0e7"/>
+      <text x="96" y="144" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">HUMAN EDGE</text>
+
+      <rect x="280" y="128" width="536" height="512" rx="8" fill="rgba(51,77,232,0.03)" stroke="rgba(51,77,232,0.50)" stroke-width="1" stroke-dasharray="4,4"/>
+      <rect x="296" y="132" width="152" height="16" rx="4" fill="#f4f0e7"/>
+      <text x="372" y="144" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">BOUND PRIVATE RUNTIME</text>
+      <text x="304" y="168" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace">Only deterministic code can create ALLOW</text>
+
+      <rect x="848" y="128" width="232" height="512" rx="8" fill="rgba(20,21,17,0.02)" stroke="rgba(20,21,17,0.16)" stroke-width="0.8"/>
+      <rect x="864" y="132" width="132" height="16" rx="4" fill="#f4f0e7"/>
+      <text x="930" y="144" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">EXTERNAL SERVICES</text>
+      <text x="872" y="168" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace">Evidence and execution, never authority</text>
+
+      <!-- Connectors: approved road and supporting calls -->
+      <line x1="144" y1="272" x2="144" y2="384" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
+
+      <path d="M 224,424 H 264 Q 272,424 272,416 V 384 Q 272,376 280,376 H 320"
+            fill="none" stroke="#334de8" stroke-width="1.2" marker-end="url(#hackathon-arrow-link)"/>
+
+      <path d="M 368,336 V 256 Q 368,248 376,248 H 872"
+            fill="none" stroke="#334de8" stroke-width="1.2" marker-end="url(#hackathon-arrow-link)"/>
+
+      <path d="M 464,336 V 312 Q 464,304 472,304 H 920 Q 928,304 928,312 V 336"
+            fill="none" stroke="#334de8" stroke-width="1.2" marker-end="url(#hackathon-arrow-link)"/>
+
+      <line x1="872" y1="360" x2="776" y2="360" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
+
+      <line x1="632" y1="416" x2="632" y2="504" stroke="#5e6158" stroke-width="1.2" marker-end="url(#hackathon-arrow)"/>
+
+      <path d="M 776,392 H 816 Q 824,392 824,400 V 536 Q 824,544 832,544 H 872"
+            fill="none" stroke="#334de8" stroke-width="1.4" marker-end="url(#hackathon-arrow-accent)"/>
+
+      <path d="M 964,584 V 588 Q 964,596 956,596 H 640 Q 632,596 632,588 V 584"
+            fill="none" stroke="#5e6158" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#hackathon-arrow)"/>
+
+      <path d="M 464,416 V 536 Q 464,544 472,544 H 496"
+            fill="none" stroke="#5e6158" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#hackathon-arrow)"/>
+
+      <!-- Forbidden route stops before the external-services boundary -->
+      <path d="M 368,416 V 616 Q 368,624 376,624 H 816"
+            fill="none" stroke="#5e6158" stroke-width="1" stroke-dasharray="6,4"/>
+      <circle cx="828" cy="624" r="8" fill="#f4f0e7" stroke="#141511" stroke-width="1.2"/>
+      <line x1="824" y1="620" x2="832" y2="628" stroke="#141511" stroke-width="1.2"/>
+      <line x1="832" y1="620" x2="824" y2="628" stroke="#141511" stroke-width="1.2"/>
+
+      <!-- Connector labels: masked and clear of strokes -->
+      <rect x="160" y="320" width="72" height="16" rx="4" fill="#f4f0e7"/>
+      <text x="196" y="332" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">APPROVES</text>
+
+      <rect x="228" y="404" width="40" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="248" y="412" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">HTTPS</text>
+
+      <rect x="600" y="228" width="120" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="660" y="236" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MODEL + SEARCH</text>
+
+      <rect x="636" y="284" width="112" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="692" y="292" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PURCHASE INTENT</text>
+
+      <rect x="788" y="340" width="72" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="824" y="348" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">SIGNED TERMS</text>
+
+      <rect x="548" y="456" width="76" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="586" y="464" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">RESERVED</text>
+
+      <rect x="748" y="464" width="68" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="782" y="472" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">ALLOW ONLY</text>
+
+      <rect x="736" y="576" width="112" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="792" y="584" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">RESULT + LEDGER</text>
+
+      <rect x="376" y="464" width="80" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="416" y="472" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">DURABLE STATE</text>
+
+      <rect x="532" y="604" width="136" height="12" rx="4" fill="#f4f0e7"/>
+      <text x="600" y="612" fill="#141511" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">BLOCKED · NO VERIFY</text>
+
+      <!-- Nodes: human edge -->
+      <rect x="64" y="208" width="160" height="64" rx="8" fill="#f4f0e7"/>
+      <rect x="64" y="208" width="160" height="64" rx="8" fill="rgba(94,97,88,0.10)" stroke="#777b82" stroke-width="1"/>
+      <rect x="76" y="216" width="44" height="12" rx="4" fill="transparent" stroke="rgba(119,123,130,0.50)" stroke-width="0.8"/>
+      <text x="98" y="224" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">ACTOR</text>
+      <text x="144" y="244" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Human traveler</text>
+      <text x="144" y="260" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">approves exact terms</text>
+
+      <rect x="64" y="384" width="160" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="64" y="384" width="160" height="80" rx="8" fill="#ffffff" stroke="#141511" stroke-width="1"/>
+      <rect x="76" y="392" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.40)" stroke-width="0.8"/>
+      <text x="94" y="400" fill="#141511" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">WEB</text>
+      <text x="144" y="424" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Trusted Surface</text>
+      <text x="144" y="440" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Next.js · owner-scoped session</text>
+      <text x="144" y="452" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">review · consent · receipt</text>
+
+      <!-- Nodes: private runtime -->
+      <rect x="320" y="336" width="192" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="320" y="336" width="192" height="80" rx="8" fill="#ffffff" stroke="#141511" stroke-width="1"/>
+      <rect x="332" y="344" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.40)" stroke-width="0.8"/>
+      <text x="350" y="352" fill="#141511" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">APP</text>
+      <text x="416" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">TravelBot Service</text>
+      <text x="416" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Fastify · durable workflow</text>
+      <text x="416" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">strict tools · idempotent turns</text>
+
+      <rect x="584" y="336" width="192" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="584" y="336" width="192" height="80" rx="8" fill="rgba(51,77,232,0.08)" stroke="#334de8" stroke-width="1.2"/>
+      <rect x="596" y="344" width="44" height="12" rx="4" fill="transparent" stroke="rgba(51,77,232,0.60)" stroke-width="0.8"/>
+      <text x="618" y="352" fill="#334de8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">GATE</text>
+      <text x="680" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Bound Verify</text>
+      <text x="680" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">AP2-aligned proof · pure policy</text>
+      <text x="680" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">nonce · limits · atomic reserve</text>
+
+      <rect x="496" y="504" width="224" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="496" y="504" width="224" height="80" rx="8" fill="rgba(20,21,17,0.05)" stroke="#5e6158" stroke-width="1"/>
+      <rect x="508" y="512" width="48" height="12" rx="4" fill="transparent" stroke="rgba(94,97,88,0.50)" stroke-width="0.8"/>
+      <text x="532" y="520" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">STORE</text>
+      <text x="608" y="544" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PostgreSQL</text>
+      <text x="608" y="560" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">authority state · reservations</text>
+      <text x="608" y="572" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">receipts · hash-chained audit</text>
+
+      <!-- Nodes: external services -->
+      <rect x="872" y="208" width="184" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="872" y="208" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <rect x="884" y="216" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
+      <text x="902" y="224" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">EXT</text>
+      <text x="964" y="248" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">AI + flight search</text>
+      <text x="964" y="264" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OpenAI Responses · SerpApi</text>
+      <text x="964" y="276" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">untrusted structured input</text>
+
+      <rect x="872" y="336" width="184" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="872" y="336" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <rect x="884" y="344" width="48" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
+      <text x="908" y="352" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">MERCH</text>
+      <text x="964" y="376" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">VuelaYa Merchant</text>
+      <text x="964" y="392" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">authoritative price + inventory</text>
+      <text x="964" y="404" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">signed UCP-style checkout</text>
+
+      <rect x="872" y="504" width="184" height="80" rx="8" fill="#f4f0e7"/>
+      <rect x="872" y="504" width="184" height="80" rx="8" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <rect x="884" y="512" width="36" height="12" rx="4" fill="transparent" stroke="rgba(20,21,17,0.28)" stroke-width="0.8"/>
+      <text x="902" y="520" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">PAY</text>
+      <text x="964" y="544" fill="#141511" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PaymentExecutor</text>
+      <text x="964" y="560" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">FakePaymentExecutor · default</text>
+      <text x="964" y="572" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Yuno adapter · tested, gated</text>
+
+      <!-- Legend strip -->
+      <line x1="40" y1="672" x2="1080" y2="672" stroke="rgba(20,21,17,0.16)" stroke-width="0.8"/>
+      <text x="40" y="692" fill="#5e6158" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">READING KEY</text>
+
+      <rect x="40" y="712" width="16" height="12" rx="4" fill="rgba(51,77,232,0.08)" stroke="#334de8" stroke-width="1"/>
+      <text x="64" y="720" fill="#5e6158" font-size="8" font-family="'Geist', sans-serif">Privileged economic gate</text>
+
+      <rect x="232" y="712" width="16" height="12" rx="4" fill="#ffffff" stroke="#141511" stroke-width="1"/>
+      <text x="256" y="720" fill="#5e6158" font-size="8" font-family="'Geist', sans-serif">Application runtime</text>
+
+      <rect x="388" y="712" width="16" height="12" rx="4" fill="rgba(20,21,17,0.03)" stroke="rgba(20,21,17,0.30)" stroke-width="1"/>
+      <text x="412" y="720" fill="#5e6158" font-size="8" font-family="'Geist', sans-serif">External integration</text>
+
+      <line x1="552" y1="720" x2="584" y2="720" stroke="#334de8" stroke-width="1.4" marker-end="url(#hackathon-arrow-accent)"/>
+      <text x="596" y="724" fill="#5e6158" font-size="8" font-family="'Geist', sans-serif">Approved economic path</text>
+
+      <line x1="748" y1="720" x2="780" y2="720" stroke="#5e6158" stroke-width="1" stroke-dasharray="6,4"/>
+      <circle cx="792" cy="720" r="8" fill="#f4f0e7" stroke="#141511" stroke-width="1"/>
+      <line x1="788" y1="716" x2="796" y2="724" stroke="#141511" stroke-width="1"/>
+      <line x1="796" y1="716" x2="788" y2="724" stroke="#141511" stroke-width="1"/>
+      <text x="808" y="724" fill="#5e6158" font-size="8" font-family="'Geist', sans-serif">Forbidden payment bypass</text>
+
+      <text x="40" y="772" fill="#777b82" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">A4 LANDSCAPE · ENGINEER AUDIENCE · SOURCE OF TRUTH: CURRENT CODE + DECISION LOG · 2026-08-30</text>
+    </svg>
+  </main>
+</body>
+</html>
