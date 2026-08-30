@@ -31,7 +31,7 @@ Anti-qualities: conversationally vague, finance-dashboard generic, falsely celeb
 
 On narrow screens the center remains primary, the left navigation becomes a sheet, and critical money impact is repeated inside the authority artifact because the inspector is not visible.
 
-The mobile conversation also contains a persistent “Entendi sua viagem” artifact. It makes the agent’s interpretation correctable without requiring the user to open the desktop-only inspector. Fare actions stack below totals on narrow widths and preserve a 44px tap target.
+The mobile conversation also contains a persistent “I understood your trip” artifact. It makes the agent’s interpretation correctable without requiring the user to open the desktop-only inspector. Fare actions stack below totals on narrow widths and preserve a 44px tap target.
 
 ## Interaction state model
 
@@ -60,7 +60,7 @@ The mobile conversation also contains a persistent “Entendi sua viagem” arti
 ## Motion and feedback
 
 - Timeline steps change only when their backend-backed state changes.
-- Search feedback names the current operation (“consultando voos”, “fixando a oferta”, or “validando a autorização”) instead of using an indefinite typing indicator.
+- Search feedback names the current operation (“searching flights”, “locking the offer”, or “validating authorization”) instead of using an indefinite typing indicator.
 - Progress indicators use restrained pulses for active work; completed steps settle without looping motion.
 - Balance changes transition over 300–500 ms and retain the final textual delta in transaction history.
 - Destructive revocation always has a confirmation step.

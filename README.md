@@ -4,11 +4,13 @@
 
 [![CI](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml/badge.svg)](https://github.com/yuribodo/jaguary/actions/workflows/ci.yml)
 
-[Open the live demo](https://jaguary.vercel.app) · [Explore the technical documentation](docs/technical/README.md) · [Review known gaps](docs/technical/known-gaps.md)
+[Open the live demo](https://jaguary.vercel.app) · [Read the Decision Log](docs/decision-log.md) · [Explore the technical documentation](docs/technical/README.md) · [Review known gaps](docs/technical/known-gaps.md)
 
 Jaguary is a reference application for governed agentic commerce. Its core enforcement layer, **Bound**, decides whether an identified agent may perform one exact economic action before a payment credential is resolved or money can move.
 
 The current product demonstrates a flight-purchase journey: TravelBot interprets a request, searches Google Flights through SerpApi, receives merchant-authored terms from VuelaYa, asks the human to approve a scoped mandate, and submits the exact checkout to deterministic verification.
+
+> **New to the project?** Start with the [Jaguary Decision Log](docs/decision-log.md) to see how the product evolved, which assumptions changed, and why the current authority model exists.
 
 > **OpenAI proposes. The merchant fixes the terms. AP2 carries authority. Bound decides. Payment waits for `ALLOW`.**
 
@@ -150,6 +152,7 @@ For detailed database, provider, Postman, and integration-test instructions, use
 ├── frontend/              product surface and browser API client
 ├── backend/               API, domain modules, migrations, and tests
 ├── docs/technical/        current code-backed technical guides
+├── docs/decision-log.md   chronological decisions, discoveries, and corrections
 ├── docs/diagrams/         editable architecture and sequence diagrams
 ├── docs/adr/              accepted architecture decisions
 ├── docs/design/           product and visual-system rationale
@@ -163,6 +166,7 @@ For detailed database, provider, Postman, and integration-test instructions, use
 | Topic | Guide |
 | --- | --- |
 | Start here | [Documentation home](docs/README.md) |
+| Project evolution and rationale | [Jaguary Decision Log](docs/decision-log.md) |
 | Architecture and boundaries | [Technical documentation](docs/technical/README.md) |
 | PostgreSQL tables and relationships | [Database model and diagrams](docs/technical/database-model.md) |
 | OpenAI and TravelBot | [Integration guide](docs/technical/openai-travelbot.md) |

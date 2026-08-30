@@ -44,8 +44,8 @@ These references are evidence for specific product or visual decisions, not temp
 | [Visa Trusted Agent Protocol](https://developer.visa.com/use-cases/trusted-agent-protocol) | Signed identity, context binding and replay protection as explicit checkpoints | Visa blue, network branding and protocol-specific UI conventions |
 | [Google guide to UCP + AP2](https://developers.googleblog.com/developers-guide-to-ai-agent-protocols/) | A legible chain from intent to mandate, checkout and receipt | Diagram styling and protocol branding |
 | [Stripe Agentic Commerce](https://docs.stripe.com/agentic-commerce) | Scoped, time-limited payment credentials and precise technical language | Stripe gradient, docs chrome and component styling |
-| [Banco Central — segurança das cédulas](https://www.bcb.gov.br/detalhenoticia/739/noticia) | Watermark, hidden number, relief and the jaguar on the R$50 note as a Brazilian metaphor for verifiability | Reproducing a banknote, official symbols or currency artwork |
-| [ICMBio — onça-pintada](https://www.gov.br/icmbio/pt-br/assuntos/biodiversidade/pan/pan-onca-pintada/1-ciclo/pan-onca-pintada-sumario.pdf) | Nocturnal vigilance and rosettes as a unique visual fingerprint | Literal wildlife imagery or a jaguar mascot |
+| [Central Bank of Brazil — banknote security](https://www.bcb.gov.br/detalhenoticia/739/noticia) | Watermark, hidden number, relief and the jaguar on the R$50 note as a Brazilian metaphor for verifiability | Reproducing a banknote, official symbols or currency artwork |
+| [ICMBio — jaguar conservation](https://www.gov.br/icmbio/pt-br/assuntos/biodiversidade/pan/pan-onca-pintada/1-ciclo/pan-onca-pintada-sumario.pdf) | Nocturnal vigilance and rosettes as a unique visual fingerprint | Literal wildlife imagery or a jaguar mascot |
 
 ## Shared product content
 
@@ -67,9 +67,9 @@ HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT
 
 It is the candidate signature element for Jaguary/Bound. Its form changes by direction, but its meaning does not.
 
-## Direction 01 — Carta de Autoridade
+## Direction 01 — Authority Letter
 
-![Moodboard Carta de Autoridade](./moodboards/01-carta-de-autoridade.png)
+![Authority Letter moodboard](./moodboards/01-carta-de-autoridade.png)
 
 **Thesis:** cryptographic authorization should feel as understandable and durable as a signed passport or security document, while remaining contemporary and digital.
 
@@ -84,9 +84,9 @@ It is the candidate signature element for Jaguary/Bound. Its form changes by dir
 
 **Risk:** on its own, it can underplay the sense that an agent is actively working.
 
-## Direction 02 — Sentinela Noturna
+## Direction 02 — Night Sentinel
 
-![Moodboard Sentinela Noturna](./moodboards/02-sentinela-noturna.png)
+![Night Sentinel moodboard](./moodboards/02-sentinela-noturna.png)
 
 **Thesis:** Bound is the quiet sentinel between autonomous action and money movement.
 
@@ -120,7 +120,7 @@ It is the candidate signature element for Jaguary/Bound. Its form changes by dir
 
 ## Recommended synthesis
 
-Use **Carta de Autoridade as the base system** and **Sentinela Noturna as the live execution mode**:
+Use **Authority Letter as the base system** and **Night Sentinel as the live execution mode**:
 
 - warm, legible surfaces for Marta's mandate, passport, payment method and receipt;
 - a dark focused stage when TravelBot is acting and Bound is verifying;
@@ -156,7 +156,7 @@ The boards are original concept material generated for this repository. They int
 <summary>Final image prompt — Direction 01</summary>
 
 ```text
-Create an original high-end visual design moodboard, landscape 3:2, for a Brazilian agentic commerce trust product. Brand name JAGUARY, product name BOUND. Direction 01 titled “CARTA DE AUTORIDADE”. This is concept material, not a finished webpage. Cryptographic authorization should feel as legible and trustworthy as a signed passport or security document, but contemporary and digital. Use a disciplined editorial grid with warm paper, embossing, microprinting, guilloche, serials, an abstract jaguar-rosette fingerprint, serif/sans/mono typography, a HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT authority trace, role-based palette and one restrained authorization UI crop. Avoid generic fintech, sci-fi, cyberpunk, glassmorphism, literal jaguars and padlock clichés.
+Create an original high-end visual design moodboard, landscape 3:2, for a Brazilian agentic commerce trust product. Brand name JAGUARY, product name BOUND. Direction 01 titled “AUTHORITY LETTER”. This is concept material, not a finished webpage. Cryptographic authorization should feel as legible and trustworthy as a signed passport or security document, but contemporary and digital. Use a disciplined editorial grid with warm paper, embossing, microprinting, guilloche, serials, an abstract jaguar-rosette fingerprint, serif/sans/mono typography, a HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT authority trace, role-based palette and one restrained authorization UI crop. Avoid generic fintech, sci-fi, cyberpunk, glassmorphism, literal jaguars and padlock clichés.
 ```
 
 </details>
@@ -165,7 +165,7 @@ Create an original high-end visual design moodboard, landscape 3:2, for a Brazil
 <summary>Final image prompt — Direction 02</summary>
 
 ```text
-Create an original high-end visual design moodboard, landscape 3:2, for JAGUARY / BOUND. Direction 02 titled “SENTINELA NOTURNA”. This is concept material, not a finished webpage. Bound is the quiet sentinel between an autonomous agent and money movement. Use matte midnight forest surfaces, abstract rosette fingerprints, narrow watchful apertures, bold grotesk plus mono typography, and a SENTINEL PULSE through HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT. Amber becomes green only after verification and a red revoke branch interrupts payment. Include a role-based palette and one restrained verification UI crop. Avoid cyberpunk, purple AI gradients, glassmorphism, literal jaguars, dystopian surveillance and padlock clichés.
+Create an original high-end visual design moodboard, landscape 3:2, for JAGUARY / BOUND. Direction 02 titled “NIGHT SENTINEL”. This is concept material, not a finished webpage. Bound is the quiet sentinel between an autonomous agent and money movement. Use matte midnight forest surfaces, abstract rosette fingerprints, narrow watchful apertures, bold grotesk plus mono typography, and a SENTINEL PULSE through HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT. Amber becomes green only after verification and a red revoke branch interrupts payment. Include a role-based palette and one restrained verification UI crop. Avoid cyberpunk, purple AI gradients, glassmorphism, literal jaguars, dystopian surveillance and padlock clichés.
 ```
 
 </details>

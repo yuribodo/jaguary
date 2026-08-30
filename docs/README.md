@@ -2,6 +2,8 @@
 
 This directory separates current behavior, operating instructions, architecture decisions, and historical planning so readers can tell what the software does today from what it may do later.
 
+> Start with the [Jaguary Decision Log](decision-log.md) for the chronological story behind the current product, including corrected assumptions, discoveries, and tradeoffs.
+
 ## Start here
 
 | If you want to… | Read |

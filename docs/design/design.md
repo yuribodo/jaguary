@@ -1,171 +1,171 @@
 # Bound Trusted Surface — design system v0.2
 
-Status: **direção aprovada para a primeira Trusted Surface**
-Direção líder: **01 · Carta de Autoridade**
+Status: **approved direction for the first Trusted Surface**
 
-## Tese
+Leading direction: **01 · Authority Letter**
 
-A autorização criptográfica deve ser tão compreensível e durável quanto um documento assinado, sem imitar uma cédula ou um passaporte. A superfície é uma **conversa que produz uma carta de autoridade**: quente, editorial, precisa e verificável.
+## Thesis
 
-O usuário deve reconhecer, nesta ordem:
+Cryptographic authorization should be as understandable and durable as a signed document without imitating a banknote or passport. The surface is a **conversation that produces a letter of authority**: warm, editorial, precise, and verifiable.
 
-1. qual ação econômica está sendo delegada;
-2. quem recebe a autoridade e para qual merchant;
-3. quais limites, validade e escopo serão assinados;
-4. se o mandato ainda é apenas `DRAFT`, está `ACTIVE` ou foi `REVOKED`;
-5. qual evidência real a API devolveu.
+The user should recognize, in this order:
 
-## Princípios
+1. which economic action is being delegated;
+2. who receives authority and for which merchant;
+3. which limits, validity, and scope will be signed;
+4. whether the mandate is only `DRAFT`, currently `ACTIVE`, or already `REVOKED`;
+5. which real evidence the API returned.
 
-- **Autoridade é o conteúdo principal.** Rota, agente, merchant, valor e validade têm mais peso que chrome de aplicação.
-- **Evidência fica à vista.** IDs, hash, algoritmo, key ID e correlation ID aparecem em mono, com truncamento visual apenas quando necessário.
-- **Estado não é decoração.** `DRAFT`, `ACTIVE` e `REVOKED` usam texto, forma e cor; nunca dependem somente de cor.
-- **Nenhuma decisão é fabricada.** A policy pura BE-06 existe no backend, mas enquanto `POST /verify` e a reserva BE-07 não existirem, a área de decisão declara “não conectada” e não mostra `ALLOW` simulado.
-- **A conversa não esconde o agente.** TravelBot fala em uma thread, mas sua identidade pública verificável, operador, build fingerprint e chave pública continuam acessíveis — sem mascote nem personalidade inventada.
+## Principles
 
-## Direção de interação · chat-first
+- **Authority is the primary content.** Route, agent, merchant, amount, and validity outweigh application chrome.
+- **Evidence stays visible.** IDs, hashes, algorithms, key IDs, and correlation IDs use monospace and are visually truncated only when necessary.
+- **State is not decoration.** `DRAFT`, `ACTIVE`, and `REVOKED` use text, shape, and color; they never depend on color alone.
+- **No decision is fabricated.** Until `POST /verify` and BE-07 reservation exist, the decision area says “not connected” and never displays a simulated `ALLOW`.
+- **Conversation does not hide the agent.** TravelBot speaks in a thread, while its public verifiable identity, operator, build fingerprint, and public key remain accessible without a mascot or invented personality.
 
-A entrada do produto é a intenção em linguagem natural. A conversa organiza o percurso; widgets embutidos tornam fatos comerciais e atos de autoridade inspecionáveis. Nesta versão não há LLM nem endpoint de chat: um orquestrador determinístico reconhece o pedido de demonstração e conduz as APIs existentes sem fingir inteligência ou decisão de autorização.
+## Interaction direction · chat first
 
-Sequência principal:
+Natural-language intent is the product entry point. Conversation organizes the journey; embedded widgets make commercial facts and acts of authority inspectable. This version has no LLM or chat endpoint: a deterministic orchestrator recognizes the demo request and drives existing APIs without pretending to provide intelligence or authorization.
 
-1. Marta descreve a viagem no composer ou usa a sugestão GRU → COR;
-2. TravelBot consulta identidade, merchant e ofertas reais e seleciona automaticamente a opção mais bem ranqueada;
-3. o checkout real fixa os termos comerciais e Marta revisa o voo escolhido junto da autorização;
-4. TravelBot apresenta a carta de autoridade completa e solicita a criação do `DRAFT`;
-5. um segundo gesto, separado e explícito, ativa o mandato;
-6. o mandato ativo permanece na thread, com detalhes expansíveis e revogação confirmada.
+Primary sequence:
 
-### Anatomia da thread
+1. Marta describes the trip in the composer or uses the GRU → COR suggestion.
+2. TravelBot reads real identity, merchant, and offer data and automatically selects the highest-ranked option.
+3. The real checkout fixes commercial terms, and Marta reviews the selected flight with the requested authority.
+4. TravelBot presents the complete authority letter and requests creation of a `DRAFT`.
+5. A separate, explicit second gesture activates the mandate.
+6. The active mandate remains in the thread with expandable details and confirmed revocation.
 
-- **Cabeçalho mínimo:** Bound, identidade do TravelBot, saúde da API e último correlation ID. Não é uma barra de dashboard.
-- **Memória lateral:** no desktop, uma sidebar de 272 px guarda apenas a conversa atual e a identidade verificável do agente; no mobile, a mesma estrutura abre como drawer. Ela recolhe com `Ctrl/Cmd+B`, preserva foco visível e não inventa histórico persistente.
-- **Mensagem humana:** alinhada à direita, curta e sem bolha colorida genérica.
-- **Mensagem do agente:** nome, timestamp e texto editorial alinhados à esquerda.
-- **Widget de voo selecionado:** resumo merchant-authored inspirado na hierarquia informacional do Flighty, integrado à revisão de autorização.
-- **Widget de mandato:** documento inline com estados `PROPOSTA`, `DRAFT`, `ACTIVE` e `REVOKED`; ações anteriores ficam visualmente encerradas após a transição.
-- **Atividade:** uma linha textual discreta durante requisições; sem cadeia de raciocínio, passos fictícios ou teatro de autonomia.
-- **Composer:** textarea com crescimento automático, `Enter` envia e `Shift+Enter` cria linha; permanece disponível para recomeçar o fluxo.
+### Thread anatomy
 
-### Referências estudadas e decisão
+- **Minimal header:** Bound, TravelBot identity, API health, and the latest correlation ID. This is not a dashboard bar.
+- **Side memory:** on desktop, a 272 px sidebar contains only the current conversation and verifiable agent identity; on mobile it opens as a drawer. `Ctrl/Cmd+B` collapses it. It never invents persisted history.
+- **Human message:** short, right aligned, and without a generic colored bubble.
+- **Agent message:** name, timestamp, and editorial text aligned left.
+- **Selected-flight widget:** a merchant-authored summary, inspired by Flighty's information hierarchy and integrated into authority review.
+- **Mandate widget:** an inline document with `PROPOSAL`, `DRAFT`, `ACTIVE`, and `REVOKED` states; prior actions visibly close after transition.
+- **Activity:** a discreet line of text during requests, with no chain of thought, fictional steps, or autonomy theater.
+- **Composer:** an auto-growing textarea; `Enter` sends and `Shift+Enter` adds a line. It remains available to restart the flow.
 
-| Referência | Emprestar | Evitar nesta fase |
+### References and implementation decision
+
+| Reference | Borrow | Avoid in this phase |
 | --- | --- | --- |
-| OpenAI Apps in ChatGPT | interfaces ricas surgindo no ponto certo da conversa | copiar o chrome visual do ChatGPT |
-| OpenAI app permissions | aprovação separada para ações com consequência | consentimento genérico ou implícito |
-| OpenAI Apps SDK · shopping cart | widget com estado que persiste após a ação | adicionar um runtime que o backend atual não oferece |
-| Vercel AI Elements · Conversation | viewport rolável, auto-scroll e retorno ao fim | recursos de download que não pertencem ao P0 |
-| Vercel AI Elements · Prompt Input | textarea responsiva e semântica Enter/Shift+Enter | anexos, modelos e menus sem função nesta entrega |
-| Vercel AI Elements · Confirmation | estados request/accepted/rejected para human-in-the-loop | tratar ativação como um botão comum sem contexto |
-| assistant-ui · Thread/Tool UI | acessibilidade e ferramenta inline na ordem da conversa | dependência de runtime e abstração prematura |
-| OpenAI ChatKit advanced samples | oferta de viagem e ação server-handled dentro da thread | painel lateral de suporte e backend ChatKit |
-| ChatGPT / Refero sidebar | histórico recente compacto, canvas principal flexível e chrome de baixo contraste | copiar a identidade acromática ou esconder estados de segurança que dependem de cor semântica |
-| Claude conversation sidebar | “nova conversa”, recents e ação contextual por conversa | projetos, favoritos e organização que o P0 ainda não possui |
-| shadcn Sidebar / 21st | primitive responsivo, colapso, drawer mobile, tooltip e atalho de teclado | menus genéricos de dashboard, team switcher, billing ou navegação aninhada |
-| Layers · ChatGPT exploration | proporção, respiro e metadados quietos | device mockup e acabamento de portfólio sem função no produto |
+| OpenAI Apps in ChatGPT | Rich interfaces appearing at the right conversational moment | Copying ChatGPT's visual chrome |
+| OpenAI app permissions | Separate approval for consequential actions | Generic or implicit consent |
+| OpenAI Apps SDK shopping cart | Stateful widgets that persist after action | Adding a runtime the backend does not support |
+| Vercel AI Elements Conversation | Scroll viewport, autoscroll, and return-to-bottom | Download features outside P0 |
+| Vercel AI Elements Prompt Input | Responsive textarea and Enter semantics | Attachments, model pickers, and unused menus |
+| Vercel AI Elements Confirmation | HITL request, accepted, and rejected states | Treating activation as an ordinary button |
+| assistant-ui Thread and Tool UI | Accessibility and inline tools in conversational order | Runtime dependency and premature abstraction |
+| OpenAI ChatKit samples | Travel offer and server-handled action in the thread | Support sidebar and ChatKit backend |
+| ChatGPT and Refero sidebars | Compact recents, flexible canvas, quiet chrome | Hiding security states or copying an achromatic identity |
+| Claude conversation sidebar | New conversation, recents, and contextual actions | Projects and favorites that P0 does not have |
+| shadcn Sidebar | Responsive primitive, collapse, drawer, tooltip, and shortcut | Generic dashboard navigation and team or billing menus |
 
-Decisão implementada: usar **shadcn/base-nova** como sistema de componentes e **Vercel AI Elements** para Conversation, Message, PromptInput, Suggestion, Shimmer e Confirmation. Toda composição e responsividade da aplicação usa utilities Tailwind; o CSS global contém apenas imports, tokens do moodboard e base do tema. Oferta e mandato permanecem widgets de domínio próprios dentro da thread, compostos com shadcn e Tailwind e conectados apenas às APIs existentes do Bound.
+Use **shadcn/base-nova** for the component system and **Vercel AI Elements** for Conversation, Message, PromptInput, Suggestion, Shimmer, and Confirmation. Application composition and responsiveness use Tailwind utilities. Global CSS contains only imports, moodboard tokens, and theme foundations. Offer and mandate remain custom domain widgets composed from shadcn and Tailwind and connected only to existing Bound APIs.
 
-A sidebar usa o primitive oficial do shadcn, mas sua arquitetura é de conversa, não de aplicação administrativa: `Nova conversa`, a sessão GRU → COR quando ela existe e o disclosure da identidade pública do TravelBot. Como não há endpoint de histórico nesta entrega, “Nenhuma outra conversa” é um estado honesto, não uma lista simulada.
+The sidebar uses the official shadcn primitive but follows conversation architecture rather than administrative navigation: `New conversation`, the GRU → COR session when it exists, and TravelBot's public identity disclosure. Without a history endpoint, “No other conversations” is an honest empty state, not a simulated list.
 
-## Linguagem visual
+## Visual language
 
-### Cores
+### Colors
 
-| Papel | Token | Valor | Uso |
+| Role | Token | Value | Use |
 | --- | --- | --- | --- |
-| Paper | `--paper` | `#F4F0E7` | fundo geral e matéria do documento |
-| Paper raised | `--paper-raised` | `#FAF8F2` | carta, ticket e blocos de leitura |
-| Ink | `--ink` | `#141511` | títulos, bordas fortes e ações primárias |
-| Ink muted | `--muted` | `#5E6158` | corpo secundário e metadados |
-| Cobalt | `--cobalt` | `#334DE8` | seleção, foco e continuidade da authority trace |
-| Coral | `--coral` | `#F06B52` | revogação, erro e quebra da trace |
-| Verify | `--verify` | `#A9B9A5` | autoridade válida e evidência conferida |
-| Rule | `--rule` | `rgba(20,21,17,.16)` | divisórias, perfurações e grids |
+| Paper | `--paper` | `#F4F0E7` | General background and document material |
+| Raised paper | `--paper-raised` | `#FAF8F2` | Letter, ticket, and reading blocks |
+| Ink | `--ink` | `#141511` | Titles, strong borders, and primary actions |
+| Muted ink | `--muted` | `#5E6158` | Secondary copy and metadata |
+| Cobalt | `--cobalt` | `#334DE8` | Selection, focus, and Authority Trace continuity |
+| Coral | `--coral` | `#F06B52` | Revocation, errors, and broken traces |
+| Verify | `--verify` | `#A9B9A5` | Valid authority and verified evidence |
+| Rule | `--rule` | `rgba(20,21,17,.16)` | Dividers, perforations, and grids |
 
-Combinações de baixo contraste do moodboard são reservadas a textura decorativa. Texto funcional mantém contraste AA.
+Low-contrast moodboard combinations are decorative only. Functional text maintains WCAG AA contrast.
 
-### Tipografia
+### Typography
 
-- **Instrument Serif:** títulos editoriais, rota e declarações de autoridade.
-- **Geist:** corpo, botões e leitura operacional.
-- **Geist Mono:** rótulos, serial, IDs, timestamps, hashes e estados.
+- **Instrument Serif:** editorial titles, routes, and authority statements.
+- **Geist:** body text, buttons, and operational reading.
+- **Geist Mono:** labels, serials, IDs, timestamps, hashes, and states.
 
-Hierarquia base:
+Base hierarchy:
 
-- display: `clamp(3rem, 8vw, 7rem)`, serif, entrelinha curta;
+- display: `clamp(3rem, 8vw, 7rem)`, serif, tight leading;
 - heading: `clamp(2rem, 4vw, 4rem)`, serif;
 - body: `1rem / 1.6`, sans;
-- label: `0.68rem`, mono, caixa alta, tracking amplo;
-- evidence: `0.75rem`, mono, com quebra segura de palavras.
+- label: `0.68rem`, uppercase mono, wide tracking;
+- evidence: `0.75rem`, mono, with safe word breaking.
 
-### Geometria e matéria
+### Geometry and material
 
-- Layout editorial assimétrico, com linhas longas, numeração de seção e margens generosas.
-- Cartas e tickets usam cantos discretos (0–12 px), borda fina e sombra de papel; não usam vidro ou blur.
-- Microtexto aparece apenas em metadados de evidência, sem competir com a conversa.
-- Oferta e mandato usam containers familiares de tool UI: borda, cabeçalho com origem e estado, corpo escaneável e ação no rodapé.
-- A distinção entre fato comercial e autoridade vem da hierarquia e da cópia, não de ornamentação documental.
+- Use an asymmetric editorial layout, long rules, section numbering, and generous margins.
+- Letters and tickets use subtle corners, thin borders, and paper shadows—never glass or blur.
+- Microcopy appears only in evidence metadata and does not compete with conversation.
+- Offer and mandate use familiar tool-UI containers: border, source and state header, scannable body, and footer action.
+- Hierarchy and copy distinguish commercial facts from authority, not documentary ornament.
 
-## Assinatura: Authority Trace
+## Signature: Authority Trace
 
-`HUMANO → MANDATO → AGENTE → CHECKOUT → PAGAMENTO`
+`HUMAN → MANDATE → AGENT → CHECKOUT → PAYMENT`
 
-- A trace começa em ink, usa cobalt no trecho selecionado e termina em regra pontilhada quando o próximo estágio ainda não existe.
-- Antes da integração HTTP e da reserva BE-07, pagamento permanece explicitamente indisponível; a interface não salta do checkout para `ALLOW`.
-- Em revogação, o trecho posterior ao mandato é interrompido em coral.
-- No mobile, a trace vira uma sequência vertical ou uma faixa horizontal rolável com rótulos sempre legíveis.
+- The trace begins in ink, uses cobalt for the selected segment, and ends as a dotted rule when the next stage does not exist.
+- Before HTTP integration and BE-07 reservation, payment remains explicitly unavailable; the interface never jumps from checkout to `ALLOW`.
+- Revocation interrupts every segment after the mandate in coral.
+- On mobile, the trace becomes a vertical sequence or scrollable strip with legible labels.
 
-## Superfícies desta entrega
+## Product surfaces in this delivery
 
-### 1. Voo selecionado e autorização
+### 1. Selected flight and authorization
 
-- Cabeçalho curto “Bound by Jaguary”, status real da API e última correlation ID.
-- Rota GRU → COR é o display principal.
-- O único voo escolhido pelo TravelBot contém rota, aeroportos, horários locais, duração, escalas, cabine, total e validade observados na API.
-- Passaporte do TravelBot mostra estado, algoritmo, key ID e build fingerprint reais.
+- A short “Bound by Jaguary” header shows real API status and the latest correlation ID.
+- GRU → COR is the primary display.
+- The selected flight shows route, airports, local times, duration, stops, cabin, total, and API-observed validity.
+- TravelBot's passport shows real state, algorithm, key ID, and build fingerprint.
 
-### 2. Revisão do mandato
+### 2. Mandate review
 
-- Conteúdo lê como uma carta: “Marta autoriza TravelBot a comprar…”.
-- Escopo completo fica visível antes da criação.
-- O checkout merchant-authored mostra hash e assinatura como evidência, sem insinuar autorização Bound.
-- O primeiro ato cria `DRAFT`; um segundo ato, separado e explícito, ativa o mandato.
+- Content reads like a letter: “Marta authorizes TravelBot to purchase…”.
+- Complete scope is visible before creation.
+- Merchant-authored checkout exposes its hash and signature without implying Bound authorization.
+- The first act creates `DRAFT`; a separate second act activates the mandate.
 
-### 3. Detalhe e revogação
+### 3. Detail and revocation
 
-- Estado e validade dominam o topo.
-- Termos assinados, prova e referência lógica de credencial são legíveis e copiáveis pelo navegador.
-- Revogar exige confirmação inline e explica que a autoridade termina, não o agente.
-- A área Bound Verify / BE-07 usa uma interface substituível e o estado `NOT_CONNECTED` nesta versão.
+- State and validity dominate the top.
+- Signed terms, proof, and logical credential references remain legible and browser-copyable.
+- Revocation requires inline confirmation and explains that authority ends, not the agent.
+- Bound Verify and BE-07 use a replaceable interface and `NOT_CONNECTED` in this version.
 
-## Estados do produto
+## Product states
 
-- **Loading:** skeletons preservam a composição do documento e usam `aria-live` com texto conciso.
-- **Vazio:** informa que VuelaYa não publicou oferta GRU → COR e oferece nova consulta.
-- **Erro de API:** mensagem pública, ação de retry e correlation ID quando presente.
-- **API offline:** tratamento próprio, sem correlation ID inventada, com URL pública configurada visível.
-- **Ação pendente:** botão desabilitado, verbo no gerúndio e `aria-busy` no agrupamento afetado.
+- **Loading:** skeletons preserve document composition and use concise `aria-live` text.
+- **Empty:** explain that VuelaYa returned no GRU → COR offer and offer another query.
+- **API error:** public message, retry action, and correlation ID when present.
+- **API offline:** dedicated treatment without an invented correlation ID, showing the configured public URL.
+- **Pending action:** disabled button, active verb, and `aria-busy` on the affected group.
 
-## Interação, movimento e acesso
+## Interaction, motion, and accessibility
 
-- Toda ação usa elementos `button` ou `a`, com foco cobalt visível e área mínima de 44 px.
-- A ordem de tabulação segue a ordem visual e não depende de hover.
-- Feedback assíncrono usa `aria-live="polite"`; erros usam `role="alert"`.
-- O reveal da trace e o pouso do selo duram no máximo 420 ms e são removidos em `prefers-reduced-motion`.
-- Conteúdo não depende de animação, textura, cor ou cursor para comunicar estado.
+- Every action uses `button` or `a`, a visible cobalt focus, and at least a 44 px target.
+- Tab order follows visual order and never depends on hover.
+- Asynchronous feedback uses `aria-live="polite"`; errors use `role="alert"`.
+- Trace reveal and seal landing last at most 420 ms and disappear under `prefers-reduced-motion`.
+- Content never depends on animation, texture, color, or cursor behavior to communicate state.
 
-## Responsividade
+## Responsiveness
 
-- Desktop: grade 12 colunas; conteúdo principal 7–8 colunas e evidência 4–5.
-- Tablet: duas colunas equilibradas; passport passa abaixo da oferta quando necessário.
-- Mobile: coluna única; botões ocupam a largura; evidence strings quebram; tabelas viram pares rótulo/valor.
-- Nenhum conteúdo funcional deve exigir rolagem horizontal. A única exceção permitida é a trace, que também possui descrição textual acessível.
+- Desktop: 12-column grid; primary content spans 7–8 columns and evidence spans 4–5.
+- Tablet: two balanced columns; passport moves below the offer when needed.
+- Mobile: one column, full-width actions, wrapped evidence strings, and tables rendered as label-value pairs.
+- Functional content never requires horizontal scrolling. The trace is the sole exception and also has an accessible text description.
 
-## Anti-padrões
+## Anti-patterns
 
-- dashboard genérico, sidebar administrativa ou mosaico de cards iguais;
-- gradiente fintech, glassmorphism, neon, mascotização do agente;
-- cartão de crédito literal, PAN, CVV, token Yuno ou affordance de pagamento;
-- selo “verificado” sem prova real devolvida pela API;
-- `POST /verify`, ferramenta `pay()` ou decisão `ALLOW` fictícia.
+- generic dashboards, administrative sidebars, or grids of identical cards;
+- fintech gradients, glassmorphism, neon, or an agent mascot;
+- literal credit cards, PAN, CVV, Yuno tokens, or payment affordances;
+- a “verified” badge without real API evidence;
+- fictional `POST /verify`, `pay()` tools, or `ALLOW` decisions.

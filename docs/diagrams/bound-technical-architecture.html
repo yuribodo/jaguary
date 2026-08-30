@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bound — Arquitetura técnica do MVP</title>
+  <title>Bound — MVP technical architecture</title>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -87,14 +87,14 @@
 <body>
   <main>
     <p class="eyebrow">Architecture · Secure paved road · MVP</p>
-    <h1>Bound: autorização antes do pagamento</h1>
-    <p class="subtitle">Caminho técnico proposto para transformar um checkout UCP protegido por AP2 em uma cobrança Yuno idempotente. VuelaYa mantém o P0 determinístico; Firecrawl adiciona discovery e browser ao vivo no P2 sem receber autoridade de pagamento.</p>
+    <h1>Bound: authorization before payment</h1>
+    <p class="subtitle">Proposed technical path for turning an AP2-protected UCP checkout into an idempotent Yuno charge. VuelaYa keeps P0 deterministic; Firecrawl adds discovery and a live browser in P2 without receiving payment authority.</p>
 
     <figure>
       <div class="diagram">
         <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bound-technical-architecture-title bound-technical-architecture-desc">
-          <title id="bound-technical-architecture-title">Bound — Arquitetura técnica do MVP</title>
-          <desc id="bound-technical-architecture-desc">Arquitetura mostrando pessoa, TravelBot com discovery opcional e merchant entrando no Bound por rotas permitidas, o Verify Engine reservando a autorização em estado transacional e somente o Yuno Adapter acessando o cofre e os pagamentos da Yuno.</desc>
+          <title id="bound-technical-architecture-title">Bound — MVP technical architecture</title>
+          <desc id="bound-technical-architecture-desc">Architecture showing the person, TravelBot with optional discovery, and merchant entering Bound through permitted routes, the Verify Engine reserving authorization transactionally, and only the Yuno Adapter accessing Yuno Vault and Payments.</desc>
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
               <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
@@ -277,15 +277,15 @@
       <figcaption>
         <div class="note">
           <strong>Invariante central</strong>
-          <span>O Verify reserva nonce, uso e valor numa transação antes de liberar o pagamento.</span>
+          <span>Verify reserves nonce, usage, and amount in one transaction before releasing payment.</span>
         </div>
         <div class="note">
-          <strong>Credencial isolada</strong>
-          <span>Somente o Yuno Adapter resolve a referência interna para o <code>vaulted_token</code>.</span>
+          <strong>Isolated credential</strong>
+          <span>Only the Yuno Adapter resolves the internal reference to a <code>vaulted_token</code>.</span>
         </div>
         <div class="note">
-          <strong>Falha fechada</strong>
-          <span>Estado ou resposta externa ambígua nunca vira nova cobrança.</span>
+          <strong>Fail closed</strong>
+          <span>Ambiguous state or external responses never become a new charge.</span>
         </div>
       </figcaption>
     </figure>

@@ -1,414 +1,251 @@
-# Decision log do Jaguary
+# Jaguary Decision Log
 
-| Metadado | Valor |
+> This is the fastest way to understand why Jaguary works the way it does. It records the decisions, discoveries, corrections, and tradeoffs that shaped the current product.
+
+| Metadata | Value |
 | --- | --- |
-| Status | Registro histórico do projeto até o estado atual |
-| Período coberto | 2026-08-29 a 2026-08-30 |
-| Última revisão | 2026-08-30 |
-| Escopo | Produto, arquitetura, segurança, integrações, experiência e operação |
+| Status | Historical project record through the current state |
+| Period covered | 2026-08-29 to 2026-08-30 |
+| Last reviewed | 2026-08-30 |
+| Scope | Product, architecture, security, integrations, experience, and operations |
 
-## Objetivo deste documento
+## Purpose
 
-Este log registra como o Jaguary evoluiu, quais decisões orientaram a implementação, o que foi descoberto durante o trabalho e quais melhorias ou correções nasceram dessas descobertas.
+This log records how Jaguary evolved, which decisions guided the implementation, what the team learned while building it, and which improvements or corrections followed from those discoveries.
 
-Ele não substitui:
+It complements, but does not replace:
 
-- os [ADRs](adr/), que explicam decisões arquiteturais duráveis em profundidade;
-- a [documentação técnica](technical/README.md), que descreve o comportamento atual do código;
-- o registro de [lacunas conhecidas](technical/known-gaps.md), que prioriza o que ainda falta para produção;
-- os planos de implementação e spikes, que registram intenção ou investigação, mas não garantem comportamento entregue.
+- the [ADRs](adr/), which explain durable architecture decisions in depth;
+- the [technical documentation](technical/README.md), which describes the code's current behavior;
+- the [known implementation gaps](technical/known-gaps.md), which prioritize the work still required for production;
+- implementation plans and spikes, which record intent or investigation but do not guarantee delivered behavior.
 
-O histórico abaixo foi reconstruído a partir do Git, do código, dos testes, das migrações e da documentação existente. Quando a intenção inicial e o comportamento final diferem, este documento privilegia o que ficou implementado e registra a mudança de direção.
+This history was reconstructed from Git, code, tests, migrations, and existing documentation. When initial intent and final behavior differ, this log gives precedence to implemented behavior and records the change in direction.
 
-## Resumo da evolução
+## Evolution at a glance
 
-O projeto começou com uma pergunta simples: **como permitir que um agente faça uma compra sem transformar o LLM na autoridade sobre o dinheiro?** A resposta virou o princípio central do Jaguary:
+The project began with a simple question: **how can an agent make a purchase without turning the LLM into the authority over money?** The answer became Jaguary's central principle:
 
 ```text
-HUMANO → MANDATO → AGENTE → CHECKOUT → BOUND VERIFY → PAGAMENTO → RECIBO
+HUMAN → MANDATE → AGENT → CHECKOUT → BOUND VERIFY → PAYMENT → RECEIPT
 ```
 
-A partir daí, o trabalho evoluiu em cinco movimentos:
+The work then evolved in five movements:
 
-1. separar interpretação probabilística de decisão econômica determinística;
-2. construir uma espinha transacional para identidade, mandato, autorização, pagamento e auditoria;
-3. conectar a espinha a uma experiência real de conversa e busca de voos;
-4. adicionar autenticação, confiança externa, consentimento biométrico e autonomia durável;
-5. corrigir o modelo de identidade para distinguir a plataforma que opera o TravelBot do cliente que delega uma compra.
+1. separate probabilistic interpretation from deterministic economic decisions;
+2. build a transactional backbone for identity, mandates, authorization, payment, and audit;
+3. connect that backbone to a real conversational flight-search experience;
+4. add authentication, external trust, biometric consent, and durable autonomy;
+5. distinguish the platform operating TravelBot from the customer delegating a purchase.
 
-## Linha do tempo de decisões, descobertas e melhorias
+## Timeline of decisions, discoveries, and improvements
 
-### 1. Definição do problema e da fronteira de autoridade
+### 1. Define the problem and the authority boundary
 
-**Quando:** 2026-08-29  
-**Commits principais:** `c4a0825`, `47c3316`
+**When:** 2026-08-29 · **Primary commits:** `c4a0825`, `47c3316`
 
-**Contexto.** O produto precisava responder de forma verificável se um agente, agindo por uma pessoa, podia executar uma compra exata naquele momento. O risco inicial era misturar interpretação de intenção, checkout, autorização e pagamento em uma única automação.
+**Context.** The product needed to answer, verifiably, whether an agent acting for a person could execute an exact purchase at that moment. Combining intent interpretation, checkout, authorization, and payment in one automation would make that authority ambiguous.
 
-**Decisão.** O Bound seria o ponto exclusivo de decisão econômica. O LLM poderia interpretar linguagem e propor ações, mas não poderia criar `ALLOW`, movimentar dinheiro, definir preço, escolher credenciais ou alterar autoridade.
+**Decision.** Bound became the exclusive economic decision point. The LLM may interpret language and propose actions, but it cannot create an `ALLOW`, move money, define prices, choose credentials, or alter authority.
 
-**Descobertas.** Commerce, prova de autoridade, enforcement e pagamento são problemas diferentes. UCP não substitui AP2; AP2 não substitui checkout; Yuno não substitui autorização; e nenhuma dessas camadas deveria virar o modelo interno inteiro do produto.
+**Discovery and outcome.** Commerce, proof of authority, enforcement, and payment are separate problems. The project adopted a multi-protocol architecture with normalized contracts and a transactional modular monolith, documented in [ADR-001](adr/ADR-001-bound-mvp-architecture.md) and [ADR-002](adr/ADR-002-commerce-protocol-layering.md).
 
-**Resultado.** Foi definida uma arquitetura multiprotocolo com contratos normalizados e um monólito modular transacional, descritos no [ADR-001](adr/ADR-001-bound-mvp-architecture.md) e no [ADR-002](adr/ADR-002-commerce-protocol-layering.md).
+### 2. Choose a simple, transactional, and explainable architecture
 
----
+**When:** 2026-08-29 · **Primary commits:** `61f4896`, `2ad2400`, `461fb8a`
 
-### 2. Escolha de uma arquitetura simples, transacional e explicável
+**Decision.** Organize the repository as a `pnpm` workspace with two deployables—Next.js and Fastify—and PostgreSQL as the source of truth. Revocation, nonces, replay protection, aggregate limits, reservations, and consumption must agree within one transaction boundary.
 
-**Quando:** 2026-08-29  
-**Commits principais:** `61f4896`, `2ad2400`, `461fb8a`
+**Outcome.** The architecture remained a modular monolith with external integrations behind narrow ports. Health checks, environment configuration, linting, TypeScript, tests, and visual directions were included from the start.
 
-**Decisão.** O repositório foi organizado como workspace `pnpm` com dois deployables — Next.js no frontend e Fastify no backend — e PostgreSQL como fonte de verdade.
+### 3. Define contracts before implementations
 
-**Por que.** Revogação, nonce, replay, limite agregado, reserva e consumo precisam concordar dentro da mesma fronteira transacional. Separar esses módulos em serviços distribuídos no MVP aumentaria a superfície de falha sem gerar valor proporcional.
+**When:** 2026-08-29 · **Primary commit:** `b753d30`
 
-**Melhorias incorporadas desde o início.** Foram adicionados health check, configuração por ambiente, lint, TypeScript, estrutura de testes e direções visuais. A identidade visual escolheu papel quente, tinta escura e azul cobalto para comunicar confiança sem parecer um dashboard financeiro genérico.
+**Decision.** Freeze the v1 contracts for commerce, identity, mandates, authorization, payments, receipts, errors, and HTTP conventions before implementing integrations.
 
-**Resultado.** A arquitetura permaneceu um monólito modular, com integrações externas escondidas atrás de portas estreitas. Essa escolha continua sendo a base do sistema atual.
+**Discovery and outcome.** Explicit contracts prevent sensitive or non-authoritative values from crossing boundaries for convenience. Zod schemas, deterministic fixtures, correlation IDs, idempotency keys, standardized errors, canonicalization, contract tests, and Postman validation now keep adapters replaceable and reject unknown input before it reaches the economic path.
 
----
+### 4. Keep merchant control over authoritative economic terms
 
-### 3. Contratos antes das implementações
+**When:** 2026-08-29 · **Primary commit:** `7956ede`
 
-**Quando:** 2026-08-29  
-**Commit principal:** `b753d30`
+**Decision.** Create the VuelaYa demo merchant with a deterministic catalog, capability discovery, and signed checkout. The merchant—not the conversation, browser, or model—is the source of items, quantity, currency, total, expiration, and fulfillment.
 
-**Decisão.** Congelar primeiro os contratos v1 de commerce, identidade, mandatos, autorização, pagamentos, recibos, erros e convenções HTTP.
+**Outcome.** Checkout produces a canonical hash and verifiable signature, and Bound compares proposals with authoritative checkout terms. This is a normalized subset inspired by UCP, not complete UCP interoperability.
 
-**Descoberta.** Sem contratos explícitos, valores sensíveis ou não autoritativos poderiam atravessar camadas por conveniência. A canonicalização também precisava ser definida cedo para que hashes e assinaturas fossem reproduzíveis.
+### 5. Use PostgreSQL as the authority backbone
 
-**Melhorias.** Foram adotados schemas Zod, fixtures determinísticas, IDs de correlação, idempotency keys, respostas de erro padronizadas e testes de contrato. A coleção Postman passou a ser validada por teste para reduzir divergência entre API e documentação (`620cff2`).
+**When:** 2026-08-29 · **Primary commit:** `a8de39c`
 
-**Resultado.** Os adapters externos podem mudar sem alterar o núcleo de política, e entradas desconhecidas falham antes de chegar ao caminho econômico.
+**Decision.** Persist economic and audit state in PostgreSQL through Drizzle, with versioned migrations and a separate integration-test database.
 
----
+**Discovery and outcome.** Policy unit tests do not prove concurrency safety. Real transactions are required to exercise replay protection, double-spend prevention, limit consumption, and payment transitions. PostgreSQL therefore became the project's authority backbone, not merely application storage.
 
-### 4. Merchant controlado e termos econômicos autoritativos
+### 6. Make mandates immutable, identity cryptographic, and Verify pure
 
-**Quando:** 2026-08-29  
-**Commit principal:** `7956ede`
+**When:** 2026-08-29 · **Primary commits:** `5bc39bb`, `eaedeca`, `b56db7f`
 
-**Decisão.** Criar o merchant de demonstração VuelaYa com catálogo determinístico, descoberta de capabilities e checkout assinado.
+**Decisions.** Active mandates are signed and bounded; changing an economic condition requires a new mandate. Every financial request must prove possession of the agent's registered key. Bound Verify runs pure, ordered rules and returns only `ALLOW`, `ESCALATE`, or `DENY`.
 
-**Descoberta.** O preço não pode vir da conversa, do browser ou do modelo. O merchant precisa ser a fonte dos itens, quantidade, moeda, total, expiração e fulfillment.
+**Discovery and outcome.** Declared identity is not proven identity, and key possession is not external certification of the operator or build. [ADR-003](adr/ADR-003-agent-identity-assurance.md) records that distinction. Verify remains reproducible and makes no LLM, identity-provider, or payment-provider calls.
 
-**Melhoria.** O checkout passou a gerar um hash canônico e uma assinatura verificável. O Bound compara a proposta recebida com o checkout autoritativo, evitando que uma alteração de preço ou escopo seja tratada como a mesma compra.
+### 7. Reserve atomically and protect against replay
 
-**Limite consciente.** O caminho implementa um subconjunto normalizado inspirado em UCP; ainda não deve ser apresentado como interoperabilidade UCP completa.
+**When:** 2026-08-29 · **Primary commit:** `24ff6ba`
 
----
+**Decision.** An `ALLOW` creates an economic effect only when the same transaction records the nonce and creates a `RESERVED` authorization.
 
-### 5. PostgreSQL como fonte de verdade e harness transacional
+**Discovery and outcome.** Verifying first and reserving later creates a race. Limits now include reservations and pending payments, while the transaction rereads and locks nonces, revocation state, and identity snapshots. The store converts a pure policy result into a protected single-use capability.
 
-**Quando:** 2026-08-29  
-**Commit principal:** `a8de39c`
+### 8. Make payment durable, idempotent, and auditable
 
-**Decisão.** Persistir o estado econômico e de auditoria em PostgreSQL usando Drizzle, com migrações versionadas e um banco separado para testes de integração.
+**When:** 2026-08-29 · **Primary commits:** `d76c291`, `12ccfc5`, `0d77e6f`, `fe24a75`
 
-**Descoberta.** Testes unitários da policy não provam segurança contra concorrência. Replay, double spend, consumo de limite e transições de pagamento precisam ser exercitados contra transações reais.
+**Decision.** Isolate payment behind `PaymentExecutor` and maintain a durable state machine. Provider calls happen outside SQL transactions, with short state transitions before and after each call.
 
-**Melhorias.** Foram adicionados Docker Compose, migrações, transaction harness, CI e testes de integração. O banco cresceu depois para sustentar autenticação, confiança, conversas, interrupções de aprovação, watches e recibos.
+**Discovery and outcome.** A timeout is neither failure nor success. `authorization_id` is the stable idempotency identity; ambiguous responses remain `PAYMENT_PENDING`; success creates a correlated order and receipt; terminal failure releases the reservation; and business events enter a hash-chained append-only ledger. The ledger is local tamper evidence, not a blockchain or external proof of immutability.
 
-**Resultado.** PostgreSQL virou a espinha de autoridade do projeto, não apenas um armazenamento de aplicação.
+### 9. Integrate Yuno honestly, with a deterministic fallback
 
----
+**When:** 2026-08-29 · **Primary commits:** `099e179`, `3de1f96`
 
-### 6. Mandatos imutáveis, identidade criptográfica e Verify puro
+**Investigation.** The team evaluated Yuno's sandbox and credential model before making it a runtime requirement. A credential vaulted in Yuno is not a universal card, and sandbox access, commercial onboarding, and network-product access are distinct.
 
-**Quando:** 2026-08-29  
-**Commits principais:** `5bc39bb`, `eaedeca`, `b56db7f`
+**Decision and outcome.** Implement and test `YunoPaymentExecutor`, retain an explicit deterministic fake executor for the demo, and keep enrollment on the provider's secure surface. PAN, CVV, and reusable tokens never reach TravelBot or public contracts. [ADR-004](adr/ADR-004-credential-enrollment-and-external-checkout.md) has the full reasoning. The current composition root still installs the fake executor even when Yuno variables exist, so the real integration remains an open high-severity gap.
 
-**Decisões.**
+### 10. Build a Trusted Surface and evolve chat
 
-- Mandatos ativos são assinados, delimitados por escopo, valor, moeda, merchant, validade e número de usos.
-- Alterar uma condição econômica exige um novo mandato; autoridade já assinada não é editada.
-- Cada requisição financeira precisa provar posse da chave registrada pelo agente.
-- O Bound Verify executa regras puras e ordenadas e retorna apenas `ALLOW`, `ESCALATE` ou `DENY`.
+**When:** 2026-08-29 · **Primary commits:** `3935361`, `e7889f7`, `a7391e5`, `fc1d99d`
 
-**Descobertas.** Identidade declarada não é identidade provada. Ao mesmo tempo, posse de uma chave registrada não equivale a certificação externa do operador ou do build. Essa distinção originou o [ADR-003](adr/ADR-003-agent-identity-assurance.md).
+**Decision.** Make authority visible and understandable rather than hiding mandates, limits, confirmation, or evidence behind a “magical” chat.
 
-**Melhorias.** Assinatura, `key_id`, algoritmo, build fingerprint, método, rota, corpo, timestamp e nonce passaram a ser vinculados. Agentes suspensos ou revogados falham fechados. Verify não faz chamadas a LLM, provider de identidade ou pagamento.
+**Outcome.** The Trusted Surface, conversation and confirmation components, landing page, account navigation, purchases, payment methods, and merchant pages turn the frontend into an authority narrative. Users can distinguish proposals, approvals, executions, blocks, and receipts.
 
-**Resultado.** A decisão econômica tornou-se reproduzível e independente das integrações probabilísticas ou externas.
+### 11. Use OpenAI for TravelBot while keeping state under application control
 
----
+**When:** 2026-08-29 · **Primary commit:** `d1e8e5c`
 
-### 7. Reserva atômica e proteção contra replay
+**Decision.** Use the OpenAI Agents SDK behind a dedicated port, with structured output, strict tools, disabled parallel tool calls, and PostgreSQL-backed conversation persistence.
 
-**Quando:** 2026-08-29  
-**Commit principal:** `24ff6ba`
+**Discovery and outcome.** Structured output remains untrusted input, SDK `needsApproval` is not sufficient consent, and provider IDs are correlation data rather than workflow truth. The application owns the state machine, legal-tool calculation, replayable SSE events, and encrypted approval binding. The model does not select idempotency keys or invoke payment. [ADR-005](adr/ADR-005-travelbot-agents-runtime.md) formalizes this split.
 
-**Decisão.** Um `ALLOW` só pode gerar efeito econômico quando a mesma transação registra o nonce e cria uma autorização `RESERVED`.
+### 12. Make chat contextual and English, add real search, and simplify approval
 
-**Descoberta.** Verificar primeiro e reservar depois abre uma corrida: duas requisições podem observar o mesmo saldo de autoridade e ambas serem aprovadas.
+**When:** 2026-08-29 · **Primary commits:** `3659ea4`, `3bd26bc`, `a6e5fab`, `bff6bb7`, `b6d9e9b`, `01db31d`
 
-**Melhorias.** Limites passaram a considerar reservas e pagamentos pendentes, não apenas compras concluídas. Nonces, revogação e snapshot de identidade são relidos e travados durante a reserva.
+**Improvements.** Chat began recomputing missing fields from trip context. Google Flights search through SerpApi added validation, normalization, deduplication, and a short cache. The application deterministically picks the lowest compatible total, then earliest departure, then stable ID. The user confirms the exact purchase in one step, with details and an official source.
 
-**Resultado.** A policy continua pura, enquanto o store transforma uma decisão válida em uma capacidade de uso único protegida por transação.
+**Discovery and limits.** More confirmation screens do not necessarily improve safety; consent must be explicit and bound to exact terms. Multi-passenger totals still multiply a single-adult quote, and local timestamps need stronger time-zone semantics.
 
----
+### 13. Add login, external trust, Agent Passport, and biometric consent
 
-### 8. Pagamento durável, idempotência e auditoria encadeada
+**When:** 2026-08-30 · **Primary commits:** `c3fca32`, `f7eda24`
 
-**Quando:** 2026-08-29  
-**Commits principais:** `d76c291`, `12ccfc5`, `0d77e6f`, `fe24a75`
+**Decisions.** Add demo and Google OIDC sessions, integrate Didit behind a vendor-neutral port, normalize external responses as evidence rather than `ALLOW`, issue short-lived ES256 Agent Passports, and require biometric consent before mandate activation when policy requires external trust.
 
-**Decisão.** Isolar pagamento atrás de `PaymentExecutor` e manter uma máquina de estados durável. Chamadas ao provider acontecem fora da transação; a aplicação faz transições curtas antes e depois da chamada.
+**Discovery and outcome.** Authenticating a person, attesting an operator or agent, and consenting to a purchase are separate acts. The system fails closed without required attestation, avoids storing raw provider payloads or PII, and binds biometric evidence to the correct mandate and customer.
 
-**Descoberta.** Timeout não é falha e também não é sucesso. Repetir uma cobrança com outra chave depois de uma resposta ambígua pode duplicar o pagamento.
+### 14. Deploy and fix build portability
 
-**Melhorias.**
+**When:** 2026-08-30 · **Primary commits:** `2c7d9f8`, `eff5913`, `e8c037d`, `928b085`
 
-- `authorization_id` virou a identidade estável de idempotência;
-- respostas `UNKNOWN` e `TIMEOUT` permanecem `PAYMENT_PENDING` até reconciliação;
-- sucesso consome a autorização e produz order/receipt de forma correlacionada;
-- falha terminal libera a reserva;
-- eventos de negócio são escritos em um ledger append-only encadeado por hash.
+**Decision.** Prepare both deployables for Vercel with Neon PostgreSQL while keeping deployment instructions separate from local execution.
 
-**Limite consciente.** O ledger é evidência local contra adulteração acidental ou não detectada; não é blockchain nem prova externa de imutabilidade.
+**Discovery and outcome.** Production exposed implicit dependencies on global `fetch` types and environment differences. Separating the composition root, isolating the flight-provider fetch contract, and explicitly including web-platform types made builds portable and deployment operationally documented.
 
----
+### 15. Integrate the workspace and personalize sessions and conversations
 
-### 9. Yuno: adapter real, fallback determinístico e honestidade de escopo
+**When:** 2026-08-30 · **Primary commits:** `9604152`, `a735244`, `541dae0`
 
-**Quando:** 2026-08-29  
-**Commits principais:** `099e179`, `3de1f96`
+**Improvements.** Dashboard, agents, merchants, opportunities, payments, purchases, and audit joined one workspace. Conversations gained titles, listing, deletion, and per-user continuity, and the landing page began reflecting the active session.
 
-**Investigação.** O sandbox e o modelo de credenciais da Yuno foram avaliados antes de tornar a integração um requisito de execução.
+**Discovery and outcome.** Persistence alone is insufficient: every public read and mutation must be owner-scoped. The backend now derives the customer from the opaque session rather than trusting a browser-supplied `principal_id`.
 
-**Descobertas.**
+### 16. Add autonomous fare monitoring with pre-authorized authority
 
-- Uma credencial vaulted na Yuno não é um cartão universal para qualquer checkout externo.
-- Sandbox, onboarding comercial e acesso a produtos de rede são coisas diferentes.
-- Uma compra controlada em VuelaYa não deve ser apresentada como compra real em merchant arbitrário.
-- PAN, CVV e tokens reutilizáveis nunca devem chegar ao TravelBot ou aos contratos públicos.
+**When:** 2026-08-30 · **Primary commit:** `b7b130e`
 
-**Decisão.** Implementar e testar o `YunoPaymentExecutor`, mas manter um executor fake determinístico como fallback explícito de demo. O cadastro de credencial deve ocorrer apenas em superfície segura do provider. O raciocínio completo está no [ADR-004](adr/ADR-004-credential-enrollment-and-external-checkout.md).
+**Problem.** A synchronous search ends without a result when no flight fits the budget. Waiting to request approval until a later offer appears prevents genuine autonomy.
 
-**Pendência descoberta depois.** A configuração Yuno ainda não é conectada pelo composition root atual; portanto, habilitar variáveis da Yuno não troca automaticamente o executor fake. Isso permanece uma lacuna de alta severidade, não uma integração concluída.
+**Decision and outcome.** A durable travel watch uses a pre-approved, single-use conditional mandate bounded by route, date window, cabin, passengers, merchant, currency, and budget. Activation requires liveness, while every future purchase still passes Verify. Persisted watches, recoverable leases, stable idempotency identities, backoff, and cancellation-by-revocation survive restarts without duplicating authority or purchases. [ADR-006](adr/ADR-006-durable-autonomous-travel-watch.md) records the decision.
 
----
+### 17. Refine trust, purchasing, voice, and real-data integration
 
-### 10. Trusted Surface e evolução da experiência de chat
+**When:** 2026-08-30 · **Primary commits:** `96de5e1`, `6fdaa34`, `5ee6e9c`, `2d74097`
 
-**Quando:** 2026-08-29  
-**Commits principais:** `3935361`, `e7889f7`, `a7391e5`, `fc1d99d`
+**Improvements.** Pending identity checks can be restarted; travel quick replies became contextual and tested; purchases display real receipts; chat gained real-time voice through backend-issued ephemeral tokens; and workspace mocks were replaced with data from the product APIs.
 
-**Decisão de produto.** A autoridade precisava ser visível e compreensível. A interface não deveria esconder mandato, limites, confirmação ou evidência atrás de uma experiência de chat “mágica”.
+**Discovery and outcome.** Mocks that survive integration hide ownership failures, loading and empty states, and contract drift. The frontend now consumes the same durable state that governs purchases.
 
-**Melhorias.** Foram criados a Trusted Surface, componentes de conversa e confirmação, landing page, navegação de conta, páginas de compras, métodos de pagamento e merchant. O workspace de chat foi refinado para reduzir ruído, melhorar hierarquia, loading, scroll e continuidade.
+### 18. Correct a critical identity assumption: the platform operator is not the customer
 
-**Descoberta.** Confiança não é apenas uma propriedade do backend. O usuário precisa conseguir distinguir proposta, aprovação, execução, bloqueio e recibo pela interface.
+**When:** 2026-08-30 · **Primary commits:** `b73f9fa`, `e145864`
 
-**Resultado.** O frontend passou de scaffold para uma narrativa completa de autoridade, mantendo o azul como trilho de ação autorizada e superfícies de papel para evidência e revisão.
+**Problem.** TravelBot had been registered as though Marta owned it, and her Didit evidence was reused as a biometric reference. That blocked other customers and risked comparing one person's biometrics with another's.
 
----
+**Correction.** `principal_jaguary_platform` operates public `agent_travelbot` and owns its key and build. Each authenticated customer independently owns their session, conversation, Didit attestation, mandate, consent, logical credential, authorization, and receipt.
 
-### 11. TravelBot com OpenAI, mas estado sob controle da aplicação
+**Outcome.** TravelBot is `PUBLIC`; external trust is keyed by `(agent_id, principal_id)`; logical credentials are customer-isolated; agent snapshots use the platform's cryptographic trust; economic authority uses the customer's policy evidence. A public agent can serve multiple customers without sharing authority or data. [ADR-007](adr/ADR-007-agent-operator-and-customer-authority.md) formalizes the correction.
 
-**Quando:** 2026-08-29  
-**Commit principal:** `d1e8e5c`
+## Decisions that remained invariant
 
-**Decisão.** Usar OpenAI Agents SDK atrás de uma porta própria, com saída estruturada, tools estritas, chamadas paralelas desabilitadas e persistência da conversa no PostgreSQL.
+1. The model proposes; deterministic code decides and commits.
+2. The merchant authors economic terms; the browser and agent do not.
+3. Only a transactionally reserved `ALLOW` can reach payment.
+4. Active mandates are immutable, bounded, revocable, and replay-protected.
+5. Reusable credentials and secrets stay out of the browser, LLM, logs, and public contracts.
+6. External integrations are normalized before entering policy.
+7. External calls do not run inside SQL transactions.
+8. Ambiguous economic responses remain pending until reconciliation.
+9. Authority belongs to an authenticated customer, even when the agent is public and platform-operated.
+10. Documentation distinguishes implementation, normalized subsets, sandboxes, spikes, and planned work.
 
-**Descobertas.**
+## Alternatives rejected
 
-- Saída estruturada reduz ambiguidade, mas continua sendo entrada não confiável.
-- Uma interrupção `needsApproval` do SDK não é consentimento humano suficiente.
-- IDs do provider servem para correlação, não como fonte de verdade do workflow.
-- Reconectar uma stream não pode repetir efeitos já confirmados.
-
-**Melhorias.** A aplicação passou a controlar uma máquina de estados própria, recalcular tools legais a cada turno, persistir eventos SSE reproduzíveis e criptografar interrupções de aprovação com binding exato a merchant, checkout hash, valor, moeda e mandato. O modelo não escolhe idempotency key nem chama o executor de pagamento.
-
-**Resultado.** O OpenAI runtime interpreta e propõe; o `TravelBotService` valida e comita. A decisão está formalizada no [ADR-005](adr/ADR-005-travelbot-agents-runtime.md).
-
----
-
-### 12. Chat contextual, inglês, busca real e aprovação simplificada
-
-**Quando:** 2026-08-29  
-**Commits principais:** `3659ea4`, `3bd26bc`, `a6e5fab`, `bff6bb7`, `b6d9e9b`, `01db31d`
-
-**Melhorias de produto.**
-
-- O chat passou a recomputar campos faltantes e responder ao contexto da viagem.
-- A experiência pública foi traduzida para inglês.
-- A busca de voos passou a usar Google Flights via SerpApi, com validação, normalização, deduplicação e cache curto.
-- A aplicação passou a escolher deterministicamente a melhor oferta compatível: menor total, depois saída mais cedo, depois ID estável.
-- A seleção intermediária de oferta saiu do fluxo normal; o usuário confirma diretamente a compra exata, com detalhes e fonte oficial.
-- Conversas e recibos foram preservados na navegação da conta.
-
-**Descoberta.** Mais etapas de confirmação não significam mais segurança. A confirmação correta é uma etapa única, explícita e vinculada aos termos exatos; telas redundantes só aumentavam atrito.
-
-**Limites descobertos.** A busca ainda trata preços para múltiplos passageiros como multiplicação de uma cotação de um adulto, e timestamps locais ainda precisam de semântica de fuso mais forte.
-
----
-
-### 13. Login, confiança externa, Agent Passport e consentimento biométrico
-
-**Quando:** 2026-08-30  
-**Commits principais:** `c3fca32`, `f7eda24`
-
-**Decisões.**
-
-- Adicionar sessão de principal com provider demo e Google OIDC.
-- Integrar Didit por uma porta neutra de fornecedor.
-- Tratar a resposta externa como evidência normalizada, nunca como `ALLOW`.
-- Emitir Agent Passport ES256 de curta duração com referências opacas e binding de agente, principal, chave e build.
-- Exigir consentimento biométrico antes da ativação de mandato quando a política configurada exigir confiança externa.
-
-**Descoberta.** Autenticar a pessoa, atestar o operador/agente e consentir com uma compra são atos diferentes. Nenhum deles substitui os demais.
-
-**Melhorias.** O sistema passou a falhar fechado quando `EXTERNAL_REQUIRED` não possui atestação válida, evitar persistência de payload bruto/PII do provider e vincular a evidência biométrica ao mandato e ao cliente corretos.
-
----
-
-### 14. Primeiro deploy e correções de portabilidade de build
-
-**Quando:** 2026-08-30  
-**Commits principais:** `2c7d9f8`, `eff5913`, `e8c037d`, `928b085`
-
-**Decisão.** Preparar frontend e backend para Vercel, com PostgreSQL Neon, mantendo instruções de deploy separadas da execução local.
-
-**Descobertas.** O build de produção revelou dependências implícitas nos tipos globais de `fetch` e diferenças entre o ambiente Node local e a plataforma de deploy.
-
-**Melhorias.** O composition root foi separado do entry point, o contrato de fetch do provider de voos foi isolado e os tipos de plataforma web foram incluídos explicitamente no backend.
-
-**Resultado.** O deploy deixou de depender acidentalmente do contexto de testes/desenvolvimento e ganhou documentação operacional própria.
-
----
-
-### 15. Workspace integrado, sessões e conversas personalizadas
-
-**Quando:** 2026-08-30  
-**Commits principais:** `9604152`, `a735244`, `541dae0`
-
-**Melhorias.** As superfícies antes isoladas foram integradas ao workspace Jaguary: dashboard, agentes, merchants, oportunidades, pagamentos, compras e auditoria. A conversa ganhou título, listagem, exclusão e continuidade por usuário. A landing passou a refletir corretamente a sessão ativa.
-
-**Descoberta.** Persistir a conversa não basta; toda leitura e mutação pública também precisa ser owner-scoped. O backend passou a derivar o cliente da sessão opaca em vez de aceitar `principal_id` escrito pelo browser.
-
-**Resultado.** A personalização deixou de ser apenas visual e passou a ter isolamento de dados no contrato da API de conversa.
-
----
-
-### 16. Monitoramento autônomo de tarifas com autoridade antecipada
-
-**Quando:** 2026-08-30  
-**Commit principal:** `b7b130e`
-
-**Problema.** Uma busca síncrona terminava sem resultado quando não havia voo dentro do orçamento. Pedir aprovação apenas quando uma oferta futura surgisse impediria uma compra realmente autônoma.
-
-**Decisão.** Criar um travel watch durável. O cliente aprova previamente um mandato condicional de uso único, limitado por rota, janela, cabine, passageiros, merchant, moeda e orçamento máximo. A ativação exige liveness; a compra futura não pede uma nova biometria, mas passa novamente pelo Verify completo.
-
-**Descobertas.**
-
-- Timers em memória e requests HTTP longos não servem para autonomia confiável.
-- Aumentar orçamento autonomamente seria ampliar autoridade sem consentimento.
-- Uma oferta acima do orçamento é diagnóstico, não permissão para comprar.
-
-**Melhorias.** Watches e tentativas foram persistidos; workers usam lease recuperável e `FOR UPDATE SKIP LOCKED`; checkout, Verify e pagamento recebem identidades idempotentes estáveis; falhas temporárias usam backoff; cancelamento revoga o mandato.
-
-**Resultado.** Reinícios podem retomar monitoramento sem recriar autoridade ou duplicar compra. A decisão está no [ADR-006](adr/ADR-006-durable-autonomous-travel-watch.md).
-
----
-
-### 17. Refinos finais de confiança, compra, voz e dados reais
-
-**Quando:** 2026-08-30  
-**Commits principais:** `96de5e1`, `6fdaa34`, `5ee6e9c`, `2d74097`
-
-**Melhorias.**
-
-- Verificações de identidade pendentes passaram a poder ser reiniciadas.
-- Quick replies de viagem ficaram contextuais e testadas.
-- A página de compras passou a exibir recibos e detalhes reais.
-- O chat recebeu voz em tempo real com token efêmero emitido pelo backend.
-- Mocks do workspace foram substituídos por dados das APIs de agentes, merchants, pagamentos, compras, auditoria e oportunidades.
-
-**Descoberta.** Mocks que sobrevivem depois da integração escondem falhas de ownership, loading, estado vazio e divergência de contrato. A UI precisa refletir o mesmo estado durável que governa a compra.
-
-**Resultado.** O frontend tornou-se um consumidor real do sistema, e não apenas uma demonstração visual paralela.
-
----
-
-### 18. Correção crítica: operador da plataforma não é o cliente
-
-**Quando:** 2026-08-30  
-**Commits principais:** `b73f9fa`, `e145864`
-
-**Problema descoberto.** O TravelBot havia sido registrado como se Marta fosse sua proprietária e a evidência Didit dela era reutilizada como referência biométrica. Isso funcionava para a fixture de Marta, mas bloqueava outros clientes e criava o risco de comparar a biometria de uma pessoa com a de outra.
-
-**Correção.** Separar duas identidades:
-
-- `principal_jaguary_platform` opera o agente público `agent_travelbot` e sua chave/build;
-- o cliente autenticado possui sua sessão, conversa, atestação Didit, mandato, consentimento, credencial lógica, autorização e recibo.
-
-**Melhorias.** O TravelBot passou a ter `access_scope=PUBLIC`; confiança externa passou a ser consultada por `(agent_id, principal_id)`; credenciais lógicas são isoladas por cliente; o snapshot do agente usa confiança criptográfica da plataforma, enquanto a autoridade econômica usa a evidência do cliente configurada pela policy.
-
-**Aprendizado.** “Principal do agente” e “pessoa em nome de quem ele compra” não são sinônimos em um agente de plataforma multiusuário. Esse vínculo precisa ser explícito no banco, nas rotas, na biometria e no Verify.
-
-**Resultado.** Um TravelBot público pode atender vários clientes sem compartilhar conversa, confiança, credencial ou autoridade. A correção está formalizada no [ADR-007](adr/ADR-007-agent-operator-and-customer-authority.md).
-
-## Decisões que permaneceram invariantes
-
-Ao longo das mudanças de UX e integrações, estes princípios não mudaram:
-
-1. O modelo propõe; código determinístico decide e comita.
-2. O merchant é autor dos termos econômicos; o browser e o agente não são.
-3. Somente `ALLOW` reservado transacionalmente pode alcançar pagamento.
-4. Mandatos ativos são imutáveis, limitados, revogáveis e protegidos contra replay.
-5. Credenciais reutilizáveis e segredos ficam fora do browser, do LLM, dos logs e dos contratos públicos.
-6. Integrações externas são normalizadas antes de entrar na policy.
-7. Chamadas externas não acontecem dentro de transações SQL.
-8. Resposta econômica ambígua permanece pendente até reconciliação; não é convertida em sucesso ou falha por conveniência.
-9. Toda autoridade pertence a um cliente autenticado, mesmo quando o agente é público e operado pela plataforma.
-10. A documentação deve diferenciar implementação real, subconjunto normalizado, sandbox, spike e trabalho planejado.
-
-## Alternativas descartadas durante o projeto
-
-| Alternativa | Motivo do descarte |
+| Alternative | Reason for rejection |
 | --- | --- |
-| Deixar o LLM autorizar ou pagar | Saída probabilística não pode ser a autoridade final sobre dinheiro. |
-| Expor Yuno Agent Toolkit ou token ao TravelBot | Criaria um caminho que contorna Verify, mandato e isolamento de credencial. |
-| Usar AP2 como protocolo completo de commerce | AP2 prova autoridade, mas não substitui catálogo, checkout, order e fulfillment. |
-| Usar UCP como payment rail | UCP organiza commerce; execução e liquidação pertencem ao provider/rail. |
-| Tratar Yuno Vault como cartão portátil | A referência é válida no contexto integrado; não é uma credencial universal para sites arbitrários. |
-| Guardar PAN/CVV no Bound | Aumentaria o escopo PCI e exporia material reutilizável sem necessidade. |
-| Fazer browser automation como caminho P0 | É frágil, sujeito a bloqueios e inadequado para receber credencial bruta. |
-| Verificar e só depois reservar | Permite corrida e consumo concorrente da mesma autoridade. |
-| Repetir pagamento após timeout com nova chave | Pode gerar cobrança duplicada. |
-| Usar timer em memória para monitoramento | Reinícios e múltiplas instâncias perderiam ou duplicariam trabalho. |
-| Aumentar orçamento do watch automaticamente | Ampliaria a autoridade sem novo consentimento. |
-| Considerar `needsApproval` como consentimento | É um estado do runtime, não prova humana vinculada aos termos econômicos. |
-| Tratar o cliente como proprietário do TravelBot | Confunde operador do agente com titular da autoridade e quebra o isolamento multiusuário. |
+| Let the LLM authorize or pay | Probabilistic output cannot be the final authority over money. |
+| Expose the Yuno Agent Toolkit or a token to TravelBot | It would bypass Verify, mandates, and credential isolation. |
+| Use AP2 as the complete commerce protocol | AP2 proves authority but does not replace catalog, checkout, order, or fulfillment. |
+| Use UCP as a payment rail | UCP organizes commerce; execution and settlement belong to the provider or rail. |
+| Treat Yuno Vault as a portable card | Its reference is contextual, not a universal credential for arbitrary sites. |
+| Store PAN or CVV in Bound | It would increase PCI scope and expose reusable material unnecessarily. |
+| Make browser automation the P0 path | It is fragile, prone to blocking, and unsuitable for raw credentials. |
+| Verify first and reserve later | It permits races and concurrent consumption of the same authority. |
+| Retry payment after timeout with a new key | It can produce a duplicate charge. |
+| Use an in-memory timer for monitoring | Restarts and multiple instances would lose or duplicate work. |
+| Increase a watch budget automatically | It would expand authority without fresh consent. |
+| Treat `needsApproval` as consent | It is runtime state, not human proof bound to economic terms. |
+| Treat the customer as TravelBot's owner | It confuses the operator with the authority holder and breaks multi-user isolation. |
 
-## Lacunas assumidas e descobertas ainda abertas
+## Open gaps discovered or accepted
 
-O projeto terminou este ciclo com um vertical funcional de referência, mas não como uma plataforma pronta para dinheiro real. As principais lacunas conhecidas são:
+This project cycle ended with a functional reference vertical, not a platform ready for real money. The main known gaps are:
 
-- rotas gerais de mandato e travel watch ainda não aplicam ownership de sessão de forma consistente;
-- o composition root ainda instala o pagamento fake, mesmo quando a configuração Yuno existe;
-- checkouts autoritativos e algumas chaves de assinatura são efêmeros e locais ao processo;
-- as capabilities anunciadas de UCP/AP2 são mais amplas do que o wire protocol realmente implementado;
-- pagamentos pendentes não possuem webhook ou worker de reconciliação conectado ao runtime;
-- busca com múltiplos passageiros ainda deriva o total de uma cotação de um adulto;
-- horários locais de voo ainda podem ser confundidos com instantes UTC;
-- catálogos, offers, rate limiting e algumas chaves precisam de armazenamento/rotação compartilhados;
-- alguns vínculos entre tabelas de workflow ainda são garantidos pela aplicação, não pelo banco.
+- general mandate and travel-watch routes do not consistently enforce session ownership;
+- the composition root still installs fake payment even when Yuno configuration exists;
+- authoritative checkouts and some signing keys are ephemeral and process-local;
+- advertised UCP and AP2 capabilities are broader than the implemented wire protocol;
+- pending payments have no runtime-connected webhook or reconciliation worker;
+- multi-passenger search still derives totals from a one-adult quote;
+- local flight times can still be confused with UTC instants;
+- catalogs, offers, rate limiting, and some keys need shared storage or rotation;
+- some workflow-table relationships are enforced by the application rather than the database.
 
-Detalhes, impacto e ordem recomendada estão em [Known implementation gaps](technical/known-gaps.md).
+[Known implementation gaps](technical/known-gaps.md) documents the details, impact, and recommended order.
 
-## Como manter este log
+## Maintaining this log
 
-Atualize este arquivo quando houver uma descoberta que mude entendimento, uma correção de premissa, uma melhoria transversal ou uma decisão importante que não justifique sozinha um novo ADR.
+Update this file when a discovery changes the team's understanding, an assumption is corrected, a cross-cutting improvement lands, or an important decision does not independently justify a new ADR.
 
-Para cada nova entrada, registre:
+For every new entry, record:
 
-1. data e commits/PRs relacionados;
-2. contexto ou problema observado;
-3. decisão tomada;
-4. descoberta ou hipótese corrigida;
-5. consequência no produto, código, segurança ou operação;
-6. limitações que continuaram abertas.
+1. the date and related commits or pull requests;
+2. the observed context or problem;
+3. the decision made;
+4. the discovery or corrected assumption;
+5. the consequence for product, code, security, or operations;
+6. any limitations that remain open.
 
-Crie um ADR separado quando a decisão for cara de reverter, afetar várias fronteiras do sistema ou precisar preservar alternativas e critérios de aceitação em profundidade.
+Create a separate ADR when a decision is expensive to reverse, affects several system boundaries, or needs to preserve alternatives and acceptance criteria in depth.

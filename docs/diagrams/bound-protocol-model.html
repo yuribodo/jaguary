@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bound — Protocolos, autoridade e pagamento</title>
+  <title>Bound — Protocols, authority, and payment</title>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,18 +46,18 @@
   <main>
     <header>
       <p class="eyebrow">Bound · Protocol model</p>
-      <h1>Uma trust layer, vários caminhos de compra</h1>
-      <p class="lede">UCP, AP2, Visa, Bound e Yuno não competem pela mesma responsabilidade. O produto normaliza commerce e provas externas, aplica uma política determinística e só então permite que um provider protegido resolva a credencial e execute o pagamento.</p>
+      <h1>One trust layer, multiple purchase paths</h1>
+      <p class="lede">UCP, AP2, Visa, Bound, and Yuno do not compete for the same responsibility. The product normalizes commerce and external proofs, applies deterministic policy, and only then allows a protected provider to resolve the credential and execute payment.</p>
     </header>
 
     <figure>
       <p class="eyebrow">01 · Layer stack · Responsibility</p>
-      <h2>Cada camada responde uma pergunta diferente</h2>
-      <p class="copy">A separação impede que o agente confunda capacidade de navegar, uma prova de identidade ou posse de uma credencial com permissão atual para movimentar dinheiro.</p>
+      <h2>Each layer answers a different question</h2>
+      <p class="copy">This separation prevents the agent from confusing browsing capability, identity proof, or credential possession with current permission to move money.</p>
       <div class="canvas">
         <svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bound-protocol-layers-title bound-protocol-layers-desc">
-          <title id="bound-protocol-layers-title">Camadas de protocolo e pagamento do Bound</title>
-          <desc id="bound-protocol-layers-desc">Pilha de seis camadas separando commerce, reconhecimento do agente, autoridade delegada, enforcement Bound, credenciais e execução, e os payment rails.</desc>
+          <title id="bound-protocol-layers-title">Bound protocol and payment layers</title>
+          <desc id="bound-protocol-layers-desc">Six-layer stack separating commerce, agent recognition, delegated authority, Bound enforcement, credential execution, and payment rails.</desc>
           <defs>
             <marker id="layers-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
             <marker id="layers-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
@@ -117,17 +117,17 @@
           <text x="308" y="604" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Replaceable protocol/provider layer</text>
         </svg>
       </div>
-      <figcaption><strong>Regra de leitura:</strong> uma camada superior pode descrever intenção ou identidade, mas apenas o enforcement consulta o estado atual. Uma camada inferior pode possuir uma credencial, mas não ganha autoridade por possuí-la.</figcaption>
+      <figcaption><strong>Reading rule:</strong> an upper layer may describe intent or identity, but only enforcement checks current state. A lower layer may possess a credential, but possession does not grant authority.</figcaption>
     </figure>
 
     <figure>
       <p class="eyebrow">02 · Architecture · Adapter routes</p>
-      <h2>Provas diferentes entram no mesmo gate; pagamentos saem por rotas explícitas</h2>
-      <p class="copy">O caminho UCP + AP2 + Yuno é o release gate. Visa e x402 permanecem isolados atrás de feature flags até acesso, semântica e interoperabilidade serem comprovados.</p>
+      <h2>Different proofs enter the same gate; payments leave through explicit routes</h2>
+      <p class="copy">The UCP + AP2 + Yuno path is the release gate. Visa and x402 remain isolated behind feature flags until access, semantics, and interoperability are proven.</p>
       <div class="canvas">
         <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bound-adapter-routes-title bound-adapter-routes-desc">
-          <title id="bound-adapter-routes-title">Rotas multiprotocolo do Bound</title>
-          <desc id="bound-adapter-routes-desc">Arquitetura mostrando UCP com AP2, legacy web com Visa TAP e ACP convergindo para uma compra normalizada e Bound Verify, que libera Yuno, Visa Intelligent Commerce ou x402 por rotas separadas.</desc>
+          <title id="bound-adapter-routes-title">Bound multi-protocol routes</title>
+          <desc id="bound-adapter-routes-desc">Architecture showing UCP with AP2, legacy web with Visa TAP, and ACP converging on a normalized purchase and Bound Verify, which releases Yuno, Visa Intelligent Commerce, or x402 through separate routes.</desc>
           <defs>
             <marker id="routes-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
             <marker id="routes-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
@@ -207,7 +207,7 @@
       <figcaption><strong>Release rule:</strong> Visa, ACP and x402 can enrich reach, but none may become a hidden bypass. Every enabled route must preserve proof provenance, normalize without widening authority and receive a reserved `authorization_id` before resolving payment credentials.</figcaption>
     </figure>
 
-    <section class="notes" aria-label="Notas de implementação">
+    <section class="notes" aria-label="Implementation notes">
       <article class="note">
         <p class="eyebrow">P0 · ship first</p>
         <h3>UCP + AP2 + Bound + Yuno</h3>

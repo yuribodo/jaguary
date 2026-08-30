@@ -1,115 +1,108 @@
-# ADR-001 — Arquitetura transacional do MVP Bound
+# ADR-001 — Transactional architecture for the Bound MVP
 
-- Status: Proposto
-- Data: 2026-08-29
-- Escopo: Hackathon Yuno × Nauta NextWave 2026
-- Origem: `Bound — Product Requirements.pdf`, versão 0.1
+- Status: Proposed
+- Date: 2026-08-29
+- Scope: Yuno × Nauta NextWave 2026 hackathon
+- Origin: `Bound — Product Requirements.pdf`, version 0.1
 
-## Contexto
+## Context
 
-O Bound precisa responder de forma verificável à pergunta: “este agente, representando esta pessoa, pode executar esta compra exata agora?”. A resposta antecede o pagamento e precisa permanecer independente do mecanismo usado pela Yuno para processá-lo.
+Bound must answer one question verifiably: “may this agent, representing this person, execute this exact purchase now?” The answer precedes payment and must remain independent of the mechanism Yuno uses to process it.
 
-O MVP tem quatro requisitos que dominam a arquitetura:
+Four requirements dominate the MVP architecture:
 
-1. a decisão financeira deve ser determinística e não pode depender de LLM;
-2. revogação, limite agregado, frequência, nonce e replay precisam refletir o estado mais recente;
-3. uma autorização concorrente não pode ultrapassar limites nem gerar duas cobranças;
-4. o agente não pode receber PAN, CVV ou `vaulted_token` da Yuno.
+1. financial decisions are deterministic and do not depend on an LLM;
+2. revocation, aggregate limits, frequency, nonces, and replay protection use the latest state;
+3. concurrent authorization cannot exceed limits or create duplicate charges;
+4. the agent never receives PAN, CVV, or a Yuno `vaulted_token`.
 
-O fluxo demonstrado será uma compra autônoma de passagem. Inventário, merchant e preços podem ser simulados; assinatura do agente, estado do mandato, revogação, verificação, integração Yuno e trilha de auditoria devem ser reais dentro das limitações do sandbox.
+The demo presents an autonomous flight purchase. Inventory, merchant, and prices may be simulated; agent signatures, mandate state, revocation, verification, Yuno integration, and the audit trail must be real within sandbox constraints.
 
-## Direcionadores da decisão
+## Decision drivers
 
-- Entregar um vertical funcional em tempo de hackathon.
-- Falhar fechado diante de estado, assinatura ou resposta de pagamento ambíguos.
-- Tornar os casos de trial-by-fire repetíveis e fáceis de explicar.
-- Evitar concorrência distribuída onde atomicidade local resolve o problema.
-- Preservar portas claras para separar AP2, persistência, assinatura e Yuno no futuro.
-- Manter o caminho para uma arquitetura de produção sem fingir que o MVP já é PCI-compliant.
+- Deliver a working vertical within hackathon time.
+- Fail closed on ambiguous state, signatures, or payment responses.
+- Make trial-by-fire cases repeatable and easy to explain.
+- Avoid distributed concurrency where local atomicity solves the problem.
+- Preserve clear ports for AP2, persistence, signing, and Yuno.
+- Maintain a production evolution path without claiming that the MVP is PCI compliant.
 
-## Decisão
+## Decision
 
-Implementaremos o Bound como um monólito modular transacional em TypeScript, com API HTTP, núcleo de autorização puro, PostgreSQL como fonte de verdade e um adaptador Yuno isolado atrás de uma autorização reservada.
+Implement Bound as a transactional modular monolith in TypeScript, with an HTTP API, a pure authorization core, PostgreSQL as the source of truth, and an isolated Yuno adapter behind reserved authorization.
 
-O deploy inicial terá dois artefatos:
+The initial deployment has two artifacts:
 
-- `bound-web`: Trusted Surface e telas de merchant/auditoria;
-- `bound-api`: processo único com os módulos `identity`, `mandates`, `checkouts`, `verify`, `payments` e `ledger`.
+- `bound-web`: Trusted Surface and merchant and audit views;
+- `bound-api`: one process containing `identity`, `mandates`, `checkouts`, `verify`, `payments`, and `ledger`.
 
-O código poderá viver num monorepo, mas `bound-api` continuará sendo um único deployable no MVP. As fronteiras entre módulos serão interfaces internas, não chamadas de rede.
+The code may live in a monorepo, but `bound-api` remains one deployable for the MVP. Module boundaries are internal interfaces, not network calls.
 
-### Stack de referência
+### Reference stack
 
-- TypeScript no frontend e backend.
-- Next.js para a Trusted Surface e visualizações da demo.
-- Fastify para a API HTTP.
-- PostgreSQL para estado transacional, nonces, reservas e auditoria.
-- `jose` para JWS/JWT ES256 e `zod` para validação de schemas.
-- Merchant fictício VuelaYa publicando `/.well-known/ucp` e o subconjunto determinístico de UCP Catalog/Checkout/Order necessário ao caminho P0.
-- Firecrawl Search/Scrape/Interact encapsulado por `DiscoveryPort` para o browser ao vivo P2.
-- Cliente HTTP direto da Yuno encapsulado por `YunoPaymentPort`; o Agent Toolkit não será exposto ao TravelBot.
-- `SignerPort` com chave local de desenvolvimento no hackathon e implementação KMS/HSM em produção.
+- TypeScript in the frontend and backend.
+- Next.js for the Trusted Surface and demo views.
+- Fastify for the HTTP API.
+- PostgreSQL for transaction state, nonces, reservations, and audit.
+- `jose` for ES256 JWS and JWT, and `zod` for schema validation.
+- The VuelaYa demo merchant publishing `/.well-known/ucp` and the UCP Catalog, Checkout, and Order subset required by P0.
+- Firecrawl Search, Scrape, and Interact behind `DiscoveryPort` for the P2 live browser.
+- A direct Yuno HTTP client behind `YunoPaymentPort`; TravelBot never receives the Agent Toolkit.
+- `SignerPort` with a local development key during the hackathon and KMS or HSM in production.
 
-Versões específicas ficam fora deste ADR e devem ser fixadas no lockfile do projeto.
+Exact versions belong in the project lockfile, not this ADR.
 
-### Fronteiras e módulos
+### Boundaries and modules
 
-| Módulo | Responsabilidade | Não pode fazer |
-|---|---|---|
-| Trusted Surface | Exibir a política estruturada e capturar consentimento humano | Autorizar silenciosamente ou expor segredo de pagamento |
-| Identity | Registrar chaves públicas e validar assinatura/estado do agente | Aceitar identidade declarada sem prova criptográfica |
-| Mandates | Criar, assinar, consultar, expirar e revogar mandatos AP2 | Alterar um mandato já assinado |
-| Discovery | Procurar/extrair ofertas e, no P2, operar uma sessão Firecrawl com live view | Autorizar, assinar checkout ou possuir ferramenta/credencial de pagamento |
-| Checkouts | Validar assinatura do merchant e calcular hash canônico | Confiar em preço ou itens enviados apenas pelo agente |
-| Verify | Executar regras puras e produzir `ALLOW`, `ESCALATE` ou `DENY` | Chamar LLM ou Yuno durante a avaliação |
-| Authorization Store | Serializar nonce, limite, reserva e consumo | Usar cache eventualmente consistente como fonte de verdade |
-| Yuno Adapter | Resolver a referência interna, chamar Yuno e normalizar o resultado | Retornar `vaulted_token` ao agente ou merchant |
-| Ledger | Registrar eventos append-only encadeados por hash | Ser descrito como blockchain ou prova externa de imutabilidade |
+| Module | Responsibility | Must not |
+| --- | --- | --- |
+| Trusted Surface | Display structured policy and capture human consent | Authorize silently or expose payment secrets |
+| Identity | Register public keys and validate agent signature and state | Accept identity declarations without cryptographic proof |
+| Mandates | Create, sign, read, expire, and revoke AP2 mandates | Change an already signed mandate |
+| Discovery | Find offers and optionally operate a live browser session | Authorize, sign checkout, or possess payment tools or credentials |
+| Checkouts | Validate merchant signatures and calculate canonical hashes | Trust prices or items supplied only by the agent |
+| Verify | Apply pure rules and return `ALLOW`, `ESCALATE`, or `DENY` | Call an LLM or Yuno while evaluating |
+| Authorization Store | Serialize nonces, limits, reservations, and consumption | Use an eventually consistent cache as authority |
+| Yuno Adapter | Resolve internal references, invoke Yuno, and normalize results | Return `vaulted_token` to the agent or merchant |
+| Ledger | Record append-only, hash-chained events | Claim to be a blockchain or external immutability proof |
 
-### Caminho de autorização
+### Authorization path
 
-1. A Trusted Surface transforma a intenção em uma proposta estruturada. Um LLM pode ajudar somente nessa interpretação.
-2. A pessoa revisa todos os campos determinísticos e confirma. O backend assina e persiste os mandatos AP2 abertos.
-3. O agente recebe o mandato/prova, descobre as capabilities UCP de VuelaYa (P0) ou encontra uma oferta pelo `DiscoveryPort`/Firecrawl (P2) e envia somente a intenção ao merchant.
-4. O merchant produz um checkout UCP fechado com `checkout_id`, itens, valor, moeda e metadados relevantes, incluindo a autorização criptográfica exigida pela extensão AP2 negociada.
-5. `POST /verify` valida schema, assinatura do agente, vínculo do mandato, assinatura/hash do checkout, janela de tempo, revogação, escopo, limites, frequência e replay.
-6. Se o resultado calculado for `ALLOW`, a mesma transação PostgreSQL registra o nonce e cria uma autorização `RESERVED`. Limites consideram autorizações `RESERVED`, `PAYMENT_PENDING` e `CONSUMED` para impedir corrida e split payment.
-7. `POST /authorizations/:id/pay` faz uma transição atômica de `RESERVED` para `PAYMENT_PENDING` e chama a Yuno fora da transação de banco, usando `authorization_id` como chave de idempotência.
-8. Sucesso confirmado muda a autorização para `CONSUMED`, consolida uso/valor e sela os receipts. Falha terminal muda para `FAILED` e libera a reserva. Resposta desconhecida permanece `PAYMENT_PENDING` e bloqueia nova tentativa com outra chave até reconciliação.
-9. Cada transição grava um evento de auditoria no mesmo commit que altera o estado de negócio.
+1. The Trusted Surface turns intent into a structured proposal. An LLM may assist only with interpretation.
+2. The person reviews every deterministic field and confirms. The backend signs and persists AP2 mandates.
+3. The agent receives the proof, discovers VuelaYa's UCP capabilities in P0 or finds an offer through `DiscoveryPort` in P2, and sends only intent to the merchant.
+4. The merchant creates a closed UCP checkout with its ID, items, amount, currency, relevant metadata, and the cryptographic authorization required by the negotiated AP2 extension.
+5. `POST /verify` validates schemas, agent signature, mandate binding, checkout signature and hash, time window, revocation, scope, limits, frequency, and replay.
+6. On `ALLOW`, the same PostgreSQL transaction records the nonce and creates a `RESERVED` authorization. Limits count `RESERVED`, `PAYMENT_PENDING`, and `CONSUMED` authorization.
+7. `POST /authorizations/:id/pay` atomically moves the authorization to `PAYMENT_PENDING` and calls Yuno outside the database transaction with a stable idempotency identity.
+8. Confirmed success moves the authorization to `CONSUMED` and seals receipts. Terminal failure moves it to `FAILED` and releases the reservation. An unknown response remains `PAYMENT_PENDING` until reconciliation.
+9. Every transition writes its audit event in the same commit as the business-state change.
 
-`ESCALATE` não cria autorização pagável. “Approve once” cria um novo mandato fechado, ligado ao `checkout_id`, com uma utilização e expiração curta, que percorre novamente a verificação.
+`ESCALATE` does not create payable authorization. “Approve once” creates a short-lived, single-use mandate bound to the checkout and runs verification again.
 
-### Discovery e browser ao vivo
+### Discovery and the live browser
 
-Discovery é uma porta substituível e não uma dependência do domínio Bound:
+Discovery is replaceable and is not a Bound domain dependency:
 
 ```ts
 interface DiscoveryPort {
-  findOffers(query: OfferQuery): Promise<OfferCandidate[]>;
+  findOffers(query: OfferQuery): Promise<OfferCandidate[]>
 }
 ```
 
-O adapter P0 lê o perfil `/.well-known/ucp` e usa o subconjunto Catalog/Checkout do merchant fictício VuelaYa, mantendo a demo reproduzível. O adapter P2 usa Firecrawl para Search/Scrape e `/interact`, retornando candidatos estruturados, URL/proveniência e `liveViewUrl`. A sessão pode navegar e preencher a interface do merchant, mas a ação final disponível ao agente é `requestPurchase(candidate)`; ela produz uma intenção e força o merchant a criar um checkout assinado.
+P0 reads VuelaYa's UCP profile and controlled catalog. P2 may use Firecrawl to return structured candidates, source URLs, provenance, and `liveViewUrl`. A browser may navigate and fill a merchant interface, but its final action is `requestPurchase(candidate)`, which creates intent and forces the merchant to produce signed checkout terms.
 
-O runtime de browser nunca recebe:
+The browser runtime never receives Yuno secrets, resolvable credentials, signing keys, database write access, `YunoPaymentPort`, a `pay()` tool, or authority to turn page content into approved policy. Web text, DOM, and instructions are untrusted data. The adapter applies strict schemas, demo-domain allowlists, step and time limits, session cleanup, and source evidence.
 
-- `YUNO_PRIVATE_SECRET_KEY`, `vaulted_token` ou `credential_id` resolvível;
-- `SignerPort`, chave privada do usuário/Bound ou escrita direta no banco;
-- `YunoPaymentPort` ou uma tool `pay()`;
-- autoridade para transformar conteúdo de página em política aprovada.
+Browserbase and Stagehand are the primary fallback if Firecrawl is not stable enough. Parallel remains a future search and extraction option. Swapping discovery adapters does not change Bound, AP2, merchant checkout, or Yuno.
 
-Texto, DOM e instruções encontrados na web são dados não confiáveis. O adapter aplica schema estrito, allowlist de domínios da demo, limite de passos/tempo, limpeza explícita da sessão e registra URL + evidência da oferta. O checkout assinado pelo merchant, e não o conteúdo lido pelo browser, é o objeto autoritativo usado pelo Verify.
+### Yuno integration and Agent Toolkit
 
-Browserbase/Stagehand é a alternativa primária se o Firecrawl não oferecer estabilidade suficiente no site escolhido. Ele possui automação interativa e live view comparáveis, mas não integraremos os dois no MVP. Parallel permanece uma boa alternativa de Search/Extract/Task quando a prioridade for pesquisa com provenance; não é escolhido para o P2 porque a demo pede navegação visível.
+Exposing the Yuno Agent Toolkit directly to TravelBot would create a payment route outside the gate. Only the server-side Yuno Adapter owns Yuno credentials and invokes Payments after receiving reserved authorization. If used, the toolkit remains inside that module with action filtering and no shopping-agent access.
 
-### Integração Yuno e Agent Toolkit
+### Deterministic function
 
-O Agent Toolkit da Yuno valida que a plataforma oferece tools para agentes e adapters TypeScript, mas expô-lo diretamente ao TravelBot criaria uma rota de pagamento fora do gate. No MVP, apenas o módulo server-side `Yuno Adapter` possui as credenciais Yuno e chama Payments após receber um `authorization_id` reservado. Se o toolkit for usado por conveniência, ele ficará dentro desse módulo, com action filtering e sem acesso pelo loop do shopping agent.
-
-### Função determinística
-
-O núcleo será uma função sem I/O:
+The core has no I/O:
 
 ```ts
 evaluate({
@@ -122,31 +115,29 @@ evaluate({
 }): Decision
 ```
 
-Todos os dados são carregados e normalizados antes da chamada. As regras rodam em ordem estável e retornam códigos explícitos, por exemplo `invalid_agent_signature`, `mandate_revoked`, `checkout_integrity_failure`, `aggregate_limit_exceeded` e `replay_detected`. Uma regra inválida, ausente ou desconhecida resulta em `DENY`, nunca em coerção permissiva.
+All input is loaded and normalized first. Rules run in stable order and return explicit codes such as `invalid_agent_signature`, `mandate_revoked`, `checkout_integrity_failure`, `aggregate_limit_exceeded`, and `replay_detected`. Missing, invalid, or unknown rules produce `DENY`, never permissive coercion.
 
-### Concorrência, replay e idempotência
+### Concurrency, replay, and idempotency
 
-- `nonce` terá restrição única por agente ou por mandato, conforme o envelope AP2 adotado.
-- A linha do mandato será bloqueada durante a criação da reserva (`SELECT … FOR UPDATE`) ou atualizada com compare-and-swap equivalente.
-- O checkout terá hash canônico; qualquer alteração depois da assinatura invalida a requisição.
-- Uma autorização só pode fazer uma transição de pagamento válida por vez.
-- A chamada Yuno usa `authorization_id` como chave de idempotência em todas as tentativas.
-- Nenhuma transação de banco permanece aberta enquanto a chamada externa à Yuno está em andamento.
-- Timeout de Yuno é estado desconhecido, não falha: o sistema mantém `PAYMENT_PENDING` até retry/reconciliação com a mesma chave.
+- Nonces are unique per agent or mandate according to the adopted AP2 envelope.
+- Mandates are locked during reservation with `SELECT … FOR UPDATE` or equivalent compare-and-swap.
+- Any change to a signed checkout invalidates its canonical hash.
+- Each authorization can perform only one valid payment transition at a time.
+- Yuno retries use the same persisted idempotency identity.
+- No database transaction remains open during an external Yuno call.
+- A Yuno timeout is unknown state, not failure; the authorization remains `PAYMENT_PENDING` until reconciliation.
 
-### Credenciais e chaves
+### Credentials and keys
 
-O banco guarda `credential_id` e o mapeamento protegido para o token Yuno. A API pública, os logs e os receipts usam apenas a referência lógica e dados mascarados. O adaptador Yuno é o único módulo que pode resolver o token.
+The database stores a logical `credential_id` and a protected mapping to the Yuno token. Public APIs, logs, and receipts use only the logical reference and masked data. Only the Yuno adapter may resolve the token.
 
-No hackathon, segredos podem ser injetados pelo ambiente e protegidos pelo secret store da plataforma. Para produção, o mapeamento deverá ser criptografado por envelope encryption e as chaves de assinatura movidas para KMS/HSM. O MVP não será apresentado como uma implementação PCI completa.
+Hackathon secrets may come from environment variables protected by the platform secret store. Production requires envelope encryption for mappings and KMS or HSM for signing keys. The MVP is not presented as a complete PCI implementation.
 
-### Auditoria
+### Audit
 
-`AuditEvent` será append-only e terá payload canônico, `previous_hash` e `event_hash`. O encadeamento será por transação/autorização, evitando um lock global. Isso detecta alteração posterior dentro da cadeia, mas não impede que um operador com acesso total reescreva banco e hashes; produção exigirá exportação periódica para armazenamento imutável ou assinatura externa.
+`AuditEvent` is append-only and contains a canonical payload, `previous_hash`, and `event_hash`. Chains are scoped per transaction or authorization to avoid a global lock. This detects later changes within a chain but cannot stop a fully privileged operator from rewriting the database and hashes. Production requires periodic export to immutable storage or external signatures.
 
-## Modelo de estado adicional
-
-O modelo do PRD será estendido de forma mínima:
+## Additional state model
 
 ```text
 Authorization.status = RESERVED | PAYMENT_PENDING | CONSUMED | FAILED | CANCELLED
@@ -158,118 +149,80 @@ Mandate.reserved_uses
 Mandate.reserved_spend
 ```
 
-Como alternativa, os campos reservados do mandato podem ser derivados por consulta às autorizações ativas. Para o MVP, materializá-los na mesma transação simplifica a demonstração e torna os invariantes explícitos.
+Reserved mandate fields could be derived from active authorizations, but materializing them in the same transaction makes MVP invariants explicit.
 
-## APIs e contratos
+## APIs and contracts
 
-- Todos os endpoints mutáveis aceitam `Idempotency-Key`.
-- `POST /verify` devolve `decision`, `authorization_id` somente quando reservado, `reasons[]`, `policy_version` e `evidence_hash`.
-- `POST /authorizations/:id/pay` exige que a autorização pertença ao mesmo merchant/checkout verificado.
-- Datas são UTC e serializadas em RFC 3339; valores monetários são inteiros na menor unidade e sempre carregam moeda.
-- Payloads assinados usam serialização canônica definida e versionada; nunca se assina JSON arbitrário dependente da ordem de propriedades.
-- Logs estruturados carregam IDs e hashes, nunca tokens ou dados brutos de cartão.
+- Every mutable endpoint accepts `Idempotency-Key`.
+- `POST /verify` returns `decision`, `reasons[]`, `policy_version`, `evidence_hash`, and `authorization_id` only when reserved.
+- `POST /authorizations/:id/pay` requires the same merchant and checkout that were verified.
+- Dates use RFC 3339 UTC; money uses integer minor units with an explicit currency.
+- Signed payloads use defined, versioned canonical serialization.
+- Structured logs contain IDs and hashes, never tokens or raw card data.
 
-## Alternativas consideradas
+## Alternatives considered
 
-### Microserviços e event streaming desde o início
+- **Microservices and event streaming from day one:** rejected because distributed consistency would be introduced exactly where revocation, replay, and limits need atomicity.
+- **Independent serverless functions per endpoint:** not selected because cold starts, observability, and concurrency coordination add demo risk without domain value.
+- **LLM or probabilistic-score evaluation:** rejected because it cannot provide repeatability, stable reason codes, or fail-closed behavior.
+- **Keep SQL open during a Yuno call:** rejected because long locks and uncertain external outcomes harm availability.
+- **Consume authority permanently at `ALLOW`:** not selected because terminal payment failure would waste the mandate; reservation can safely release capacity.
+- **Blockchain audit:** rejected because an append-only hash chain meets MVP evidence needs with much less complexity.
+- **Parallel or Exa as primary discovery:** deferred because search and extraction alone do not provide the visible browser interaction intended for P2.
+- **Browserbase or Stagehand as the primary runtime:** retained as a technical fallback.
 
-Rejeitado para o MVP. Identity, Verify, Ledger e Payments separados introduziriam consistência distribuída no ponto exato em que revogação, replay e limites precisam ser atômicos. A modularidade interna preserva uma rota de extração posterior.
+## Consequences
 
-### Funções serverless independentes por endpoint
+### Positive
 
-Não escolhida como arquitetura principal. É viável com PostgreSQL externo, mas aumenta cold start, observabilidade e coordenação de concorrência na demo sem melhorar o domínio. O monólito ainda pode ser hospedado em plataforma serverless que suporte o processo/API como unidade.
+- Revocation and limits use one consistent source.
+- Concurrency, split-payment, and replay behavior have testable invariants.
+- The critical path is straightforward to instrument and demonstrate.
+- Live browsing adds demo impact without becoming a payment requirement.
+- AP2 and Yuno remain behind replaceable ports.
+- Ledger evidence and decision codes make every payment explainable.
 
-### Avaliação por LLM ou score probabilístico
+### Negative and risks
 
-Rejeitada. Não oferece repetibilidade, códigos de razão estáveis nem comportamento fail-closed. LLM fica limitado à proposta de política antes do consentimento humano.
+- The API process is a single failure domain for the MVP.
+- PostgreSQL is critical and requires migrations and backups.
+- Abandoned reservations and unknown payments require reconciliation.
+- Local keys and the hackathon hash chain are weaker than KMS, HSM, and WORM storage.
+- The AP2 implementation may cover only the vertical's subset and must not claim full conformance.
+- Real sites can change, block automation, or inject instructions, so P0 does not depend on them.
 
-### Manter uma transação SQL aberta durante a chamada Yuno
+## Acceptance criteria
 
-Rejeitada. Locks longos e resultado externo incerto prejudicam disponibilidade. A reserva transacional seguida de execução idempotente separa decisão, exclusão mútua e efeito externo.
+1. Two concurrent verification requests for a single-use mandate create at most one `RESERVED` authorization.
+2. Repeated nonces, authorizations, or idempotency keys do not create a new charge.
+3. A revoked mandate produces `DENY mandate_revoked` on the next confirmed read.
+4. A modified signed checkout produces `DENY checkout_integrity_failure`.
+5. A key different from the registered agent key produces `DENY invalid_agent_signature`.
+6. Split attempts count both reservations and consumed spend.
+7. Logs, responses, and events never contain PAN, CVV, or `vaulted_token`.
+8. Every authorization and payment transition has a valid hash-chained audit event.
+9. Yuno timeout neither releases the reservation nor retries with a new key.
+10. The PRD's A–H cases pass deterministically.
+11. Malicious page content cannot call Yuno, change a mandate, or sign a checkout.
+12. The complete demo runs through VuelaYa when Firecrawl is unavailable.
 
-### Consumir definitivamente no momento do `ALLOW`
+## Delivery priority
 
-Não escolhido. É seguro contra replay, mas pode gastar o mandato quando Yuno falha de forma terminal. A reserva mantém segurança e permite liberar capacidade após falha confirmada.
+| Priority | Deliverable | Cut line |
+| --- | --- | --- |
+| P0 | UCP → AP2 → Verify → revocation → Yuno → receipt through VuelaYa | Mandatory and independent of the external web |
+| P1 | Agent Passport, HITL, and adversarial matrix | After all P0 invariants pass |
+| P2 | TravelBot selecting a controlled merchant offer | Real agent, controlled environment |
+| P2 WOW | Firecrawl Interact and live view behind `DiscoveryPort` | Only if it does not weaken P0 |
+| P3 | Parallel or Exa for broader search and provenance | Optional |
+| P4 | Arbitrary human-site checkout | Outside the hackathon |
 
-### Blockchain para auditoria
+## Evolution plan
 
-Rejeitada. Uma cadeia de hashes append-only atende a narrativa e os testes do MVP com muito menos complexidade. Imutabilidade externa pode ser adicionada posteriormente.
+Extract services only after proven operational need. Yuno reconciliation through a worker and outbox is the first candidate. Identity and Verify remain together while decisions depend on transactional mandate, revocation, nonce, and usage reads. Production also needs KMS or HSM, a secret manager, rate limiting, immutable audit storage, signed Yuno webhooks, and a formal retention policy.
 
-### Parallel/Exa como dependency principal de discovery
+[ADR-002](ADR-002-commerce-protocol-layering.md) records the separation between UCP, AP2, Visa TAP and VIC, Bound, Yuno, and payment rails. The workstream plan is in [`../implementation-plan.md`](../implementation-plan.md).
 
-Não escolhida para o P2. Search e extraction são úteis, mas não produzem sozinhos o browser ao vivo que cria o WOW visual. Podem entrar depois, por trás do mesmo `DiscoveryPort`, se qualidade de busca ou provenance superar a necessidade de interação.
+## Reference visual
 
-### Browserbase/Stagehand como runtime principal
-
-Mantida como fallback técnico. É a referência mais especializada para browser agents, observabilidade e sessões reproduzíveis. Firecrawl foi escolhido primeiro porque reúne Search/Scrape/Interact e live view numa integração curta; a troca não altera Bound, AP2, merchant checkout ou Yuno.
-
-## Consequências
-
-### Positivas
-
-- Revogação e limites são checados contra uma única fonte consistente.
-- Casos concorrentes, split payment e replay têm invariantes testáveis.
-- O caminho crítico é simples o bastante para instrumentar e demonstrar.
-- O browser ao vivo aumenta o impacto da demo sem virar requisito para pagamento.
-- AP2 e Yuno ficam atrás de portas substituíveis, evitando acoplamento do domínio a payloads externos.
-- O ledger e os códigos de decisão tornam cada pagamento explicável.
-
-### Negativas e riscos
-
-- O processo da API é um domínio de falha único no MVP.
-- PostgreSQL vira dependência crítica e exige migrations/backup.
-- Reservas abandonadas e pagamentos de estado desconhecido exigem reconciliação.
-- A chave local e o hash chain do hackathon não têm a força de KMS/HSM e armazenamento WORM.
-- A implementação AP2 pode ser apenas do subconjunto necessário ao vertical; não deve ser vendida como conformidade completa sem testes oficiais.
-- Sites reais podem mudar, bloquear automação ou injetar instruções; por isso o P0 não depende deles.
-
-## Critérios de aceitação
-
-1. Dois `POST /verify` concorrentes para um mandato de uso único produzem no máximo uma autorização `RESERVED`.
-2. Repetir nonce, autorização ou idempotency key não gera nova cobrança.
-3. Revogar e depois verificar produz `DENY mandate_revoked` na próxima leitura confirmada, com meta de menos de um segundo no ambiente da demo.
-4. Checkout alterado após assinatura produz `DENY checkout_integrity_failure`.
-5. Chave diferente da registrada para o agente produz `DENY invalid_agent_signature`.
-6. Tentativas divididas respeitam reservas mais consumo consolidado.
-7. Nenhum log, response ou evento contém PAN, CVV ou `vaulted_token`.
-8. Toda transição de autorização e pagamento possui evento auditável com cadeia de hash válida.
-9. Timeout de Yuno não libera a reserva nem cria retry com nova chave.
-10. Todos os casos A–H da matriz do PRD passam de forma determinística.
-11. Conteúdo malicioso de uma página não consegue chamar Yuno, alterar mandato ou assinar checkout.
-12. A demo completa continua executável com o adapter VuelaYa quando Firecrawl está indisponível.
-
-## Prioridade de entrega
-
-| Prioridade | Entrega | Critério de corte |
-|---|---|---|
-| P0 | UCP → AP2 → Verify → revogação → Yuno → receipt, usando VuelaYa mock | Obrigatório e independente da web externa |
-| P1 | Agent Passport, HITL e matriz adversarial | Depois de todos os invariantes P0 passarem |
-| P2 | TravelBot escolhendo oferta do merchant mock | Agente real, ambiente controlado |
-| P2 WOW | Firecrawl Interact + live view, atrás do `DiscoveryPort` | Só entra sem fragilizar o ensaio P0 |
-| P3 | Parallel/Exa para busca mais ampla e provenance | Opcional |
-| P4 | Checkout em sites humanos arbitrários | Fora do hackathon |
-
-## Empresas e padrões de referência
-
-| Referência | O que adotamos como inspiração | O que não significa |
-|---|---|---|
-| [Google / FIDO AP2](https://github.com/google-agentic-commerce/AP2) | Trusted Surface, mandates, binding checkout/payment e receipts | Implementar todo o ecossistema AP2 no hackathon |
-| [Yuno](https://docs.y.uno/docs/ai-capabilities/agent-toolkit) | Vault, Payments, orquestração e adapter server-side pós-`ALLOW` | Dar tools de pagamento diretamente ao TravelBot |
-| [Firecrawl](https://docs.firecrawl.dev/features/interact) | Search/Scrape/Interact, Playwright e live view do P2 | Torná-lo parte da autorização |
-| [Browserbase / Stagehand](https://docs.browserbase.com/use-cases/agents) | Benchmark/fallback para browser agents observáveis | Integrar dois runtimes no MVP |
-| [Trulioo KYA](https://www.trulioo.com/solutions/agentic) | Agent Passport, status contínuo, operador e provenance do agente | Fazer KYC/KYB completo no hackathon |
-| [Visa Trusted Agent Protocol](https://developer.visa.com/capabilities/trusted-agent-protocol/trusted-agent-protocol-specifications) | Assinatura HTTP, binding de contexto, nonce e proteção contra replay | Alegar certificação Visa |
-| [Experian Agent Trust](https://www.experian.com/business/products/agent-trust) | Human-to-agent binding e união de identidade, intenção e risco | Colocar score probabilístico no `ALLOW` determinístico |
-| [Crossmint Agentic Cards](https://www.crossmint.com/products/agentic-cards) | UX de limites, revogação e credencial isolada | Substituir Yuno no MVP |
-| [Stripe Shared Payment Tokens](https://stripe.com/blog/introducing-our-agentic-commerce-solutions) | Tokens escopados, expiráveis e sem exposição da credencial | Adotar ACP/Stripe no caminho principal |
-| [Mastercard Verifiable Intent](https://www.mastercard.com/europe/en/news-and-trends/stories/2026/verifiable-intent.html) | Evidência criptográfica da intenção e alinhamento com AP2 | Depender da rede para a demo |
-
-## Plano de evolução
-
-Extrair serviços somente quando houver necessidade operacional comprovada. A primeira candidata é a reconciliação Yuno, executada por worker/outbox. Identity e Verify devem permanecer juntos enquanto a decisão depender de leitura transacional de mandato, revogação, nonce e uso. Em produção, adicionar KMS/HSM, secret manager, rate limiting, storage imutável de auditoria, webhook assinado da Yuno e política formal de retenção.
-
-A separação entre UCP, AP2, Visa TAP/VIC, Bound, Yuno e payment rails, incluindo os contratos de adapters, está registrada no [ADR-002](ADR-002-commerce-protocol-layering.md). O plano de implementação por workstream está em [`../implementation-plan.md`](../implementation-plan.md).
-
-## Referência visual
-
-O caminho aprovado e as fronteiras de confiança estão em [`../diagrams/bound-technical-architecture.html`](../diagrams/bound-technical-architecture.html). A leitura multiprotocolo está em [`../diagrams/bound-protocol-model.html`](../diagrams/bound-protocol-model.html).
+See the approved path and trust boundaries in [`../diagrams/bound-technical-architecture.html`](../diagrams/bound-technical-architecture.html), and the multi-protocol model in [`../diagrams/bound-protocol-model.html`](../diagrams/bound-protocol-model.html).
